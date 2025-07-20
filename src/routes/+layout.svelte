@@ -4,7 +4,7 @@
 </script>
 
 <div class="flex flex-col h-screen">
-  <header class="bg-gray-100 p-4 text-center">
+  <header class="bg-gray-100 p-4">
     <nav>
       <a href="/" class="text-blue-500 font-bold hover:underline">困った時のツール集</a>
     </nav>
