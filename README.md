@@ -4,18 +4,30 @@ SvelteKit + TypeScript + Tailwind CSSで構築された便利ツール集のWeb�
 
 ## 機能
 
-### QRコードジェネレーター (`/tools/qr`)
+### HTML/リッチテキスト → Markdown変換 (`/tools/html-to-markdown`)
+- HTMLコードやWebページからコピーしたリッチテキストをMarkdown形式に変換
+- クリップボードからの自動判定機能（HTML/リッチテキスト/プレーンテキスト）
+- 「クリップボードから読み取り」ボタンと手動貼り付けの両方に対応
+- Turndownライブラリによる高精度変換
+
+### リッチテキストエディター → Markdown変換 (`/tools/richtext-to-markdown`)
+- Quillエディターでリッチテキストを編集してMarkdown形式に変換
+- リアルタイム変換機能
+- 見出し、太字、斜体、リスト、リンク、コードブロックなどに対応
+- カスタムTurndownルール適用
+
+### QRコード生成 (`/tools/qrcode-generator`)
 - テキストからQRコード生成
 - ロゴオーバーレイ機能（オプション）
 - ローディング表示とエラーハンドリング
 - ロゴ画像の削除機能
 
-### XプロフィールQRジェネレーター (`/tools/x-qr`)
+### XプロフィールQRコード (`/tools/x-qrcode-generator`)
 - X（旧Twitter）プロフィール専用QRコード
 - Xアイコンのオーバーレイ機能（ON/OFF切り替え可能）
 - ユーザー名の自動フォーマット（@マーク自動処理）
 
-### 文字数カウンタ (`/tools/count`)
+### 文字数カウンター (`/tools/character-counter`)
 - リアルタイム文字数計測
 
 ## 開発
@@ -65,25 +77,36 @@ npm run lint
 - **ビルドツール**: Vite
 - **リンター**: ESLint + Prettier
 - **フォント**: @fontsource (Noto Sans JP, Noto Serif JP, Fira Mono)
+- **外部ライブラリ**: Quill（リッチテキストエディター）, Turndown（HTML→Markdown変換）
 - **デプロイ**: 静的サイトジェネレーション（@sveltejs/adapter-static）
 
 ## アーキテクチャ
 
-### ディレクトリ構造
-- `src/routes/` - SvelteKitのファイルベースルーティング
-  - `+page.svelte` - ホームページ（ツール一覧表示）
-  - `+layout.svelte` - 共通レイアウト（ヘッダー・フッター）
-  - `tools/[tool]/+page.svelte` - 各ツールページ
-- `src/lib/` - 共有コンポーネントとデータ
-  - `data/tools.ts` - ツール定義（名前、パス、説明）
-  - `components/` - Svelteコンポーネント
-- `src/app.css` - グローバルスタイル（Tailwind CSS + カスタムCSSプロパティ）
+### ツール管理システム
+- `src/lib/data/tools.ts` - 全ツールの中央定義
+- ホームページで動的にツール一覧を表示
+- ファイルベースルーティング（`src/routes/tools/[tool-name]/+page.svelte`）
 
 ### 新しいツールの追加方法
 
-1. `src/lib/data/tools.ts`にツール情報を追加
-2. `src/routes/tools/[tool-name]/+page.svelte`でツールページを作成
-3. 必要に応じて`src/lib/components/`に再利用可能なコンポーネントを作成
+1. `src/lib/data/tools.ts`にツール情報を追加:
+   ```typescript
+   {
+     nameJa: 'ツール名',
+     name: 'tool-slug',
+     description: '機能説明',
+     icon: '📱'
+   }
+   ```
+
+2. `src/routes/tools/[tool-slug]/+page.svelte`でツールページを作成
+
+## 主な技術的特徴
+
+- **Clipboard API活用**: `navigator.clipboard.read()`でHTMLとプレーンテキストを自動判定
+- **ローディング状態管理**: 外部API呼び出し時の適切なUXフィードバック
+- **レスポンシブデザイン**: 日本語UIに最適化されたモバイル対応
+- **静的サイト生成**: GitHub Pages等での高速ホスティング対応
 
 ## デプロイメント
 

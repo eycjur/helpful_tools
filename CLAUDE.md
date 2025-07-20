@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## プロジェクト概要
 
-「困った時のツール集」は、SvelteKit + TypeScript + Tailwind CSSで構築された便利ツール集のWebアプリケーションです。QRコード生成、リッチテキスト→Markdown変換、文字数カウンターなどの実用的なツールを提供しています。
+「困った時のツール集」は、SvelteKit + TypeScript + Tailwind CSSで構築された便利ツール集のWebアプリケーションです。HTML/Markdown変換、QRコード生成、文字数カウンターなどの実用的なツールを提供しています。
 
 ## 開発コマンド
 
@@ -34,80 +34,74 @@ npm run lint
 ## アーキテクチャ
 
 ### ツール管理システム
-- `src/lib/data/tools.ts` - 全ツールの定義ファイル（名前、パス、説明、アイコン）
-- ホームページ（`src/routes/+page.svelte`）でtools配列から動的にツール一覧を表示
-- 各ツールは`src/routes/tools/[tool-name]/+page.svelte`の形式でファイルベースルーティング
 
-### 共通レイアウト
-- `src/routes/+layout.svelte` - ヘッダー・フッターの共通レイアウト
-- ヘッダーにはタイトルリンク（ホームに戻る）とGitHubリンクを配置
-- レスポンシブデザインでモバイル対応
+中央集権型のツール管理システムを採用：
 
-### 新しいツールの追加方法
+- `src/lib/data/tools.ts` - 全ツールの定義配列
+- ホームページ（`src/routes/+page.svelte`）が`tools`配列をmapして動的にツール一覧を表示
+- 各ツールは`src/routes/tools/[tool-name]/+page.svelte`のファイルベースルーティング
+- ツール定義形式： `{ nameJa: '表示名', name: 'url-slug', description: '説明', icon: '絵文字' }`
 
-1. `src/lib/data/tools.ts`にツール情報を追加:
+### 新しいツールの追加手順
+
+1. `src/lib/data/tools.ts`に新ツールを追加:
    ```typescript
    {
-     name: 'ツール名',
-     path: '/tools/tool-slug',
-     description: '説明文',
+     nameJa: 'ツール名',
+     name: 'tool-slug',
+     description: '機能説明',
      icon: '📱'
    }
    ```
 
-2. `src/routes/tools/[tool-slug]/+page.svelte`でツールページを作成:
+2. `src/routes/tools/[tool-slug]/+page.svelte`を作成:
    ```svelte
    <script lang="ts">
      import { tools } from '$lib/data/tools';
-     const tool = tools.find(t => t.path === '/tools/tool-slug');
+     const tool = tools.find(t => t.name === 'tool-slug');
    </script>
    
    <div class="max-w-2xl mx-auto">
      <div class="flex items-center mb-6">
        <span class="text-4xl mr-4">{tool?.icon}</span>
-       <h1 class="text-3xl font-bold">{tool?.name}</h1>
+       <h1 class="text-3xl font-bold">{tool?.nameJa}</h1>
      </div>
-     <!-- ツールの実装 -->
+     <!-- ツール実装 -->
    </div>
    ```
 
-### スタイリング規約
+### 技術スタック
 
-- Tailwind CSS v4使用
-- 日本語フォント: Noto Sans JP（本文）、Noto Serif JP（見出し）、Fira Mono（等幅）
-- `max-w-*xl mx-auto`でコンテンツ幅制限
-- `text-4xl mr-4`でアイコン、`text-3xl font-bold`でタイトルの統一スタイル
+- **SvelteKit** (Svelte 5) + TypeScript
+- **Tailwind CSS v4** + カスタム日本語フォント（Noto Sans/Serif JP, Fira Mono）
+- **静的サイト生成** (@sveltejs/adapter-static)
+- **外部API**: QRServer API (https://api.qrserver.com/)
+- **ライブラリ**: Quill（リッチテキストエディター）, Turndown（HTML→Markdown変換）
 
-### 現在利用可能なツール
+### 現在のツール
 
-1. **QRコード生成** (`/tools/qrcode-generator`)
-   - テキストからQRコード生成、ロゴオーバーレイ機能
-   - ローディング状態とエラーハンドリング実装済み
+1. **HTML → Markdown** (`html-to-markdown`)
+   - HTMLコード・リッチテキストの自動判定変換
+   - Clipboard API活用（`navigator.clipboard.read()`でHTMLとプレーンテキスト両方取得）
+   - 手動貼り付けとボタンクリックの両方対応
 
-2. **XプロフィールQR** (`/tools/x-qrcode-generator`)
-   - X（旧Twitter）プロフィール専用QRコード
-   - Xアイコンオーバーレイ機能、ユーザー名自動フォーマット
+2. **リッチテキストエディター → Markdown** (`richtext-to-markdown`)
+   - Quillエディターでのリアルタイム編集・変換
+   - カスタムTurndownルール適用（リスト、コードブロック、テーブル対応）
 
-3. **HTML → Markdown** (`/tools/html-to-markdown`)
-   - HTMLコードやリッチテキストをMarkdown変換
-   - Turndownライブラリで高精度変換
+3. **QRコード生成** (`qrcode-generator`)
+   - ロゴオーバーレイ機能、ローディング状態管理
+   - Canvas要素のbind問題対策（常にDOMに存在させる）
 
-4. **リッチテキストエディター → Markdown** (`/tools/richtext-to-markdown`)
-   - Quillエディターでリッチテキスト編集後Markdown変換
-   - リアルタイム変換、カスタムTurndownルール適用
+4. **X QRコード** (`x-qrcode-generator`)
+   - X（Twitter）プロフィール専用、アイコンオーバーレイ
 
-5. **文字数カウンター** (`/tools/character-counter`)
-   - リアルタイム文字数計測
+5. **文字数カウンター** (`character-counter`)
+   - リアルタイム計測
 
-### 外部ライブラリ
+### 重要な技術的注意点
 
-- **Quill**: リッチテキストエディター（richtext-to-markdownで使用）
-- **Turndown**: HTML→Markdown変換（両Markdownツールで使用）
-- **QRServer API**: QRコード生成サービス（https://api.qrserver.com/）
-
-### 技術的な注意点
-
-- **canvasRef問題**: QRツールでcanvas要素のbindが失われないよう、条件付き表示でもcanvas要素は常にDOMに存在させる
-- **ローディング状態**: 画像読み込み時は`isLoading`状態でスピナー表示
-- **Clipboard API**: モダンブラウザのClipboard APIを使用、フォールバック対応済み
-- **静的サイト生成**: @sveltejs/adapter-staticでGitHub Pages等にデプロイ可能
+- **Canvas要素管理**: QRツールでcanvas要素のbindが失われないよう、条件付き表示でも要素は常にDOMに配置
+- **Clipboard API**: モダンブラウザの`navigator.clipboard.read()`でHTMLとプレーンテキスト両方取得、HTMLタグ自動判定で適切な処理分岐
+- **ローディング状態**: 外部API呼び出し時の`isLoading`状態とスピナー表示パターン
+- **統一UIパターン**: `text-4xl mr-4`（アイコン）+ `text-3xl font-bold`（タイトル）+ `max-w-*xl mx-auto`（コンテンツ幅）
