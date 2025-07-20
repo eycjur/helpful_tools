@@ -45,6 +45,7 @@ npm run lint
 ### 新しいツールの追加手順
 
 1. `src/lib/data/tools.ts`に新ツールを追加:
+
    ```typescript
    {
      nameJa: 'ツール名',
@@ -55,18 +56,19 @@ npm run lint
    ```
 
 2. `src/routes/tools/[tool-slug]/+page.svelte`を作成:
+
    ```svelte
    <script lang="ts">
-     import { tools } from '$lib/data/tools';
-     const tool = tools.find(t => t.name === 'tool-slug');
+   	import { tools } from '$lib/data/tools';
+   	const tool = tools.find((t) => t.name === 'tool-slug');
    </script>
-   
-   <div class="max-w-2xl mx-auto">
-     <div class="flex items-center mb-6">
-       <span class="text-4xl mr-4">{tool?.icon}</span>
-       <h1 class="text-3xl font-bold">{tool?.nameJa}</h1>
-     </div>
-     <!-- ツール実装 -->
+
+   <div class="mx-auto max-w-2xl">
+   	<div class="mb-6 flex items-center">
+   		<span class="mr-4 text-4xl">{tool?.icon}</span>
+   		<h1 class="text-3xl font-bold">{tool?.nameJa}</h1>
+   	</div>
+   	<!-- ツール実装 -->
    </div>
    ```
 
