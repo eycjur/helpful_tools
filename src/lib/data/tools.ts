@@ -7,19 +7,19 @@ export const tools = [
   },
   {
     nameJa: 'QRコードジェネレーター',
-    name: 'qr',
+    name: 'qrcode-generator',
     description: 'テキストからQRコードを生成します',
     icon: '📱'
   },
   {
     nameJa: 'X プロフィール QR',
-    name: 'x-qr',
+    name: 'x-qrcode-generator',
     description: 'X（旧Twitter）プロフィール用のQRコードを生成します',
     icon: '🐦'
   },
   {
     nameJa: '文字数カウンタ',
-    name: 'count',
+    name: 'character-counter',
     description: 'テキストの文字数をリアルタイムでカウントします',
     icon: '🔢'
   },
