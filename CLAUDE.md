@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## プロジェクト概要
 
-「困った時のツール集」は、SvelteKit + TypeScript + Tailwind CSSで構築された便利ツール集のWebアプリケーションです。現在QRコードジェネレーターと文字数カウンタの機能を提供しています。
+「困った時のツール集」は、SvelteKit + TypeScript + Tailwind CSSで構築された便利ツール集のWebアプリケーションです。現在QRコードジェネレーター、XプロフィールQRジェネレーター、文字数カウンタの機能を提供しています。
 
 ## 開発コマンド
 
@@ -53,8 +53,18 @@ npm run lint
 
 - Tailwind CSS v4を使用
 - カスタムCSSプロパティで色・フォント定義（`src/app.css`の`:root`）
-- Interフォント（本文）、Source Serif Pro（見出し）、Fira Mono（等幅）を使用
+- Noto Sans JP（本文）、Noto Serif JP（見出し）、Fira Mono（等幅）を使用
 - 日本語UIに最適化されたレスポンシブデザイン
+
+### 現在利用可能なツール
+
+1. **QRコードジェネレーター** (`/tools/qr`)
+   - テキストからQRコード生成
+   - オプションでロゴオーバーレイ機能
+2. **XプロフィールQRジェネレーター** (`/tools/x-qr`)
+   - X（旧Twitter）プロフィール専用QRコード
+3. **文字数カウンタ** (`/tools/count`)
+   - リアルタイム文字数計測
 
 ### 技術スタック
 
@@ -63,4 +73,11 @@ npm run lint
 - **スタイリング**: Tailwind CSS v4 + カスタムCSS
 - **ビルドツール**: Vite
 - **リンター**: ESLint + Prettier
-- **フォント**: @fontsource (Inter, Source Serif Pro, Fira Mono)
+- **フォント**: @fontsource (Noto Sans JP, Noto Serif JP, Fira Mono)
+- **デプロイ**: 静的サイトジェネレーション（@sveltejs/adapter-static）
+
+### デプロイメント
+
+- ビルド出力: `build/` ディレクトリ
+- 静的ホスティング対応（GitHub Pages、Netlify、Vercel等）
+- SEO最適化済み（適切なメタタグ、セマンティックHTML）
