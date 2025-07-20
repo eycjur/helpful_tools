@@ -6,7 +6,7 @@
 <div class="flex flex-col h-screen">
   <header class="bg-gray-100 p-4">
     <nav class="flex items-center justify-between">
-      <a href="{base}" class="text-blue-500 font-bold hover:underline">困った時のツール集</a>
+      <a href="{base || '/'}" class="text-blue-500 font-bold hover:underline">困った時のツール集</a>
       <a 
         href="https://github.com/eycjur/helpful_tools" 
         target="_blank" 
