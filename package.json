@@ -36,5 +36,11 @@
 		"typescript": "^5.0.0",
 		"typescript-eslint": "^8.20.0",
 		"vite": "^7.0.4"
+	},
+	"dependencies": {
+		"@fontsource/noto-sans-jp": "^5.2.6",
+		"@fontsource/noto-serif-jp": "^5.2.6",
+		"@fontsource/zen-kaku-gothic-new": "^5.2.6",
+		"@fontsource/zen-old-mincho": "^5.2.6"
 	}
 }
