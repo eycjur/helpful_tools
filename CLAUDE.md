@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## プロジェクト概要
 
-「困った時のツール集」は、SvelteKit + TypeScript + Tailwind CSSで構築された便利ツール集のWebアプリケーションです。現在QRコードジェネレーター、XプロフィールQRジェネレーター、文字数カウンタの機能を提供しています。
+「困った時のツール集」は、SvelteKit + TypeScript + Tailwind CSSで構築された便利ツール集のWebアプリケーションです。QRコード生成、リッチテキスト→Markdown変換、文字数カウンターなどの実用的なツールを提供しています。
 
 ## 開発コマンド
 
@@ -33,51 +33,81 @@ npm run lint
 
 ## アーキテクチャ
 
-### ディレクトリ構造
-- `src/routes/` - SvelteKitのファイルベースルーティング
-  - `+page.svelte` - ホームページ（ツール一覧表示）
-  - `+layout.svelte` - 共通レイアウト（ヘッダー・フッター）
-  - `tools/[tool]/+page.svelte` - 各ツールページ
-- `src/lib/` - 共有コンポーネントとデータ
-  - `data/tools.ts` - ツール定義（名前、パス、説明）
-  - `components/` - Svelteコンポーネント
-- `src/app.css` - グローバルスタイル（Tailwind CSS + カスタムCSSプロパティ）
+### ツール管理システム
+- `src/lib/data/tools.ts` - 全ツールの定義ファイル（名前、パス、説明、アイコン）
+- ホームページ（`src/routes/+page.svelte`）でtools配列から動的にツール一覧を表示
+- 各ツールは`src/routes/tools/[tool-name]/+page.svelte`の形式でファイルベースルーティング
+
+### 共通レイアウト
+- `src/routes/+layout.svelte` - ヘッダー・フッターの共通レイアウト
+- ヘッダーにはタイトルリンク（ホームに戻る）とGitHubリンクを配置
+- レスポンシブデザインでモバイル対応
 
 ### 新しいツールの追加方法
 
-1. `src/lib/data/tools.ts`にツール情報を追加
-2. `src/routes/tools/[tool-name]/+page.svelte`でツールページを作成
-3. 必要に応じて`src/lib/components/`に再利用可能なコンポーネントを作成
+1. `src/lib/data/tools.ts`にツール情報を追加:
+   ```typescript
+   {
+     name: 'ツール名',
+     path: '/tools/tool-slug',
+     description: '説明文',
+     icon: '📱'
+   }
+   ```
 
-### スタイリング
+2. `src/routes/tools/[tool-slug]/+page.svelte`でツールページを作成:
+   ```svelte
+   <script lang="ts">
+     import { tools } from '$lib/data/tools';
+     const tool = tools.find(t => t.path === '/tools/tool-slug');
+   </script>
+   
+   <div class="max-w-2xl mx-auto">
+     <div class="flex items-center mb-6">
+       <span class="text-4xl mr-4">{tool?.icon}</span>
+       <h1 class="text-3xl font-bold">{tool?.name}</h1>
+     </div>
+     <!-- ツールの実装 -->
+   </div>
+   ```
 
-- Tailwind CSS v4を使用
-- カスタムCSSプロパティで色・フォント定義（`src/app.css`の`:root`）
-- Noto Sans JP（本文）、Noto Serif JP（見出し）、Fira Mono（等幅）を使用
-- 日本語UIに最適化されたレスポンシブデザイン
+### スタイリング規約
+
+- Tailwind CSS v4使用
+- 日本語フォント: Noto Sans JP（本文）、Noto Serif JP（見出し）、Fira Mono（等幅）
+- `max-w-*xl mx-auto`でコンテンツ幅制限
+- `text-4xl mr-4`でアイコン、`text-3xl font-bold`でタイトルの統一スタイル
 
 ### 現在利用可能なツール
 
-1. **QRコードジェネレーター** (`/tools/qr`)
-   - テキストからQRコード生成
-   - オプションでロゴオーバーレイ機能
-2. **XプロフィールQRジェネレーター** (`/tools/x-qr`)
+1. **QRコード生成** (`/tools/qrcode-generator`)
+   - テキストからQRコード生成、ロゴオーバーレイ機能
+   - ローディング状態とエラーハンドリング実装済み
+
+2. **XプロフィールQR** (`/tools/x-qrcode-generator`)
    - X（旧Twitter）プロフィール専用QRコード
-3. **文字数カウンタ** (`/tools/count`)
+   - Xアイコンオーバーレイ機能、ユーザー名自動フォーマット
+
+3. **HTML → Markdown** (`/tools/html-to-markdown`)
+   - HTMLコードやリッチテキストをMarkdown変換
+   - Turndownライブラリで高精度変換
+
+4. **リッチテキストエディター → Markdown** (`/tools/richtext-to-markdown`)
+   - Quillエディターでリッチテキスト編集後Markdown変換
+   - リアルタイム変換、カスタムTurndownルール適用
+
+5. **文字数カウンター** (`/tools/character-counter`)
    - リアルタイム文字数計測
 
-### 技術スタック
+### 外部ライブラリ
 
-- **フレームワーク**: SvelteKit（Svelte 5）
-- **言語**: TypeScript
-- **スタイリング**: Tailwind CSS v4 + カスタムCSS
-- **ビルドツール**: Vite
-- **リンター**: ESLint + Prettier
-- **フォント**: @fontsource (Noto Sans JP, Noto Serif JP, Fira Mono)
-- **デプロイ**: 静的サイトジェネレーション（@sveltejs/adapter-static）
+- **Quill**: リッチテキストエディター（richtext-to-markdownで使用）
+- **Turndown**: HTML→Markdown変換（両Markdownツールで使用）
+- **QRServer API**: QRコード生成サービス（https://api.qrserver.com/）
 
-### デプロイメント
+### 技術的な注意点
 
-- ビルド出力: `build/` ディレクトリ
-- 静的ホスティング対応（GitHub Pages、Netlify、Vercel等）
-- SEO最適化済み（適切なメタタグ、セマンティックHTML）
+- **canvasRef問題**: QRツールでcanvas要素のbindが失われないよう、条件付き表示でもcanvas要素は常にDOMに存在させる
+- **ローディング状態**: 画像読み込み時は`isLoading`状態でスピナー表示
+- **Clipboard API**: モダンブラウザのClipboard APIを使用、フォールバック対応済み
+- **静的サイト生成**: @sveltejs/adapter-staticでGitHub Pages等にデプロイ可能

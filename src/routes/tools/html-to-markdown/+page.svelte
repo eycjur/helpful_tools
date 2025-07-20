@@ -10,7 +10,7 @@
   let copyButtonText = 'コピー';
   let turndownService: TurndownService;
 
-  const tool = tools.find(t => t.path === '/tools/clipboard-to-markdown');
+  const tool = tools.find(t => t.path === '/tools/html-to-markdown');
 
   function copyToClipboard() {
     navigator.clipboard.writeText(markdownOutput)
@@ -154,7 +154,7 @@
     <div class="flex flex-col">
       <div class="flex items-center justify-between mb-2">
         <label class="text-sm font-medium text-gray-700">
-          【入力】Clipboardからのテキスト
+          【入力】HTML形式のテキスト
         </label>
         <button
           on:click={clearEditor}
@@ -170,7 +170,7 @@
         on:paste={handlePaste}
         class="flex-1 p-3 border border-gray-300 rounded-lg min-h-96 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent overflow-auto"
         style="white-space: pre-wrap;"
-        data-placeholder="クリップボードを貼り付けてください..."
+        data-placeholder="HTMLまたはリッチテキストを入力してください..."
       ></div>
     </div>
 
@@ -215,8 +215,8 @@
   <div class="mt-8 p-4 bg-blue-50 rounded-lg">
     <h2 class="text-lg font-semibold mb-2">使用方法</h2>
     <ul class="text-sm text-gray-700 space-y-1">
-      <li>• Webページからコピーしたクリップボードの中身を左側の編集エリアに貼り付けてください</li>
-      <li>• クリップボードの中身（太字、斜体、リンク、見出しなど）がそのまま保持されます</li>
+      <li>• HTMLコードまたはWebページからコピーしたリッチテキストを左側の編集エリアに入力してください</li>
+      <li>• リッチテキスト（太字、斜体、リンク、見出しなど）の書式が保持されます</li>
       <li>• 自動的にMarkdown形式に変換されて右側に表示されます</li>
       <li>• 「コピー」ボタンでMarkdownをクリップボードにコピーできます</li>
       <li>• オプションで改行や太字の処理方法を調整できます</li>

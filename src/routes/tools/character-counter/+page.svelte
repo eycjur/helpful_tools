@@ -1,8 +1,8 @@
 <script lang="ts">
   import { tools } from '$lib/data/tools';
   let text = '';
-  
-  const tool = tools.find(t => t.path === '/tools/count');
+
+  const tool = tools.find(t => t.name === 'character-counter');
 </script>
 
 <div class="max-w-2xl mx-auto">

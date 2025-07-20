@@ -27,8 +27,8 @@
     };
     img.src = qrUrl;
   }
-  
-  const tool = tools.find(t => t.path === '/tools/qr');
+
+  const tool = tools.find(t => t.name === 'qrcode-generator');
 
   function handleLogoUpload(event: Event) {
     const target = event.target as HTMLInputElement;

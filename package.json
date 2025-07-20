@@ -23,6 +23,7 @@
 		"@sveltejs/vite-plugin-svelte": "^6.0.0",
 		"@tailwindcss/typography": "^0.5.15",
 		"@tailwindcss/vite": "^4.0.0",
+		"@types/quill": "^2.0.14",
 		"@types/turndown": "^5.0.5",
 		"eslint": "^9.18.0",
 		"eslint-config-prettier": "^10.0.1",
@@ -44,6 +45,7 @@
 		"@fontsource/zen-kaku-gothic-new": "^5.2.6",
 		"@fontsource/zen-old-mincho": "^5.2.6",
 		"@sveltejs/adapter-static": "^3.0.8",
+		"quill": "^2.0.3",
 		"turndown": "^7.2.0"
 	}
 }

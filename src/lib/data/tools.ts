@@ -1,8 +1,14 @@
 export const tools = [
   {
-    nameJa: 'Clipboard → Markdown',
-    name: 'clipboard-to-markdown',
-    description: 'クリップボードの内容をMarkdown形式に変換します',
+    nameJa: 'HTML → Markdown',
+    name: 'html-to-markdown',
+    description: 'HTMLをMarkdown形式に変換します',
+    icon: '🔄'
+  },
+  {
+    nameJa: 'リッチテキスト → Markdown',
+    name: 'richtext-to-markdown',
+    description: 'リッチテキストをMarkdown形式に変換します',
     icon: '📝'
   },
   {

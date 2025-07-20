@@ -33,7 +33,7 @@
     img.src = qrUrl;
   }
   
-  const tool = tools.find(t => t.path === '/tools/x-qr');
+  const tool = tools.find(t => t.name === 'x-qrcode-generator');
 
   function generateXQR() {
     if (!username || !canvasRef) return;
