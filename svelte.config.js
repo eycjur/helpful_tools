@@ -11,7 +11,8 @@ const config = {
 		adapter: adapter({
 			pages: 'build',
 			assets: 'build',
-			fallback: undefined,
+			// for github pages
+			fallback: '404.html',
 			precompress: false,
 			strict: true
 		})
