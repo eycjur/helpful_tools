@@ -4,6 +4,7 @@
   let qrUrl = '';
   let canvasRef: HTMLCanvasElement;
   let showXIcon = true;
+  let isLoading = false;
 
   $: {
     if (username) {
@@ -13,15 +14,37 @@
       qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=600x600&ecc=H&margin=6&data=${encodeURIComponent(profileUrl)}`;
     }
   }
+
+  $: if (username) {
+    isLoading = true;
+  }
+
+  // Handle QR generation when username changes
+  $: if (username && !showXIcon) {
+    isLoading = true;
+    // For non-icon QR codes, preload the image to detect when it's ready
+    const img = new Image();
+    img.onload = () => {
+      isLoading = false;
+    };
+    img.onerror = () => {
+      isLoading = false;
+    };
+    img.src = qrUrl;
+  }
   
   const tool = tools.find(t => t.path === '/tools/x-qr');
 
   function generateXQR() {
     if (!username || !canvasRef) return;
     
+    // isLoading is already set to true by the reactive statement above
     const canvas = canvasRef;
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!ctx) {
+      isLoading = false;
+      return;
+    }
 
     const qrImg = new Image();
     qrImg.crossOrigin = 'anonymous';
@@ -60,11 +83,15 @@
         ctx.textBaseline = 'middle';
         ctx.fillText('𝕏', 300, 300);
       }
+      isLoading = false;
+    };
+    qrImg.onerror = () => {
+      isLoading = false;
     };
     qrImg.src = qrUrl;
   }
 
-  $: if (username && qrUrl && canvasRef) {
+  $: if (username && showXIcon) {
     generateXQR();
   }
 </script>
@@ -98,12 +125,20 @@
       <p class="text-sm text-gray-600">プロフィールURL: <span class="font-mono">https://x.com/{cleanUsername}</span></p>
     </div>
     
-    <p class="mb-4 text-gray-700">↓ 生成されたQRコード：</p>
     <div class="flex justify-center">
-      {#if showXIcon}
-        <canvas bind:this={canvasRef} class="border border-gray-300 rounded-lg max-w-xs"></canvas>
-      {:else}
-        <img src={qrUrl} alt="QRコード" class="border border-gray-300 rounded-lg max-w-xs" />
+      <!-- Loading中に非表示になると、canvasRefが失われるので、else if節にしてはいけない -->
+      <canvas bind:this={canvasRef} class="border border-gray-300 rounded-lg max-w-xs {showXIcon && !isLoading ? '' : 'hidden'}"></canvas>
+      {#if isLoading}
+        <div class="flex flex-col items-center justify-center p-8 border border-gray-300 rounded-lg">
+          <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+          <p class="text-gray-600">QRコードを生成中...</p>
+        </div>
+      {:else if !showXIcon}
+        <img 
+          src={qrUrl} 
+          alt="QRコード" 
+          class="border border-gray-300 rounded-lg max-w-xs"
+        />
       {/if}
     </div>
   {/if}

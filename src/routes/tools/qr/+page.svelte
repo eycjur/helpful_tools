@@ -6,8 +6,27 @@
   let logoFile: File | null = null;
   let logoDataUrl = '';
   let canvasRef: HTMLCanvasElement;
+  let isLoading = false;
 
   $: qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=600x600&ecc=H&margin=6&data=${encodeURIComponent(input)}`;
+  
+  // Reset loading when input changes
+  $: if (input) {
+    isLoading = true;
+  }
+
+  // Handle QR generation when input changes
+  $: if (input && !logoDataUrl) {
+    // For non-logo QR codes, preload the image to detect when it's ready
+    const img = new Image();
+    img.onload = () => {
+      isLoading = false;
+    };
+    img.onerror = () => {
+      isLoading = false;
+    };
+    img.src = qrUrl;
+  }
   
   const tool = tools.find(t => t.path === '/tools/qr');
 
@@ -23,12 +42,26 @@
     }
   }
 
+  function removeLogo() {
+    logoFile = null;
+    logoDataUrl = '';
+    // Reset file input
+    const fileInput = document.getElementById('logo') as HTMLInputElement;
+    if (fileInput) {
+      fileInput.value = '';
+    }
+  }
+
   function generateQRWithLogo() {
-    if (!input || !logoDataUrl) return;
+    if (!input || !logoDataUrl || !canvasRef) return;
     
+    // isLoading is already set to true by the reactive statement above
     const canvas = canvasRef;
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!ctx) {
+      isLoading = false;
+      return;
+    }
 
     const qrImg = new Image();
     qrImg.crossOrigin = 'anonymous';
@@ -52,13 +85,20 @@
         
         // Draw logo
         ctx.drawImage(logoImg, x, y, logoSize, logoSize);
+        isLoading = false;
+      };
+      logoImg.onerror = () => {
+        isLoading = false;
       };
       logoImg.src = logoDataUrl;
+    };
+    qrImg.onerror = () => {
+      isLoading = false;
     };
     qrImg.src = qrUrl;
   }
 
-  $: if (input && logoDataUrl && canvasRef) {
+  $: if (input && logoDataUrl) {
     generateQRWithLogo();
   }
 </script>
@@ -72,7 +112,18 @@
   
   <div class="mb-4">
     <label for="logo" class="block text-sm font-medium text-gray-700 mb-2">ロゴ画像をアップロード（オプション）</label>
-    <input type="file" id="logo" accept="image/*" on:change={handleLogoUpload} class="w-full p-2 border border-gray-300 rounded-lg" />
+    <div class="flex gap-2">
+      <input type="file" id="logo" accept="image/*" on:change={handleLogoUpload} class="flex-1 p-2 border border-gray-300 rounded-lg" />
+      {#if logoDataUrl}
+        <button 
+          on:click={removeLogo}
+          class="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+          type="button"
+        >
+          削除
+        </button>
+      {/if}
+    </div>
     {#if logoDataUrl}
       <p class="text-xs text-gray-500 mt-1">QRコード上に重ねることで、まれに誤読される可能性があります</p>
     {/if}
@@ -81,10 +132,18 @@
   {#if input}
     <p class="mb-4 text-gray-700">↓ 生成されたQRコード：</p>
     <div class="flex justify-center">
-      {#if logoDataUrl}
-        <canvas bind:this={canvasRef} class="border border-gray-300 rounded-lg max-w-xs"></canvas>
-      {:else}
-        <img src={qrUrl} alt="QRコード" class="border border-gray-300 rounded-lg max-w-xs" />
+      <canvas bind:this={canvasRef} class="border border-gray-300 rounded-lg max-w-xs {logoDataUrl && !isLoading ? '' : 'hidden'}"></canvas>
+      {#if isLoading}
+        <div class="flex flex-col items-center justify-center p-8 border border-gray-300 rounded-lg">
+          <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+          <p class="text-gray-600">QRコードを生成中...</p>
+        </div>
+      {:else if !logoDataUrl}
+        <img 
+          src={qrUrl} 
+          alt="QRコード" 
+          class="border border-gray-300 rounded-lg max-w-xs"
+        />
       {/if}
     </div>
   {/if}
