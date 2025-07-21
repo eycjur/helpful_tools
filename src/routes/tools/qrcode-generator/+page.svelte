@@ -7,12 +7,14 @@
 	let logoDataUrl = '';
 	let canvasRef: HTMLCanvasElement;
 	let isLoading = false;
+	let errorMessage = '';
 
 	$: qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=600x600&ecc=H&margin=6&data=${encodeURIComponent(input)}`;
 
-	// Reset loading when input changes
+	// Reset loading and error when input changes
 	$: if (input) {
 		isLoading = true;
+		errorMessage = '';
 	}
 
 	// Handle QR generation when input changes
@@ -24,6 +26,7 @@
 		};
 		img.onerror = () => {
 			isLoading = false;
+			errorMessage = 'QRコードの生成に失敗しました。';
 		};
 		img.src = qrUrl;
 	}
@@ -36,7 +39,10 @@
 			logoFile = target.files[0];
 			const reader = new FileReader();
 			reader.onload = (e) => {
-				logoDataUrl = e.target?.result as string;
+				const result = e.target?.result;
+				if (typeof result === 'string') {
+					logoDataUrl = result;
+				}
 			};
 			reader.readAsDataURL(logoFile);
 		}
@@ -46,8 +52,8 @@
 		logoFile = null;
 		logoDataUrl = '';
 		// Reset file input
-		const fileInput = document.getElementById('logo') as HTMLInputElement;
-		if (fileInput) {
+		const fileInput = document.getElementById('logo');
+		if (fileInput && fileInput instanceof HTMLInputElement) {
 			fileInput.value = '';
 		}
 	}
@@ -89,11 +95,13 @@
 			};
 			logoImg.onerror = () => {
 				isLoading = false;
+				errorMessage = 'ロゴ画像の読み込みに失敗しました。';
 			};
 			logoImg.src = logoDataUrl;
 		};
 		qrImg.onerror = () => {
 			isLoading = false;
+			errorMessage = 'QRコードの生成に失敗しました。';
 		};
 		qrImg.src = qrUrl;
 	}
@@ -152,7 +160,14 @@
 					? ''
 					: 'hidden'}"
 			></canvas>
-			{#if isLoading}
+			{#if errorMessage}
+				<div class="rounded-lg border border-red-300 bg-red-50 p-4">
+					<div class="flex">
+						<Icon icon="mdi:alert-circle" class="h-5 w-5 text-red-500" />
+						<p class="ml-2 text-sm text-red-700">{errorMessage}</p>
+					</div>
+				</div>
+			{:else if isLoading}
 				<div
 					class="flex flex-col items-center justify-center rounded-lg border border-gray-300 p-8"
 				>

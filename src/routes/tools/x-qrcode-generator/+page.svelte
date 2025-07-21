@@ -6,6 +6,7 @@
 	let canvasRef: HTMLCanvasElement;
 	let showXIcon = true;
 	let isLoading = false;
+	let errorMessage = '';
 
 	$: {
 		if (username) {
@@ -13,11 +14,9 @@
 			const cleanUsername = username.startsWith('@') ? username.slice(1) : username;
 			const profileUrl = `https://x.com/${cleanUsername}`;
 			qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=600x600&ecc=H&margin=6&data=${encodeURIComponent(profileUrl)}`;
+			isLoading = true;
+			errorMessage = '';
 		}
-	}
-
-	$: if (username) {
-		isLoading = true;
 	}
 
 	// Handle QR generation when username changes
@@ -30,6 +29,7 @@
 		};
 		img.onerror = () => {
 			isLoading = false;
+			errorMessage = 'QRコードの生成に失敗しました。';
 		};
 		img.src = qrUrl;
 	}
@@ -88,6 +88,7 @@
 		};
 		qrImg.onerror = () => {
 			isLoading = false;
+			errorMessage = 'QRコードの生成に失敗しました。';
 		};
 		qrImg.src = qrUrl;
 	}
@@ -136,7 +137,14 @@
 				bind:this={canvasRef}
 				class="max-w-xs rounded-lg border border-gray-300 {showXIcon && !isLoading ? '' : 'hidden'}"
 			></canvas>
-			{#if isLoading}
+			{#if errorMessage}
+				<div class="rounded-lg border border-red-300 bg-red-50 p-4">
+					<div class="flex">
+						<Icon icon="mdi:alert-circle" class="h-5 w-5 text-red-500" />
+						<p class="ml-2 text-sm text-red-700">{errorMessage}</p>
+					</div>
+				</div>
+			{:else if isLoading}
 				<div
 					class="flex flex-col items-center justify-center rounded-lg border border-gray-300 p-8"
 				>

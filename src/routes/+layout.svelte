@@ -43,8 +43,10 @@
 			<slot />
 		</main>
 
-		<footer class="mt-auto bg-gray-100 p-4 text-center">
-			<p>&copy; {new Date().getFullYear()} 困った時のツール集</p>
+		<footer class="border-t border-gray-200 bg-white p-4">
+			<div class="flex items-center justify-center">
+				<span class="text-sm text-gray-600">&copy; {new Date().getFullYear()} 困った時のツール集</span>
+			</div>
 		</footer>
 	</div>
 </div>

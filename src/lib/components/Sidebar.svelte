@@ -12,7 +12,7 @@
 <!-- Overlay -->
 {#if isOpen}
 	<div
-		class="bg-opacity-50 fixed inset-0 z-40 bg-black lg:hidden"
+		class="fixed inset-0 z-40 lg:hidden"
 		on:click={() => (isOpen = false)}
 		on:keydown={(e) => e.key === 'Escape' && (isOpen = false)}
 		role="button"
@@ -23,7 +23,7 @@
 
 <!-- Sidebar -->
 <aside
-	class="fixed top-0 left-0 z-50 h-full w-64 transform bg-white shadow-lg transition-transform duration-300 ease-in-out lg:static lg:translate-x-0 lg:shadow-none {isOpen
+	class="fixed top-0 left-0 z-50 h-full w-64 transform bg-white bg-opacity-95 shadow-lg transition-transform duration-300 ease-in-out lg:static lg:translate-x-0 lg:bg-opacity-100 lg:shadow-none {isOpen
 		? 'translate-x-0'
 		: '-translate-x-full'}"
 >
