@@ -1,32 +1,39 @@
-export const tools = [
+export interface Tool {
+	nameJa: string;
+	name: string;
+	description: string;
+	icon: string;
+}
+
+export const tools: Tool[] = [
 	{
 		nameJa: 'HTML → Markdown',
 		name: 'html-to-markdown',
 		description: 'HTMLをMarkdown形式に変換します',
-		icon: '🔄'
+		icon: 'mdi:sync'
 	},
 	{
 		nameJa: 'リッチテキスト → Markdown',
 		name: 'richtext-to-markdown',
 		description: 'リッチテキストをMarkdown形式に変換します',
-		icon: '📝'
+		icon: 'mdi:file-document'
 	},
 	{
 		nameJa: 'QRコードジェネレーター',
 		name: 'qrcode-generator',
 		description: 'テキストからQRコードを生成します',
-		icon: '📱'
+		icon: 'mdi:qrcode'
 	},
 	{
 		nameJa: 'X プロフィール QR',
 		name: 'x-qrcode-generator',
 		description: 'X（旧Twitter）プロフィール用のQRコードを生成します',
-		icon: '🐦'
+		icon: 'mdi:twitter'
 	},
 	{
 		nameJa: '文字数カウンタ',
 		name: 'character-counter',
 		description: 'テキストの文字数をリアルタイムでカウントします',
-		icon: '🔢'
+		icon: 'mdi:numeric'
 	}
 ];

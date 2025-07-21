@@ -2,6 +2,7 @@
 	import { tools } from '$lib/data/tools';
 	import { base } from '$app/paths';
 	import { page } from '$app/stores';
+	import Icon from '@iconify/svelte';
 
 	export let isOpen = false;
 
@@ -32,10 +33,11 @@
 			<div class="flex items-center justify-between">
 				<a
 					href={base || '/'}
-					class="text-lg font-bold text-blue-600 hover:text-blue-700"
+					class="flex items-center text-lg font-bold text-blue-600 hover:text-blue-700"
 					on:click={() => (isOpen = false)}
 				>
-					🛠️ ツール集
+					<Icon icon="mdi:tools" class="mr-2 h-6 w-6" />
+					困った時のツール集
 				</a>
 				<button
 					class="rounded p-1 hover:bg-gray-100 lg:hidden"
@@ -66,7 +68,7 @@
 						: ''}"
 					on:click={() => (isOpen = false)}
 				>
-					<span class="mr-3 text-xl">🏠</span>
+					<Icon icon="mdi:home" class="mr-3 h-5 w-5" />
 					<span class="font-medium">ホーム</span>
 				</a>
 
@@ -86,7 +88,7 @@
 									: ''}"
 								on:click={() => (isOpen = false)}
 							>
-								<span class="mr-3 text-xl">{tool.icon}</span>
+								<Icon icon={tool.icon} class="mr-3 h-5 w-5" />
 								<div class="min-w-0 flex-1">
 									<div class="truncate font-medium">{tool.nameJa}</div>
 									<div class="truncate text-sm text-gray-500">{tool.description}</div>

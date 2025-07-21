@@ -2,6 +2,7 @@
 	import { tools } from '$lib/data/tools';
 	import { onMount } from 'svelte';
 	import TurndownService from 'turndown';
+	import Icon from '@iconify/svelte';
 
 	let HTMLEditor: HTMLDivElement;
 	let markdownOutput = '';
@@ -140,8 +141,8 @@
 
 <div class="mx-auto max-w-6xl">
 	<div class="mb-6 flex items-center">
-		<span class="mr-4 text-4xl">{tool?.icon}</span>
-		<h1 class="text-3xl font-bold">{tool?.name}</h1>
+		{#if tool?.icon}<Icon icon={tool.icon} class="mr-4 h-10 w-10" />{/if}
+		<h1 class="text-3xl font-bold">{tool?.nameJa}</h1>
 	</div>
 
 	<div class="mb-6 grid grid-cols-1 gap-6 md:grid-cols-2">

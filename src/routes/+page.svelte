@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { tools } from '$lib/data/tools';
 	import { base } from '$app/paths';
+	import Icon from '@iconify/svelte';
 </script>
 
 <svelte:head>
@@ -17,7 +18,7 @@
 				class="block rounded-lg border border-gray-200 bg-white p-6 shadow-sm transition-shadow duration-200 hover:border-blue-300 hover:shadow-md"
 			>
 				<div class="mb-3 flex items-center">
-					<span class="mr-3 text-3xl">{tool.icon}</span>
+					<Icon icon={tool.icon} class="mr-3 h-8 w-8" />
 					<h2 class="text-xl font-semibold text-gray-800">{tool.nameJa}</h2>
 				</div>
 				<p class="text-gray-600">{tool.description}</p>
