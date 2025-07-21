@@ -23,7 +23,7 @@
 
 <!-- Sidebar -->
 <aside
-	class="fixed top-0 left-0 z-50 h-full w-64 transform bg-white bg-opacity-95 shadow-lg transition-transform duration-300 ease-in-out lg:static lg:translate-x-0 lg:bg-opacity-100 lg:shadow-none {isOpen
+	class="bg-opacity-95 lg:bg-opacity-100 fixed top-0 left-0 z-50 h-full w-64 transform bg-white shadow-lg transition-transform duration-300 ease-in-out lg:static lg:translate-x-0 lg:shadow-none {isOpen
 		? 'translate-x-0'
 		: '-translate-x-full'}"
 >

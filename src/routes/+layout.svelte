@@ -45,7 +45,9 @@
 
 		<footer class="border-t border-gray-200 bg-white p-4">
 			<div class="flex items-center justify-center">
-				<span class="text-sm text-gray-600">&copy; {new Date().getFullYear()} 困った時のツール集</span>
+				<span class="text-sm text-gray-600"
+					>&copy; {new Date().getFullYear()} 困った時のツール集</span
+				>
 			</div>
 		</footer>
 	</div>
