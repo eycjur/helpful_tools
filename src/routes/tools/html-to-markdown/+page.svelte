@@ -10,7 +10,7 @@
 	let copyButtonText = 'コピー';
 	let turndownService: TurndownService;
 
-	const tool = tools.find((t) => t.path === '/tools/html-to-markdown');
+	const tool = tools.find((t) => t.name === 'html-to-markdown');
 
 	function copyToClipboard() {
 		navigator.clipboard
@@ -59,7 +59,7 @@
 		convertToMarkdown();
 	}
 
-	function handlePaste(event: ClipboardEvent) {
+	function handlePaste() {
 		// デフォルトのペースト動作を許可（クリップボードの中身がそのまま貼り付けられる）
 		setTimeout(() => {
 			convertToMarkdown();
@@ -68,6 +68,7 @@
 
 	function clearEditor() {
 		if (HTMLEditor) {
+			// eslint-disable-next-line svelte/no-dom-manipulating
 			HTMLEditor.innerHTML = '';
 			markdownOutput = '';
 		}
@@ -156,7 +157,7 @@
 		<!-- 入力エリア -->
 		<div class="flex flex-col">
 			<div class="mb-2 flex items-center justify-between">
-				<label class="text-sm font-medium text-gray-700"> 【入力】HTML形式のテキスト </label>
+				<div class="text-sm font-medium text-gray-700">【入力】HTML形式のテキスト</div>
 				<button
 					on:click={clearEditor}
 					class="rounded bg-gray-500 px-3 py-1 text-sm text-white transition-colors hover:bg-gray-600"
@@ -178,7 +179,7 @@
 		<!-- 出力エリア -->
 		<div class="flex flex-col">
 			<div class="mb-2 flex items-center justify-between">
-				<label class="text-sm font-medium text-gray-700">【出力】Markdown形式</label>
+				<div class="text-sm font-medium text-gray-700">【出力】Markdown形式</div>
 				<button
 					on:click={copyToClipboard}
 					class="rounded bg-blue-500 px-3 py-1 text-sm text-white transition-colors hover:bg-blue-600"

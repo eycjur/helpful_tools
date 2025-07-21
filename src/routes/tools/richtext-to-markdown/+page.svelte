@@ -168,7 +168,7 @@
 		<!-- 入力エリア -->
 		<div class="flex flex-col">
 			<div class="mb-2 flex items-center justify-between">
-				<div class="text-sm font-medium text-gray-700"> 【入力】RichText形式 </div>
+				<div class="text-sm font-medium text-gray-700">【入力】RichText形式</div>
 				<button
 					on:click={clearEditor}
 					class="rounded bg-gray-500 px-3 py-1 text-sm text-white transition-colors hover:bg-gray-600"

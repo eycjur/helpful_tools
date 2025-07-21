@@ -11,7 +11,7 @@
 <section class="mx-auto max-w-4xl">
 	<h1 class="mb-8 text-center text-3xl font-bold">便利ツール一覧</h1>
 	<div class="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-		{#each tools as tool}
+		{#each tools as tool (tool.name)}
 			<a
 				href="{base}/tools/{tool.name}"
 				class="block rounded-lg border border-gray-200 bg-white p-6 shadow-sm transition-shadow duration-200 hover:border-blue-300 hover:shadow-md"

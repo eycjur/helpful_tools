@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { tools } from '$lib/data/tools';
-	import { onMount } from 'svelte';
 	let input = '';
 	let qrUrl = '';
 	let logoFile: File | null = null;
