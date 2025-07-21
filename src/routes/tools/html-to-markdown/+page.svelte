@@ -7,25 +7,9 @@
 	let markdownOutput = '';
 	let isNewLineAsParagraph = false;
 	let isIgnoreBoldInHeader = true;
-	let copyButtonText = 'コピー';
 	let turndownService: TurndownService;
 
 	const tool = tools.find((t) => t.name === 'html-to-markdown');
-
-	function copyToClipboard() {
-		navigator.clipboard
-			.writeText(markdownOutput)
-			.then(() => {
-				copyButtonText = '成功！';
-				setTimeout(() => {
-					copyButtonText = 'コピー';
-				}, 1000);
-			})
-			.catch((err) => {
-				console.error('コピーに失敗しました: ', err);
-				alert('コピーに失敗しました');
-			});
-	}
 
 	function convertToMarkdown() {
 		if (!HTMLEditor || !turndownService) return;
@@ -53,6 +37,13 @@
 		markdown = markdown.replace(/\n{3,}/g, '\n\n').trim();
 
 		markdownOutput = markdown;
+
+		// 自動コピー
+		if (markdown.trim()) {
+			navigator.clipboard.writeText(markdown).catch((err) => {
+				console.error('自動コピーに失敗しました: ', err);
+			});
+		}
 	}
 
 	function handleInput() {
@@ -153,7 +144,7 @@
 		<h1 class="text-3xl font-bold">{tool?.name}</h1>
 	</div>
 
-	<div class="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+	<div class="mb-6 grid grid-cols-1 gap-6 md:grid-cols-2">
 		<!-- 入力エリア -->
 		<div class="flex flex-col">
 			<div class="mb-2 flex items-center justify-between">
@@ -178,15 +169,8 @@
 
 		<!-- 出力エリア -->
 		<div class="flex flex-col">
-			<div class="mb-2 flex items-center justify-between">
-				<div class="text-sm font-medium text-gray-700">【出力】Markdown形式</div>
-				<button
-					on:click={copyToClipboard}
-					class="rounded bg-blue-500 px-3 py-1 text-sm text-white transition-colors hover:bg-blue-600"
-					disabled={!markdownOutput}
-				>
-					{copyButtonText}
-				</button>
+			<div class="mb-2">
+				<div class="text-sm font-medium text-gray-700">【出力】Markdown形式（自動コピー）</div>
 			</div>
 			<pre
 				class="min-h-96 flex-1 overflow-auto rounded-lg border border-gray-300 bg-gray-50 p-3 text-sm whitespace-pre-wrap">{markdownOutput}</pre>
@@ -215,7 +199,7 @@
 			</li>
 			<li>• リッチテキスト（太字、斜体、リンク、見出しなど）の書式が保持されます</li>
 			<li>• 自動的にMarkdown形式に変換されて右側に表示されます</li>
-			<li>• 「コピー」ボタンでMarkdownをクリップボードにコピーできます</li>
+			<li>• 変換されたMarkdownは自動的にクリップボードにコピーされます</li>
 			<li>• オプションで改行や太字の処理方法を調整できます</li>
 			<li>• 「クリア」ボタンで入力エリアを空にできます</li>
 		</ul>

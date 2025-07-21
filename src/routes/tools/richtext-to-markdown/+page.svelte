@@ -10,25 +10,9 @@
 	let markdownOutput = '';
 	let isNewLineAsParagraph = false;
 	let isIgnoreBoldInHeader = true;
-	let copyButtonText = 'コピー';
 	let turndownService: TurndownService;
 
 	const tool = tools.find((t) => t.name === 'richtext-to-markdown');
-
-	function copyToClipboard() {
-		navigator.clipboard
-			.writeText(markdownOutput)
-			.then(() => {
-				copyButtonText = '成功！';
-				setTimeout(() => {
-					copyButtonText = 'コピー';
-				}, 1000);
-			})
-			.catch((err) => {
-				console.error('コピーに失敗しました: ', err);
-				alert('コピーに失敗しました');
-			});
-	}
 
 	function richtextToMarkdown() {
 		if (!quill || !turndownService) return;
@@ -53,6 +37,13 @@
 		}
 
 		markdownOutput = textMarkdown;
+
+		// 自動コピー
+		if (textMarkdown.trim()) {
+			navigator.clipboard.writeText(textMarkdown).catch((err) => {
+				console.error('自動コピーに失敗しました: ', err);
+			});
+		}
 	}
 
 	function clearEditor() {
@@ -164,7 +155,7 @@
 		<h1 class="text-3xl font-bold">{tool?.name}</h1>
 	</div>
 
-	<div class="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+	<div class="mb-6 grid grid-cols-1 gap-6 md:grid-cols-2">
 		<!-- 入力エリア -->
 		<div class="flex flex-col">
 			<div class="mb-2 flex items-center justify-between">
@@ -183,15 +174,8 @@
 
 		<!-- 出力エリア -->
 		<div class="flex flex-col">
-			<div class="mb-2 flex items-center justify-between">
-				<div class="text-sm font-medium text-gray-700">【出力】Markdown形式</div>
-				<button
-					on:click={copyToClipboard}
-					class="rounded bg-blue-500 px-3 py-1 text-sm text-white transition-colors hover:bg-blue-600"
-					disabled={!markdownOutput}
-				>
-					{copyButtonText}
-				</button>
+			<div class="mb-2">
+				<div class="text-sm font-medium text-gray-700">【出力】Markdown形式（自動コピー）</div>
 			</div>
 			<pre
 				class="min-h-96 flex-1 overflow-auto rounded-lg border border-gray-300 bg-gray-50 p-3 text-sm whitespace-pre-wrap">{markdownOutput}</pre>
@@ -228,7 +212,7 @@
 			<li>• 左側のリッチテキストエディターでテキストを入力・編集してください</li>
 			<li>• ツールバーを使って見出し、太字、斜体、リスト、リンクなどの書式を設定できます</li>
 			<li>• リアルタイムでMarkdown形式に変換されて右側に表示されます</li>
-			<li>• 「コピー」ボタンでMarkdownをクリップボードにコピーできます</li>
+			<li>• 変換されたMarkdownは自動的にクリップボードにコピーされます</li>
 			<li>• オプションで改行や太字の処理方法を調整できます</li>
 			<li>• 「クリア」ボタンでエディターの内容を空にできます</li>
 		</ul>
