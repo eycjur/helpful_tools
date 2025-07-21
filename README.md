@@ -2,11 +2,19 @@
 
 SvelteKit + TypeScript + Tailwind CSSで構築された便利ツール集のWebアプリケーションです。
 
+**主な特徴:**
+
+- 📱 レスポンシブサイドバーナビゲーション
+- ⚡ 自動コピー機能搭載（変換ツール）
+- 🎨 Iconifyアイコンシステム採用
+- 🌟 モダンなUI/UXデザイン
+
 ## 機能
 
 ### HTML/リッチテキスト → Markdown変換 (`/tools/html-to-markdown`)
 
 - HTMLコードやWebページからコピーしたリッチテキストをMarkdown形式に変換
+- ⚡ **自動コピー機能**: 変換されたMarkdownを自動的にクリップボードにコピー
 - クリップボードからの自動判定機能（HTML/リッチテキスト/プレーンテキスト）
 - 「クリップボードから読み取り」ボタンと手動貼り付けの両方に対応
 - Turndownライブラリによる高精度変換
@@ -14,6 +22,7 @@ SvelteKit + TypeScript + Tailwind CSSで構築された便利ツール集のWeb�
 ### リッチテキストエディター → Markdown変換 (`/tools/richtext-to-markdown`)
 
 - Quillエディターでリッチテキストを編集してMarkdown形式に変換
+- ⚡ **自動コピー機能**: 変換されたMarkdownを自動的にクリップボードにコピー
 - リアルタイム変換機能
 - 見出し、太字、斜体、リスト、リンク、コードブロックなどに対応
 - カスタムTurndownルール適用
@@ -79,6 +88,7 @@ npm run lint
 - **フレームワーク**: SvelteKit（Svelte 5）
 - **言語**: TypeScript
 - **スタイリング**: Tailwind CSS v4 + カスタムCSS
+- **アイコン**: @iconify/svelte + Material Design Icons (MDI)
 - **ビルドツール**: Vite
 - **リンター**: ESLint + Prettier
 - **フォント**: @fontsource (Noto Sans JP, Noto Serif JP, Fira Mono)
@@ -93,6 +103,14 @@ npm run lint
 - ホームページで動的にツール一覧を表示
 - ファイルベースルーティング（`src/routes/tools/[tool-name]/+page.svelte`）
 
+### レスポンシブサイドバー
+
+高機能なサイドバーナビゲーションを実装：
+
+- **デスクトップ**: 常時表示（固定位置）
+- **モバイル**: ハンバーガーメニューでオーバーレイ表示
+- **機能**: 全ツールのナビゲーション、現在ページハイライト、キーボード操作対応（ESC）
+
 ### 新しいツールの追加方法
 
 1. `src/lib/data/tools.ts`にツール情報を追加:
@@ -102,15 +120,33 @@ npm run lint
      nameJa: 'ツール名',
      name: 'tool-slug',
      description: '機能説明',
-     icon: '📱'
+     icon: 'mdi:icon-name'
    }
    ```
 
-2. `src/routes/tools/[tool-slug]/+page.svelte`でツールページを作成
+2. `src/routes/tools/[tool-slug]/+page.svelte`でツールページを作成:
+
+   ```svelte
+   <script lang="ts">
+   	import { tools } from '$lib/data/tools';
+   	import Icon from '@iconify/svelte';
+   	const tool = tools.find((t) => t.name === 'tool-slug');
+   </script>
+
+   <div class="mx-auto max-w-2xl">
+   	<div class="mb-6 flex items-center">
+   		{#if tool?.icon}<Icon icon={tool.icon} class="mr-4 h-10 w-10" />{/if}
+   		<h1 class="text-3xl font-bold">{tool?.nameJa}</h1>
+   	</div>
+   	<!-- ツール実装 -->
+   </div>
+   ```
 
 ## 主な技術的特徴
 
+- **自動コピー機能**: 変換ツールで結果を自動的にクリップボードにコピー（エラーハンドリング付き）
 - **Clipboard API活用**: `navigator.clipboard.read()`でHTMLとプレーンテキストを自動判定
+- **アイコン管理**: @iconify/svelteで型安全なアイコン表示、条件付きレンダリングでundefined対策
 - **ローディング状態管理**: 外部API呼び出し時の適切なUXフィードバック
 - **レスポンシブデザイン**: 日本語UIに最適化されたモバイル対応
 - **静的サイト生成**: GitHub Pages等での高速ホスティング対応
