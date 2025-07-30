@@ -35,5 +35,11 @@ export const tools: Tool[] = [
 		name: 'character-counter',
 		description: 'テキストの文字数をリアルタイムでカウントします',
 		icon: 'mdi:numeric'
+	},
+	{
+		nameJa: 'CSV → LaTeX表',
+		name: 'csv-to-latex',
+		description: 'CSV/Excel（タブ区切り）データをLaTeX表形式に変換します',
+		icon: 'mdi:table-arrow-right'
 	}
 ];
