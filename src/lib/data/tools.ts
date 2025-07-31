@@ -37,9 +37,9 @@ export const tools: Tool[] = [
 		icon: 'mdi:numeric'
 	},
 	{
-		nameJa: 'CSV → LaTeX表',
+		nameJa: 'CSV/Excel → LaTeX表',
 		name: 'csv-to-latex',
-		description: 'CSV/Excel（タブ区切り）データをLaTeX表形式に変換します',
+		description: 'CSV/ExcelデータをLaTeX表形式に変換します',
 		icon: 'mdi:table-arrow-right'
 	}
 ];

@@ -12,11 +12,11 @@
 	function detectDelimiter(text: string): string {
 		const lines = text.trim().split('\n');
 		if (lines.length === 0) return 'comma';
-		
+
 		const firstLine = lines[0];
 		const commaCount = (firstLine.match(/,/g) || []).length;
 		const tabCount = (firstLine.match(/\t/g) || []).length;
-		
+
 		// If there are tabs and more tabs than commas, assume tab-separated
 		if (tabCount > 0 && tabCount >= commaCount) {
 			return 'tab';
@@ -27,21 +27,21 @@
 
 	function parseCSV(text: string, delimiter: string): string[][] {
 		if (!text.trim()) return [];
-		
+
 		const lines = text.trim().split('\n');
 		const result: string[][] = [];
 		const sep = delimiter === 'tab' ? '\t' : ',';
-		
+
 		for (const line of lines) {
 			if (delimiter === 'comma') {
 				// Simple CSV parsing - handles quoted fields
 				const row: string[] = [];
 				let current = '';
 				let inQuotes = false;
-				
+
 				for (let i = 0; i < line.length; i++) {
 					const char = line[i];
-					
+
 					if (char === '"') {
 						if (inQuotes && line[i + 1] === '"') {
 							// Escaped quote
@@ -64,10 +64,10 @@
 				result.push(row);
 			} else {
 				// Tab-separated - simple split
-				result.push(line.split(sep).map(cell => cell.trim()));
+				result.push(line.split(sep).map((cell) => cell.trim()));
 			}
 		}
-		
+
 		return result;
 	}
 
@@ -87,45 +87,46 @@
 
 	function generateLatexTable(data: string[][]): string {
 		if (data.length === 0) return '';
-		
-		const maxCols = Math.max(...data.map(row => row.length));
+
+		const maxCols = Math.max(...data.map((row) => row.length));
 		if (maxCols === 0) return '';
-		
+
 		// Column specification
 		const colSpec = 'l'.repeat(maxCols);
-		
-		let latex = '\\begin{table}[htbp]\n';
-		latex += '\\centering\n';
+
+		let latex = '\\begin{table}\n';
+		latex += '\\begin{center}\n';
+		latex += '\\caption{表のキャプション}\n';
+		latex += '\\label{tab:label}\n';
 		latex += `\\begin{tabular}{${colSpec}}\n`;
 		latex += '\\hline\n';
-		
+
 		// Process rows
 		for (let i = 0; i < data.length; i++) {
 			const row = data[i];
 			const paddedRow = [...row];
-			
+
 			// Pad row to max columns
 			while (paddedRow.length < maxCols) {
 				paddedRow.push('');
 			}
-			
+
 			// Escape LaTeX special characters
-			const escapedRow = paddedRow.map(cell => escapeLatex(cell));
-			
+			const escapedRow = paddedRow.map((cell) => escapeLatex(cell));
+
 			// Join with & and add line ending
 			latex += escapedRow.join(' & ') + ' \\\\\n';
-			
+
 			// Add horizontal line after header row or at the end
 			if ((headerRow && i === 0) || i === data.length - 1) {
 				latex += '\\hline\n';
 			}
 		}
-		
+
 		latex += '\\end{tabular}\n';
-		latex += '\\caption{表のキャプション}\n';
-		latex += '\\label{tab:label}\n';
+		latex += '\\end{center}\n';
 		latex += '\\end{table}';
-		
+
 		return latex;
 	}
 
@@ -134,17 +135,17 @@
 			latexOutput = '';
 			return;
 		}
-		
+
 		// Determine delimiter
 		const actualDelimiter = delimiter === 'auto' ? detectDelimiter(inputData) : delimiter;
-		
+
 		// Parse CSV/TSV
 		const data = parseCSV(inputData, actualDelimiter);
-		
+
 		// Generate LaTeX
 		const latex = generateLatexTable(data);
 		latexOutput = latex;
-		
+
 		// Auto-copy to clipboard
 		if (latex.trim()) {
 			navigator.clipboard.writeText(latex).catch((err) => {
@@ -203,57 +204,18 @@
 		</div>
 	</div>
 
-	<!-- オプション -->
-	<div class="mb-6 rounded-lg bg-gray-50 p-4">
-		<h3 class="mb-3 text-sm font-semibold text-gray-700">オプション</h3>
-		<div class="flex flex-wrap gap-4">
-			<div>
-				<label class="block text-sm font-medium text-gray-700">区切り文字</label>
-				<select
-					bind:value={delimiter}
-					class="mt-1 rounded border border-gray-300 px-3 py-1 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-				>
-					<option value="auto">自動判定</option>
-					<option value="comma">カンマ (,)</option>
-					<option value="tab">タブ</option>
-				</select>
-			</div>
-			
-			<label class="flex items-center">
-				<input type="checkbox" bind:checked={headerRow} class="mr-2" />
-				<span class="text-sm text-gray-700">1行目をヘッダーとして扱う</span>
-			</label>
-		</div>
-	</div>
-
 	<!-- 使用方法 -->
 	<div class="rounded-lg bg-blue-50 p-4">
 		<h2 class="mb-2 text-lg font-semibold">使用方法</h2>
 		<ul class="space-y-1 text-sm text-gray-700">
 			<li>• ExcelやGoogleスプレッドシートからデータをコピーして左側に貼り付けてください</li>
 			<li>• CSV形式（カンマ区切り）またはTSV形式（タブ区切り）に対応しています</li>
-			<li>• 区切り文字は自動判定されますが、手動で選択することもできます</li>
 			<li>• 自動的にLaTeX表形式に変換されて右側に表示されます</li>
 			<li>• 変換されたLaTeXコードは自動的にクリップボードにコピーされます</li>
-			<li>• 1行目をヘッダー行として扱うかどうかを選択できます</li>
-			<li>• LaTeX特殊文字（$, &, %, #, ^, _, {, }, \, ~）は自動的にエスケープされます</li>
+			<li>
+				• LaTeX特殊文字（$, &amp;, %, #, ^, _, &#123;, &#125;, \\,
+				&#126;）は自動的にエスケープされます
+			</li>
 		</ul>
-		
-		<div class="mt-4">
-			<h3 class="mb-2 font-semibold">生成されるLaTeXの例:</h3>
-			<pre class="rounded bg-white p-2 text-xs overflow-x-auto">\begin{table}[htbp]
-\centering
-\begin{tabular}{lll}
-\hline
-項目 & 値A & 値B \\
-\hline
-データ1 & 100 & 200 \\
-データ2 & 150 & 250 \\
-\hline
-\end{tabular}
-\caption{表のキャプション}
-\label{tab:label}
-\end{table}</pre>
-		</div>
 	</div>
 </div>
