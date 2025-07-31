@@ -64,6 +64,10 @@ npm run lint
 
 2. `src/routes/tools/[tool-slug]/+page.svelte`を作成:
 
+3. **重要**: 新機能追加後は以下を更新:
+   - `README.md` - 主要機能セクションのカテゴリ説明を更新（個別ツール記載不要）
+   - `CLAUDE.md` - 技術的注意点セクションに新ツール固有の注意点のみ追加
+
    ```svelte
    <script lang="ts">
    	import { tools } from '$lib/data/tools';
@@ -89,28 +93,23 @@ npm run lint
 - **外部API**: QRServer API (https://api.qrserver.com/)
 - **ライブラリ**: Quill（リッチテキストエディター）, Turndown（HTML→Markdown変換）
 
-### 現在のツール
+### ツール一覧と技術的注意点
 
-1. **HTML → Markdown** (`html-to-markdown`)
-   - HTMLコード・リッチテキストの自動判定変換
-   - Clipboard API活用（`navigator.clipboard.read()`でHTMLとプレーンテキスト両方取得）
-   - **自動コピー機能**: 変換されたMarkdownを自動的にクリップボードにコピー
-   - 手動貼り付けとボタンクリックの両方対応
+**基本情報**: 全ツールは`src/lib/data/tools.ts`で管理、ファイルベースルーティング採用
 
-2. **リッチテキストエディター → Markdown** (`richtext-to-markdown`)
-   - Quillエディターでのリアルタイム編集・変換
-   - カスタムTurndownルール適用（リスト、コードブロック、テーブル対応）
-   - **自動コピー機能**: 変換されたMarkdownを自動的にクリップボードにコピー
+**共通機能**:
 
-3. **QRコード生成** (`qrcode-generator`)
-   - ロゴオーバーレイ機能、ローディング状態管理
-   - Canvas要素のbind問題対策（常にDOMに存在させる）
+- 自動コピー機能（変換ツール）
+- Iconifyアイコンシステム
+- レスポンシブデザイン
 
-4. **X QRコード** (`x-qrcode-generator`)
-   - X（Twitter）プロフィール専用、アイコンオーバーレイ
+**技術的注意点**:
 
-5. **文字数カウンター** (`character-counter`)
-   - リアルタイム計測
+- **Canvas要素管理**: QRツールでcanvas要素のbindが失われないよう、条件付き表示でも要素は常にDOMに配置
+- **Clipboard API**: モダンブラウザの`navigator.clipboard.read()`でHTMLとプレーンテキスト両方取得、HTMLタグ自動判定で適切な処理分岐
+- **自動コピー機能**: 変換ツールで結果を自動的にクリップボードにコピー（エラーハンドリング付き）
+- **ローディング状態**: 外部API呼び出し時の`isLoading`状態とスピナー表示パターン
+- **LaTeX特殊文字エスケープ**: CSV→LaTeXツールで特殊文字（$, &, %, #, ^, \_, {, }, \, ~）を適切にエスケープ
 
 ### レスポンシブサイドバー
 

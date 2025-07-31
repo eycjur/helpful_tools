@@ -17,38 +17,14 @@ SvelteKit + TypeScript + Tailwind CSSで構築された便利ツール集のWeb�
 
 ## 機能
 
-### HTML/リッチテキスト → Markdown変換 (`/tools/html-to-markdown`)
+利用可能なツール一覧は **https://eycjur.github.io/helpful_tools/** で確認できます。
 
-- HTMLコードやWebページからコピーしたリッチテキストをMarkdown形式に変換
-- ⚡ **自動コピー機能**: 変換されたMarkdownを自動的にクリップボードにコピー
-- クリップボードからの自動判定機能（HTML/リッチテキスト/プレーンテキスト）
-- 「クリップボードから読み取り」ボタンと手動貼り付けの両方に対応
-- Turndownライブラリによる高精度変換
+主要機能：
 
-### リッチテキストエディター → Markdown変換 (`/tools/richtext-to-markdown`)
-
-- Quillエディターでリッチテキストを編集してMarkdown形式に変換
-- ⚡ **自動コピー機能**: 変換されたMarkdownを自動的にクリップボードにコピー
-- リアルタイム変換機能
-- 見出し、太字、斜体、リスト、リンク、コードブロックなどに対応
-- カスタムTurndownルール適用
-
-### QRコード生成 (`/tools/qrcode-generator`)
-
-- テキストからQRコード生成
-- ロゴオーバーレイ機能（オプション）
-- ローディング表示とエラーハンドリング
-- ロゴ画像の削除機能
-
-### XプロフィールQRコード (`/tools/x-qrcode-generator`)
-
-- X（旧Twitter）プロフィール専用QRコード
-- Xアイコンのオーバーレイ機能（ON/OFF切り替え可能）
-- ユーザー名の自動フォーマット（@マーク自動処理）
-
-### 文字数カウンター (`/tools/character-counter`)
-
-- リアルタイム文字数計測
+- 📝 **テキスト変換**: HTML/リッチテキスト → Markdown、CSV/Excel → LaTeX表
+- 📱 **QRコード生成**: 汎用QR、XプロフィールQR（ロゴオーバーレイ対応）
+- 📊 **ユーティリティ**: 文字数カウンター
+- ⚡ **自動コピー**: 変換結果を自動的にクリップボードにコピー
 
 ## 開発
 
