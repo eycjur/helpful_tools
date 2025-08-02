@@ -41,5 +41,11 @@ export const tools: Tool[] = [
 		name: 'csv-to-latex',
 		description: 'CSV/ExcelデータをLaTeX表形式に変換します',
 		icon: 'mdi:table-arrow-right'
+	},
+	{
+		nameJa: 'Markdown → Notion',
+		name: 'markdown-to-notion',
+		description: 'MarkdownをNotion形式に変換します',
+		icon: 'mdi:swap-horizontal'
 	}
 ];
