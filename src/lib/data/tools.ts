@@ -41,5 +41,11 @@ export const tools: Tool[] = [
 		name: 'csv-to-latex',
 		description: 'CSV/ExcelデータをLaTeX表形式に変換します',
 		icon: 'mdi:table-arrow-right'
+	},
+	{
+		nameJa: 'アセンブリシミュレータ',
+		name: 'assembly-simulator',
+		description: 'x86-64アセンブリコードをステップ実行で解析・学習できます',
+		icon: 'mdi:chip'
 	}
 ];
