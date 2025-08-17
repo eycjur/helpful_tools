@@ -19,6 +19,12 @@ export const tools: Tool[] = [
 		icon: 'mdi:file-document'
 	},
 	{
+		nameJa: 'クリップボードインスペクター',
+		name: 'clipboard-inspector',
+		description: 'クリップボードの中身を詳細に表示・検証します',
+		icon: 'mdi:clipboard-text'
+	},
+	{
 		nameJa: 'QRコードジェネレーター',
 		name: 'qrcode-generator',
 		description: 'テキストからQRコードを生成します',
