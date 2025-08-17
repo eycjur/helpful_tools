@@ -47,5 +47,12 @@ export const tools: Tool[] = [
 		name: 'markdown-to-notion',
 		description: 'MarkdownをNotion形式に変換します',
 		icon: 'mdi:swap-horizontal'
+	},
+	{
+		nameJa: 'x86-64 アセンブリインタプリタ',
+		name: 'assembly-interpreter',
+		description:
+			'x86-64アセンブリコードをステップ実行してレジスタとメモリ状態を確認できるインタプリタです',
+		icon: 'mdi:chip'
 	}
 ];
