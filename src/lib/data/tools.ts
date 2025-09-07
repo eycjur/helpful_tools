@@ -53,5 +53,11 @@ export const tools: Tool[] = [
 		name: 'markdown-to-notion',
 		description: 'MarkdownをNotion形式に変換します',
 		icon: 'mdi:swap-horizontal'
+	},
+	{
+		nameJa: '構造化データビューアー',
+		name: 'json-formatter',
+		description: 'JSON・Pythonオブジェクトを解析して見やすいツリー形式で表示します',
+		icon: 'mdi:file-tree'
 	}
 ];
