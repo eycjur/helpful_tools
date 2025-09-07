@@ -14,13 +14,75 @@
 
 	export let data: DataValue;
 	export let depth = 0;
+	export let maxDepth = 50;
 	export let keyName: string | number | undefined = undefined;
 	export let isLastItem = true;
+	export let path = '';
 
 	let isExpanded = true; // デフォルトで全て展開
+	let showKeyTooltip = false;
+	let showClassTooltip = false;
+	let showValueTooltip = false;
 
 	function toggleExpanded() {
 		isExpanded = !isExpanded;
+	}
+
+	function copyPath(tooltipType: 'key' | 'class' | 'value') {
+		if (!path) return;
+
+		// モダンブラウザのClipboard APIを優先使用
+		if (navigator.clipboard && navigator.clipboard.writeText) {
+			navigator.clipboard
+				.writeText(path)
+				.then(() => {
+					hideTooltip(tooltipType);
+				})
+				.catch((err) => {
+					console.error('パスのコピーに失敗しました: ', err);
+					// フォールバック処理
+					fallbackCopyToClipboard(path, tooltipType);
+				});
+		} else {
+			// 古いブラウザ向けのフォールバック
+			fallbackCopyToClipboard(path, tooltipType);
+		}
+	}
+
+	function fallbackCopyToClipboard(text: string, tooltipType: 'key' | 'class' | 'value') {
+		try {
+			const textarea = document.createElement('textarea');
+			textarea.value = text;
+			textarea.style.position = 'fixed';
+			textarea.style.opacity = '0';
+			document.body.appendChild(textarea);
+			textarea.select();
+			textarea.setSelectionRange(0, 99999);
+			const successful = document.execCommand('copy');
+			document.body.removeChild(textarea);
+
+			if (successful) {
+				hideTooltip(tooltipType);
+			} else {
+				console.error('フォールバックコピーに失敗しました');
+			}
+		} catch (err) {
+			console.error('クリップボードへのコピーに失敗しました: ', err);
+		}
+	}
+
+	function hideTooltip(tooltipType: 'key' | 'class' | 'value') {
+		switch (tooltipType) {
+			case 'key':
+				showKeyTooltip = false;
+				break;
+			case 'class':
+				showClassTooltip = false;
+				break;
+			case 'value':
+				showValueTooltip = false;
+				break;
+		}
 	}
 
 	function getType(value: DataValue): string {
@@ -37,14 +99,24 @@
 
 	$: type = getType(data);
 	$: isExpandable = type === 'object' || type === 'array' || type === 'python-object';
-	$: itemCount =
-		type === 'object'
-			? Object.keys(data as JsonObject).length
-			: type === 'array'
-				? (data as JsonArray).length
-				: type === 'python-object'
-					? Object.keys(data as PythonObject).length - 1
-					: 0;
+	$: itemCount = (() => {
+		if (
+			type === 'object' &&
+			data &&
+			typeof data === 'object' &&
+			!Array.isArray(data) &&
+			!('__class__' in data)
+		) {
+			return Object.keys(data).length;
+		}
+		if (type === 'array' && Array.isArray(data)) {
+			return data.length;
+		}
+		if (type === 'python-object' && data && typeof data === 'object' && '__class__' in data) {
+			return Object.keys(data).length - 1;
+		}
+		return 0;
+	})();
 </script>
 
 {#if isExpandable}
@@ -58,7 +130,32 @@
 		</button>
 
 		{#if keyName !== undefined}
-			<span class="key">"{keyName}": </span>
+			<span
+				class="key relative"
+				on:mouseenter|stopPropagation={() => (showKeyTooltip = true)}
+				on:mouseleave|stopPropagation={() => (showKeyTooltip = false)}
+				role="button"
+				tabindex="0"
+			>
+				"{keyName}":
+
+				<!-- Tooltip for key -->
+				{#if showKeyTooltip && path}
+					<div
+						class="tooltip absolute z-10 rounded bg-gray-800 px-2 py-1 text-xs whitespace-nowrap text-white"
+						style="left: 0; top: -20px;"
+						on:mouseenter={() => (showKeyTooltip = true)}
+						on:mouseleave={() => (showKeyTooltip = false)}
+						role="button"
+						tabindex="0"
+					>
+						<button on:click={() => copyPath('key')} class="cursor-pointer hover:text-blue-300">
+							{path}
+							<Icon icon="mdi:content-copy" class="ml-1 inline h-3 w-3" />
+						</button>
+					</div>
+				{/if}
+			</span>
 		{/if}
 
 		{#if type === 'array'}
@@ -71,7 +168,32 @@
 				{/if}
 			{/if}
 		{:else if type === 'python-object'}
-			<span class="python-class">{(data as PythonObject).__class__}</span>
+			<span
+				class="python-class relative"
+				on:mouseenter|stopPropagation={() => (showClassTooltip = true)}
+				on:mouseleave|stopPropagation={() => (showClassTooltip = false)}
+				role="button"
+				tabindex="0"
+			>
+				{(data as PythonObject).__class__}
+
+				<!-- Tooltip for Python class -->
+				{#if showClassTooltip && path}
+					<div
+						class="tooltip absolute z-10 rounded bg-gray-800 px-2 py-1 text-xs whitespace-nowrap text-white"
+						style="left: 0; top: -20px;"
+						on:mouseenter={() => (showClassTooltip = true)}
+						on:mouseleave={() => (showClassTooltip = false)}
+						role="button"
+						tabindex="0"
+					>
+						<button on:click={() => copyPath('class')} class="cursor-pointer hover:text-blue-300">
+							{path}
+							<Icon icon="mdi:content-copy" class="ml-1 inline h-3 w-3" />
+						</button>
+					</div>
+				{/if}
+			</span>
 			<span class="bracket">(</span>
 			{#if !isExpanded}
 				<span class="collapsed-info">... {itemCount} args</span>
@@ -94,34 +216,46 @@
 
 	{#if isExpanded}
 		<div class="children">
-			{#if type === 'array'}
-				{#each data as JsonArray as item, index (index)}
-					<svelte:self
-						data={item}
-						depth={depth + 1}
-						isLastItem={index === (data as JsonArray).length - 1}
-					/>
-				{/each}
-			{:else if type === 'python-object'}
-				{#each Object.entries(data as PythonObject).filter(([key]) => key !== '__class__') as [key, value], index (key)}
-					<svelte:self
-						data={value}
-						depth={depth + 1}
-						keyName={key}
-						isLastItem={index ===
-							Object.entries(data as PythonObject).filter(([key]) => key !== '__class__').length -
-								1}
-					/>
-				{/each}
+			{#if depth < maxDepth}
+				{#if type === 'array' && Array.isArray(data)}
+					{#each data as item, index (index)}
+						<svelte:self
+							data={item}
+							depth={depth + 1}
+							{maxDepth}
+							path={path ? `${path}[${index}]` : `[${index}]`}
+							isLastItem={index === data.length - 1}
+						/>
+					{/each}
+				{:else if type === 'python-object' && data && typeof data === 'object' && '__class__' in data}
+					{#each Object.entries(data).filter(([key]) => key !== '__class__') as [key, value], index (key)}
+						<svelte:self
+							data={value}
+							depth={depth + 1}
+							{maxDepth}
+							keyName={key}
+							path={path ? `${path}.${key}` : key}
+							isLastItem={index ===
+								Object.entries(data).filter(([key]) => key !== '__class__').length - 1}
+						/>
+					{/each}
+				{:else if type === 'object' && data && typeof data === 'object' && !Array.isArray(data) && !('__class__' in data)}
+					{#each Object.entries(data) as [key, value], index (key)}
+						<svelte:self
+							data={value}
+							depth={depth + 1}
+							{maxDepth}
+							keyName={key}
+							path={path ? `${path}["${key}"]` : `["${key}"]`}
+							isLastItem={index === Object.entries(data).length - 1}
+						/>
+					{/each}
+				{/if}
 			{:else}
-				{#each Object.entries(data as JsonObject) as [key, value], index (key)}
-					<svelte:self
-						data={value}
-						depth={depth + 1}
-						keyName={key}
-						isLastItem={index === Object.entries(data as JsonObject).length - 1}
-					/>
-				{/each}
+				<div class="json-line" style="margin-left: {(depth + 1) * 20}px;">
+					<span class="expand-placeholder"></span>
+					<span class="text-sm text-red-500 italic">最大深度に到達しました (深度: {depth})</span>
+				</div>
 			{/if}
 		</div>
 		<div class="closing-bracket" style="margin-left: {depth * 20}px;">
@@ -133,13 +267,61 @@
 		</div>
 	{/if}
 {:else}
-	<div class="json-line" style="margin-left: {depth * 20}px;">
+	<div class="json-line relative" style="margin-left: {depth * 20}px;" role="button" tabindex="0">
 		<span class="expand-placeholder"></span>
 		{#if keyName !== undefined}
-			<span class="key">"{keyName}": </span>
+			<span
+				class="key relative"
+				on:mouseenter|stopPropagation={() => (showKeyTooltip = true)}
+				on:mouseleave|stopPropagation={() => (showKeyTooltip = false)}
+				role="button"
+				tabindex="0"
+			>
+				"{keyName}":
+
+				<!-- Tooltip for key -->
+				{#if showKeyTooltip && path}
+					<div
+						class="tooltip absolute z-10 rounded bg-gray-800 px-2 py-1 text-xs whitespace-nowrap text-white"
+						style="left: 0; top: -20px;"
+						on:mouseenter={() => (showKeyTooltip = true)}
+						on:mouseleave={() => (showKeyTooltip = false)}
+						role="button"
+						tabindex="0"
+					>
+						<button on:click={() => copyPath('key')} class="cursor-pointer hover:text-blue-300">
+							{path}
+							<Icon icon="mdi:content-copy" class="ml-1 inline h-3 w-3" />
+						</button>
+					</div>
+				{/if}
+			</span>
 		{/if}
-		<span class="value {type}">
+		<span
+			class="value {type} relative"
+			on:mouseenter|stopPropagation={() => (showValueTooltip = true)}
+			on:mouseleave|stopPropagation={() => (showValueTooltip = false)}
+			role="button"
+			tabindex="0"
+		>
 			{formatValue(data)}
+
+			<!-- Tooltip for value -->
+			{#if showValueTooltip && path}
+				<div
+					class="tooltip absolute z-10 rounded bg-gray-800 px-2 py-1 text-xs whitespace-nowrap text-white"
+					style="left: 0; top: -20px;"
+					on:mouseenter={() => (showValueTooltip = true)}
+					on:mouseleave={() => (showValueTooltip = false)}
+					role="button"
+					tabindex="0"
+				>
+					<button on:click={() => copyPath('value')} class="cursor-pointer hover:text-blue-300">
+						{path}
+						<Icon icon="mdi:content-copy" class="ml-1 inline h-3 w-3" />
+					</button>
+				</div>
+			{/if}
 		</span>
 		{#if !isLastItem}
 			<span class="comma">,</span>
@@ -243,5 +425,21 @@
 	.closing-bracket {
 		display: flex;
 		align-items: center;
+	}
+
+	.tooltip {
+		animation: fadeIn 0.2s ease-in;
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+	}
+
+	@keyframes fadeIn {
+		from {
+			opacity: 0;
+			transform: translateY(-5px);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
 	}
 </style>

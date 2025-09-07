@@ -195,9 +195,37 @@
 	}
 
 	function copyToClipboard(text: string) {
-		navigator.clipboard.writeText(text).catch((err) => {
-			console.error('自動コピーに失敗しました: ', err);
-		});
+		// モダンブラウザのClipboard APIを優先使用
+		if (navigator.clipboard && navigator.clipboard.writeText) {
+			navigator.clipboard.writeText(text).catch((err) => {
+				console.error('自動コピーに失敗しました: ', err);
+				// フォールバック処理
+				fallbackCopyToClipboard(text);
+			});
+		} else {
+			// 古いブラウザ向けのフォールバック
+			fallbackCopyToClipboard(text);
+		}
+	}
+
+	function fallbackCopyToClipboard(text: string) {
+		try {
+			const textarea = document.createElement('textarea');
+			textarea.value = text;
+			textarea.style.position = 'fixed';
+			textarea.style.opacity = '0';
+			document.body.appendChild(textarea);
+			textarea.select();
+			textarea.setSelectionRange(0, 99999);
+			const successful = document.execCommand('copy');
+			document.body.removeChild(textarea);
+
+			if (!successful) {
+				console.error('フォールバックコピーに失敗しました');
+			}
+		} catch (err) {
+			console.error('クリップボードへのコピーに失敗しました: ', err);
+		}
 	}
 
 	function copyCurrentOutput() {
@@ -262,7 +290,7 @@
 				</div>
 			{:else if parsedData}
 				<div class="flex-1 overflow-auto rounded-lg border border-gray-300 bg-gray-50 p-3">
-					<JsonViewer data={parsedData} />
+					<JsonViewer data={parsedData} path="data" maxDepth={50} />
 				</div>
 			{:else}
 				<div class="flex-1 rounded-lg border border-gray-300 bg-gray-50 p-3 text-sm text-gray-500">
