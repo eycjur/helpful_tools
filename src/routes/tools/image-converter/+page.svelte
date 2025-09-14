@@ -99,9 +99,11 @@
 		results = [];
 	}
 
-
-
-	function drawToCanvas(img: ImageBitmap | HTMLImageElement, mime: string, size: { width: number; height: number }) {
+	function drawToCanvas(
+		img: ImageBitmap | HTMLImageElement,
+		mime: string,
+		size: { width: number; height: number }
+	) {
 		const canvas = hiddenCanvas; // DOM常駐Canvasを使う
 		canvas.width = size.width;
 		canvas.height = size.height;
@@ -120,14 +122,24 @@
 		return canvas;
 	}
 
-	async function encodeCanvas(canvas: HTMLCanvasElement, mime: string, q: number): Promise<{ blob: Blob; mime: string; fallback?: boolean }> {
+	async function encodeCanvas(
+		canvas: HTMLCanvasElement,
+		mime: string,
+		q: number
+	): Promise<{ blob: Blob; mime: string; fallback?: boolean }> {
 		const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, mime, q));
 		if (blob) return { blob, mime };
 		throw new Error('エンコードに失敗しました');
 	}
 
 	function extByMime(mime: string) {
-		return mime === 'image/png' ? 'png' : mime === 'image/jpeg' ? 'jpg' : mime === 'image/webp' ? 'webp' : 'bin';
+		return mime === 'image/png'
+			? 'png'
+			: mime === 'image/jpeg'
+				? 'jpg'
+				: mime === 'image/webp'
+					? 'webp'
+					: 'bin';
 	}
 
 	async function convertAll() {
@@ -144,8 +156,8 @@
 				} catch {
 					bitmap = null; // createImageBitmap非対応
 				}
-				let width = it.width || (bitmap ? (bitmap as any).width : 0);
-				let height = it.height || (bitmap ? (bitmap as any).height : 0);
+				let width = it.width || (bitmap ? bitmap.width : 0);
+				let height = it.height || (bitmap ? bitmap.height : 0);
 				let imgEl: HTMLImageElement | null = null;
 				if (!width || !height || !bitmap) {
 					// bitmapがない、または寸法が未取得ならImage経由で寸法・描画元を用意
@@ -197,7 +209,8 @@
 	<!-- 設定 -->
 	<div class="mb-4 grid grid-cols-1 gap-4 md:grid-cols-2">
 		<div class="rounded-lg border border-gray-200 bg-white p-4">
-			<label class="block text-sm font-medium text-gray-700">画質（JPEG/WebP）
+			<label class="block text-sm font-medium text-gray-700"
+				>画質（JPEG/WebP）
 				<span class="ml-1 text-xs text-gray-500">{Math.round(quality * 100)}%</span>
 			</label>
 			<input type="range" min="0.1" max="1" step="0.01" bind:value={quality} class="mt-2 w-full" />
@@ -224,14 +237,18 @@
 
 	{#if items.length}
 		<div class="mb-4 flex items-center justify-end gap-2">
-			<button on:click={convertAll} class="rounded bg-blue-600 px-3 py-2 text-white disabled:opacity-50" disabled={isConverting}>再変換</button>
+			<button
+				on:click={convertAll}
+				class="rounded bg-blue-600 px-3 py-2 text-white disabled:opacity-50"
+				disabled={isConverting}>再変換</button
+			>
 			<button on:click={clearAll} class="rounded bg-gray-500 px-3 py-2 text-white">クリア</button>
 		</div>
 
 		<ul class="mb-6 grid grid-cols-1 gap-3">
-			{#each items as it}
+			{#each items as it (it.id)}
 				<li class="overflow-hidden rounded-lg border border-gray-200 bg-white">
-					<img src={it.src} alt="input preview" class="h-72 w-full object-contain bg-gray-50" />
+					<img src={it.src} alt="input preview" class="h-72 w-full bg-gray-50 object-contain" />
 				</li>
 			{/each}
 		</ul>
@@ -239,12 +256,16 @@
 
 	{#if results.length}
 		<ul class="grid grid-cols-1 gap-3 md:grid-cols-3">
-			{#each results as r}
+			{#each results as r, i (i)}
 				<li class="relative overflow-hidden rounded-lg border border-gray-200 bg-white">
-					<img src={r.url} alt="converted preview" class="h-56 w-full object-contain bg-gray-50" />
-					<div class="absolute inset-x-0 bottom-0 flex items-center justify-between bg-black/50 px-2 py-1 text-xs text-white">
+					<img src={r.url} alt="converted preview" class="h-56 w-full bg-gray-50 object-contain" />
+					<div
+						class="absolute inset-x-0 bottom-0 flex items-center justify-between bg-black/50 px-2 py-1 text-xs text-white"
+					>
 						<span class="uppercase">{extByMime(r.mime)}</span>
-						<button on:click={() => download(r)} class="rounded bg-green-500 px-2 py-1 text-white">DL</button>
+						<button on:click={() => download(r)} class="rounded bg-green-500 px-2 py-1 text-white"
+							>DL</button
+						>
 					</div>
 				</li>
 			{/each}
