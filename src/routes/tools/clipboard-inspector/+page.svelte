@@ -1,18 +1,27 @@
 <script lang="ts">
 	import { tools } from '$lib/data/tools';
 	import Icon from '@iconify/svelte';
+	import { onDestroy } from 'svelte';
 
 	const tool = tools.find((t) => t.name === 'clipboard-inspector');
 
-	let clipboardData: { type: string; content: string; error?: boolean }[] = [];
+	let clipboardData: { type: string; content?: string; url?: string; error?: boolean }[] = [];
 	let isLoading = false;
 	let hasRead = false;
+
+	function revokeObjectUrls() {
+		for (const d of clipboardData) {
+			if (d.url) URL.revokeObjectURL(d.url);
+		}
+	}
+	onDestroy(revokeObjectUrls);
 
 	async function readClipboard() {
 		if (isLoading) return;
 
 		isLoading = true;
 		hasRead = false;
+		revokeObjectUrls();
 		clipboardData = [];
 
 		try {
@@ -22,8 +31,13 @@
 				for (const type of item.types) {
 					try {
 						const blob = await item.getType(type);
-						const content = await blob.text();
-						clipboardData.push({ type, content });
+						if (type === 'image/png') {
+							const url = URL.createObjectURL(blob);
+							clipboardData.push({ type, url });
+						} else {
+							const content = await blob.text();
+							clipboardData.push({ type, content });
+						}
 					} catch {
 						clipboardData.push({ type, content: '(binary or unreadable)', error: true });
 					}
@@ -40,6 +54,7 @@
 	}
 
 	function clearOutput() {
+		revokeObjectUrls();
 		clipboardData = [];
 		hasRead = false;
 	}
@@ -92,9 +107,9 @@
 				<div class="rounded-lg border border-gray-300 p-4">
 					<div class="mb-3 flex items-center justify-between">
 						<h3 class="text-lg font-semibold text-gray-800">{data.type}</h3>
-						{#if !data.error}
+						{#if !data.error && data.content}
 							<button
-								on:click={() => copyToClipboard(data.content)}
+								on:click={() => copyToClipboard(data.content!)}
 								class="flex items-center gap-1 rounded bg-blue-600 px-3 py-1 text-sm text-white transition-colors hover:bg-blue-700"
 							>
 								<Icon icon="mdi:content-copy" class="h-3 w-3" />
@@ -102,12 +117,19 @@
 							</button>
 						{/if}
 					</div>
-					<textarea
-						value={data.content}
-						readonly
-						class="h-96 w-full resize-y rounded border border-gray-200 bg-gray-50 p-3 font-mono text-sm"
-						class:text-red-600={data.error}
-					></textarea>
+
+					{#if data.url}
+						<div class="flex items-center justify-center overflow-hidden rounded bg-gray-50">
+							<img src={data.url} alt="clipboard image" class="h-96 w-auto object-contain" />
+						</div>
+					{:else}
+						<textarea
+							value={data.content}
+							readonly
+							class="h-96 w-full resize-y rounded border border-gray-200 bg-gray-50 p-3 font-mono text-sm"
+							class:text-red-600={data.error}
+						></textarea>
+					{/if}
 				</div>
 			{/each}
 		</div>
