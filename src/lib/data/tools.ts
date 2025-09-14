@@ -59,5 +59,11 @@ export const tools: Tool[] = [
 		name: 'json-formatter',
 		description: 'JSON・Pythonオブジェクトを解析して見やすいツリー形式で表示します',
 		icon: 'mdi:file-tree'
+	},
+	{
+		nameJa: '画像形式変換',
+		name: 'image-converter',
+		description: '画像をPNG/JPEG/WebPに変換',
+		icon: 'mdi:image-sync'
 	}
-];
+];;

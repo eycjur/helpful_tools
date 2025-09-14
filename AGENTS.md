@@ -177,13 +177,6 @@ helpful_tools/
 - **アイコン管理**: @iconify/svelteで型安全なアイコン表示、条件付きレンダリングでundefined対策
 - **統一UIパターン**: Iconifyアイコン + `text-3xl font-bold`（タイトル）+ `max-w-*xl mx-auto`（コンテンツ幅）
 
-#### 画像形式変換（新規ツール）
-
-- **透過の扱い**: JPEG出力時は背景色で合成（ユーザー指定可）。
-- **MVP形式**: PNG/JPEG/WebPに対応。
-- **リソース解放**: `URL.createObjectURL`で作成したURLは使用後に`URL.revokeObjectURL`で解放。
-- **バッチ処理**: 大量画像はUIブロック回避のため、段階的にWeb Worker + OffscreenCanvas導入を検討。
-
 ## 開発時の注意点
 
 ### 開発の進め方

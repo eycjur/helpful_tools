@@ -23,6 +23,7 @@ SvelteKit + TypeScript + Tailwind CSSで構築された便利ツール集のWeb�
 
 - 📝 **テキスト変換**: HTML/リッチテキスト → Markdown、CSV/Excel → LaTeX表
 - 📱 **QRコード生成**: 汎用QR、XプロフィールQR（ロゴオーバーレイ対応）
+- 🖼️ **画像処理**: 画像形式変換（PNG/JPEG/WebP）
 - 📊 **ユーティリティ**: 文字数カウンター
 - ⚡ **自動コピー**: 変換結果を自動的にクリップボードにコピー
 
