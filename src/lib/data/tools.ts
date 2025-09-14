@@ -83,5 +83,11 @@ export const tools: Tool[] = [
 		name: 'csv-to-latex',
 		description: 'CSV/ExcelデータをLaTeX表形式に変換します',
 		icon: 'mdi:table-arrow-right'
+	},
+	{
+		nameJa: '動画圧縮',
+		name: 'video-compressor',
+		description: '動画ファイルのサイズを圧縮してファイルサイズを削減します',
+		icon: 'mdi:video-box'
 	}
 ];
