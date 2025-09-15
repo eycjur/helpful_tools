@@ -6,16 +6,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 「困った時のツール集」は、日常的に使える便利ツール集のWebアプリケーションです。
 
-### 提供ツール
+### 提供ツール（7カテゴリ、19ツール）
 
-- **文字処理**: HTML/Markdown変換、RichText→Markdown、文字数カウンター
-- **画像生成**: QRコード生成器
-- **データ変換**: CSV→LaTeX、Markdown→Notion
-- **プログラミング**: アセンブリインタープリター
+- **生成AI**: HTML/リッチテキスト → Markdown変換（AI活用）
+- **文字・テキスト処理**: 正規表現テスター、文字数カウンタ、HTML/URLエンコーダ
+- **データ変換**: JSON構造化表示、Base64変換、Notion/LaTeX変換
+- **画像・メディア**: 画像形式変換、動画圧縮
+- **QRコード**: 汎用QR、XプロフィールQR
+- **開発・比較ツール**: Diffチェッカー、curlビルダー、クリップボード検査
+- **ネットワーク・情報**: 接続元情報、Whois/ドメイン調査
 
 ### 主な特徴
 
 - レスポンシブデザインのサイドバーナビゲーション
+- カテゴリ別ツール分類表示（ホーム画面・サイドバー）
 - 自動コピー機能搭載（変換ツール）
 - 統一されたアイコンシステム
 - モダンなUI/UXデザイン
@@ -95,7 +99,7 @@ helpful_tools/
 - `src/lib/data/tools.ts` - 全ツールの定義配列
 - ホームページ（`src/routes/+page.svelte`）が`tools`配列をmapして動的にツール一覧を表示
 - 各ツールは`src/routes/tools/[tool-name]/+page.svelte`のファイルベースルーティング
-- ツール定義形式： `{ nameJa: '表示名', name: 'url-slug', description: '説明', icon: 'mdi:icon-name' }`
+- ツール定義形式： `{ nameJa: '表示名', name: 'url-slug', description: '説明', icon: 'mdi:icon-name', category: 'カテゴリ名' }`
 
 ### 新しいツールの追加手順
 
@@ -106,7 +110,8 @@ helpful_tools/
      nameJa: 'ツール名',
      name: 'tool-slug',
      description: '機能説明',
-     icon: 'mdi:icon-name'
+     icon: 'mdi:icon-name',
+     category: 'カテゴリ名'
    }
    ```
 
@@ -165,7 +170,8 @@ helpful_tools/
 
 - **デスクトップ**: 常時表示（固定位置）
 - **モバイル**: ハンバーガーメニューでオーバーレイ表示
-- **機能**: 全ツールのナビゲーション、現在ページハイライト、キーボード操作対応（ESC）
+- **機能**: カテゴリ別ツール表示、現在ページハイライト、キーボード操作対応（ESC）
+- **表示形式**: カテゴリアイコン付きの階層構造
 - **実装**: `src/lib/components/Sidebar.svelte` + `src/routes/+layout.svelte`
 
 ### 重要な技術的注意点
@@ -176,6 +182,7 @@ helpful_tools/
 - **ローディング状態**: 外部API呼び出し時の`isLoading`状態とスピナー表示パターン
 - **アイコン管理**: @iconify/svelteで型安全なアイコン表示、条件付きレンダリングでundefined対策
 - **統一UIパターン**: Iconifyアイコン + `text-3xl font-bold`（タイトル）+ `max-w-*xl mx-auto`（コンテンツ幅）
+- **カテゴリ表示システム**: ホーム画面とサイドバーでカテゴリ別ツール分類、検索時は全ツール横断表示に自動切り替え
 
 #### 正規表現テスター（新規）
 

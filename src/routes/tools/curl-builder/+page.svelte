@@ -75,10 +75,7 @@
 
 	// コマンド生成
 	function generateCurlCommand(): string {
-		console.log('generateCurlCommand called with url:', JSON.stringify(url));
-
 		if (!url.trim()) {
-			console.log('URL is empty, returning placeholder message');
 			return 'curl # URLを入力してください';
 		}
 

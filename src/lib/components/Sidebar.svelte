@@ -3,10 +3,36 @@
 	import { base } from '$app/paths';
 	import { page } from '$app/stores';
 	import Icon from '@iconify/svelte';
+	import { SvelteMap } from 'svelte/reactivity';
 
 	export let isOpen = false;
 
 	$: currentPath = $page.url.pathname;
+
+	// カテゴリごとにツールをグループ化
+	const groupedTools = groupByCategory(tools);
+
+	function groupByCategory(toolList: typeof tools) {
+		const groups = new SvelteMap<string, typeof tools>();
+		for (const tool of toolList) {
+			if (!groups.has(tool.category)) {
+				groups.set(tool.category, []);
+			}
+			groups.get(tool.category)!.push(tool);
+		}
+		return groups;
+	}
+
+	// カテゴリのアイコンマッピング
+	const categoryIcons: Record<string, string> = {
+		生成AI: 'mdi:robot',
+		'文字・テキスト処理': 'mdi:text-box',
+		データ変換: 'mdi:swap-horizontal',
+		'画像・メディア': 'mdi:image-multiple',
+		QRコード: 'mdi:qrcode',
+		'開発・比較ツール': 'mdi:wrench',
+		'ネットワーク・情報': 'mdi:network'
+	};
 </script>
 
 <!-- Overlay -->
@@ -65,30 +91,36 @@
 					<span class="font-medium">ホーム</span>
 				</a>
 
-				<!-- Tools -->
-				<div class="mt-6">
-					<h3 class="mb-2 px-3 text-sm font-semibold tracking-wider text-gray-500 uppercase">
-						ツール
-					</h3>
-					<div class="space-y-1">
-						{#each tools as tool (tool.name)}
-							{@const toolPath = `${base || ''}/tools/${tool.name}`}
-							<a
-								href={toolPath}
-								class="flex items-center rounded-lg p-3 text-gray-700 transition-colors hover:bg-gray-100 {currentPath ===
-								toolPath
-									? 'bg-blue-50 text-blue-700'
-									: ''}"
-								on:click={() => (isOpen = false)}
-							>
-								<Icon icon={tool.icon} class="mr-3 h-5 w-5" />
-								<div class="min-w-0 flex-1">
-									<div class="truncate font-medium">{tool.nameJa}</div>
-									<div class="truncate text-sm text-gray-500">{tool.description}</div>
-								</div>
-							</a>
-						{/each}
-					</div>
+				<!-- ツール（カテゴリ別） -->
+				<div class="mt-6 space-y-4">
+					{#each [...groupedTools.entries()] as [category, categoryTools] (category)}
+						<div>
+							<div class="mb-2 flex items-center px-2">
+								{#if categoryIcons[category]}
+									<Icon icon={categoryIcons[category]} class="mr-2 h-4 w-4 text-blue-600" />
+								{/if}
+								<h3 class="text-xs font-semibold tracking-wider text-gray-500 uppercase">
+									{category}
+								</h3>
+							</div>
+							<div class="space-y-0.5">
+								{#each categoryTools as tool (tool.name)}
+									{@const toolPath = `${base || ''}/tools/${tool.name}`}
+									<a
+										href={toolPath}
+										class="flex items-center rounded-lg p-2 text-gray-700 transition-colors hover:bg-gray-100 {currentPath ===
+										toolPath
+											? 'bg-blue-50 text-blue-700'
+											: ''}"
+										on:click={() => (isOpen = false)}
+									>
+										<Icon icon={tool.icon} class="mr-3 h-4 w-4" />
+										<span class="truncate text-sm font-medium">{tool.nameJa}</span>
+									</a>
+								{/each}
+							</div>
+						</div>
+					{/each}
 				</div>
 			</div>
 		</nav>

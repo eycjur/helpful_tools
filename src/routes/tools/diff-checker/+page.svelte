@@ -218,14 +218,6 @@
 
 				used.add(deleteIdx);
 				used.add(bestMatch);
-
-				console.log('Matched change detected:', {
-					deleteIdx,
-					insertIdx: bestMatch,
-					similarity: bestSimilarity,
-					left: deleteLine.leftLine,
-					right: insertLine.rightLine
-				});
 			}
 		}
 
