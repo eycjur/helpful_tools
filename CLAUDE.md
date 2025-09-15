@@ -13,7 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **データ変換**: JSON構造化表示、Base64変換、Notion/LaTeX変換
 - **画像・メディア**: 画像形式変換、動画圧縮
 - **QRコード**: 汎用QR、XプロフィールQR
-- **開発・比較ツール**: Diffチェッカー、curlビルダー、クリップボード検査
+- **開発・比較ツール**: コード整形、Diffチェッカー、curlビルダー、クリップボード検査
 - **ネットワーク・情報**: 接続元情報、Whois/ドメイン調査
 
 ### 主な特徴
@@ -103,7 +103,16 @@ helpful_tools/
 
 ### 新しいツールの追加手順
 
-1. `src/lib/data/tools.ts`に新ツールを追加:
+1. `src/lib/data/tools.ts`に新ツールを追加（**カテゴリ順序に沿って配置**）:
+
+   **カテゴリ順序**:
+   1. 生成AI
+   2. 文字・テキスト処理
+   3. データ変換
+   4. 画像・メディア
+   5. QRコード
+   6. 開発・比較ツール
+   7. ネットワーク・情報
 
    ```typescript
    {
