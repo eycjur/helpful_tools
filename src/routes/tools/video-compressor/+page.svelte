@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { tools } from '$lib/data/tools';
 	import Icon from '@iconify/svelte';
-	import { onDestroy } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
+	import { browser } from '$app/environment';
 
 	const tool = tools.find((t) => t.name === 'video-compressor');
 
@@ -54,21 +55,27 @@
 		'video/mpeg'
 	];
 
-	const availableMimeTypes = supportedMimeTypes.filter((type) =>
-		MediaRecorder.isTypeSupported(type)
-	);
+	let availableMimeTypes: string[] = [];
 
-	// デフォルトのMIMEタイプを利用可能な形式から自動選択
-	if (availableMimeTypes.length > 0) {
-		// MP4系を優先して探す
-		const preferredMp4 = availableMimeTypes.find(
-			(type) => type.includes('mp4') && type.includes('h264')
-		);
-		const fallbackMp4 = availableMimeTypes.find((type) => type.includes('mp4'));
-		const webmVp9 = availableMimeTypes.find((type) => type.includes('vp9'));
+	// ブラウザでのみ実行される初期化処理
+	onMount(() => {
+		if (browser && typeof MediaRecorder !== 'undefined') {
+			availableMimeTypes = supportedMimeTypes.filter((type) => MediaRecorder.isTypeSupported(type));
 
-		compressionSettings.mimeType = preferredMp4 || fallbackMp4 || webmVp9 || availableMimeTypes[0];
-	}
+			// デフォルトのMIMEタイプを利用可能な形式から自動選択
+			if (availableMimeTypes.length > 0) {
+				// MP4系を優先して探す
+				const preferredMp4 = availableMimeTypes.find(
+					(type) => type.includes('mp4') && type.includes('h264')
+				);
+				const fallbackMp4 = availableMimeTypes.find((type) => type.includes('mp4'));
+				const webmVp9 = availableMimeTypes.find((type) => type.includes('vp9'));
+
+				compressionSettings.mimeType =
+					preferredMp4 || fallbackMp4 || webmVp9 || availableMimeTypes[0];
+			}
+		}
+	});
 
 	function revokeObjectUrls() {
 		if (originalVideoUrl) URL.revokeObjectURL(originalVideoUrl);
@@ -340,10 +347,11 @@
 			<h3 class="mb-3 font-medium text-gray-900">画質設定</h3>
 			<div class="space-y-3">
 				<div>
-					<label class="block text-sm font-medium text-gray-700">
+					<label for="video-bitrate-range" class="block text-sm font-medium text-gray-700">
 						動画ビットレート: {formatBitrate(compressionSettings.videoBitsPerSecond)}
 					</label>
 					<input
+						id="video-bitrate-range"
 						type="range"
 						min="100000"
 						max="10000000"
@@ -353,10 +361,11 @@
 					/>
 				</div>
 				<div>
-					<label class="block text-sm font-medium text-gray-700">
+					<label for="audio-bitrate-range" class="block text-sm font-medium text-gray-700">
 						音声ビットレート: {Math.round(compressionSettings.audioBitsPerSecond / 1000)} kbps
 					</label>
 					<input
+						id="audio-bitrate-range"
 						type="range"
 						min="64000"
 						max="320000"
@@ -372,8 +381,11 @@
 			<h3 class="mb-3 font-medium text-gray-900">解像度設定</h3>
 			<div class="space-y-3">
 				<div>
-					<label class="block text-sm font-medium text-gray-700">最大幅 (px)</label>
+					<label for="max-width-input" class="block text-sm font-medium text-gray-700"
+						>最大幅 (px)</label
+					>
 					<input
+						id="max-width-input"
 						type="number"
 						bind:value={compressionSettings.maxWidth}
 						min="320"
@@ -383,8 +395,11 @@
 					/>
 				</div>
 				<div>
-					<label class="block text-sm font-medium text-gray-700">最大高さ (px)</label>
+					<label for="max-height-input" class="block text-sm font-medium text-gray-700"
+						>最大高さ (px)</label
+					>
 					<input
+						id="max-height-input"
 						type="number"
 						bind:value={compressionSettings.maxHeight}
 						min="240"
@@ -400,8 +415,11 @@
 			<h3 class="mb-3 font-medium text-gray-900">フォーマット設定</h3>
 			<div class="space-y-3">
 				<div>
-					<label class="block text-sm font-medium text-gray-700">出力形式</label>
+					<label for="output-format-select" class="block text-sm font-medium text-gray-700"
+						>出力形式</label
+					>
 					<select
+						id="output-format-select"
 						bind:value={compressionSettings.mimeType}
 						class="mt-1 w-full rounded border border-gray-300 px-3 py-2"
 					>

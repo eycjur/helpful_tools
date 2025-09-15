@@ -178,8 +178,9 @@
 				<span class="text-sm font-medium text-gray-700">タブをスペースに変換</span>
 			</label>
 			<div class="mt-2 flex items-center">
-				<label class="mr-2 text-xs text-gray-500">サイズ:</label>
+				<label for="tab-size-input" class="mr-2 text-xs text-gray-500">サイズ:</label>
 				<input
+					id="tab-size-input"
 					type="number"
 					bind:value={tabSize}
 					min="2"

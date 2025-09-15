@@ -209,30 +209,61 @@
 	<!-- 設定 -->
 	<div class="mb-4 grid grid-cols-1 gap-4 md:grid-cols-2">
 		<div class="rounded-lg border border-gray-200 bg-white p-4">
-			<label class="block text-sm font-medium text-gray-700"
+			<label for="quality-range" class="block text-sm font-medium text-gray-700"
 				>画質（JPEG/WebP）
 				<span class="ml-1 text-xs text-gray-500">{Math.round(quality * 100)}%</span>
 			</label>
-			<input type="range" min="0.1" max="1" step="0.01" bind:value={quality} class="mt-2 w-full" />
+			<input
+				id="quality-range"
+				type="range"
+				min="0.1"
+				max="1"
+				step="0.01"
+				bind:value={quality}
+				class="mt-2 w-full"
+			/>
 		</div>
 		<div class="rounded-lg border border-gray-200 bg-white p-4">
-			<label class="block text-sm font-medium text-gray-700">JPEG背景色（透過の合成先）</label>
-			<input type="color" bind:value={bgColor} class="mt-1 h-10 w-16 rounded border-gray-300" />
+			<label for="bg-color-input" class="block text-sm font-medium text-gray-700"
+				>JPEG背景色（透過の合成先）</label
+			>
+			<input
+				id="bg-color-input"
+				type="color"
+				bind:value={bgColor}
+				class="mt-1 h-10 w-16 rounded border-gray-300"
+			/>
 		</div>
 	</div>
 
 	<!-- 取り込み -->
 	<div
+		role="button"
+		tabindex="0"
+		aria-label="画像ファイルをドラッグ&ドロップまたはクリックして選択"
 		on:dragover|preventDefault={() => (dragOver = true)}
 		on:dragleave={() => (dragOver = false)}
 		on:drop={onDrop}
-		class="mb-4 flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 text-center transition-colors {dragOver
+		on:click={() => document.getElementById('image-file-input')?.click()}
+		on:keydown={(e) => {
+			if (e.key === 'Enter' || e.key === ' ') {
+				e.preventDefault();
+				document.getElementById('image-file-input')?.click();
+			}
+		}}
+		class="mb-4 flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 text-center transition-colors {dragOver
 			? 'border-blue-400 bg-blue-50'
 			: 'border-gray-300 bg-gray-50'}"
 	>
 		<p class="mb-2 text-gray-700">画像ファイルをドラッグ＆ドロップ</p>
 		<p class="mb-3 text-xs text-gray-500">PNG / JPEG / WebP</p>
-		<input type="file" accept="image/*" on:change={onFileInput} class="block" />
+		<input
+			id="image-file-input"
+			type="file"
+			accept="image/*"
+			on:change={onFileInput}
+			class="block"
+		/>
 	</div>
 
 	{#if items.length}

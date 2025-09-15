@@ -120,7 +120,11 @@
 
 					{#if data.url}
 						<div class="flex items-center justify-center overflow-hidden rounded bg-gray-50">
-							<img src={data.url} alt="clipboard image" class="h-96 w-auto object-contain" />
+							<img
+								src={data.url}
+								alt="クリップボードからの内容"
+								class="h-96 w-auto object-contain"
+							/>
 						</div>
 					{:else}
 						<textarea

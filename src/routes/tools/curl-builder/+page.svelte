@@ -427,7 +427,7 @@
 				{#if bodyType === 'json'}
 					<div>
 						<div class="mb-2 flex justify-between">
-							<label class="text-sm text-gray-600">JSON データ</label>
+							<label for="json-body-textarea" class="text-sm text-gray-600">JSON データ</label>
 							<button
 								on:click={formatJSON}
 								class="rounded bg-blue-100 px-2 py-1 text-xs text-blue-600 hover:bg-blue-200"
@@ -436,6 +436,7 @@
 							</button>
 						</div>
 						<textarea
+							id="json-body-textarea"
 							bind:value={jsonBody}
 							class="h-32 w-full rounded border-gray-300 p-3 font-mono text-sm"
 						></textarea>
@@ -443,7 +444,7 @@
 				{:else if bodyType === 'form'}
 					<div class="space-y-2">
 						<div class="mb-2 flex justify-between">
-							<label class="text-sm text-gray-600">フォームデータ</label>
+							<span class="text-sm text-gray-600">フォームデータ</span>
 							<button
 								on:click={addFormData}
 								class="rounded bg-blue-600 px-3 py-1 text-sm text-white hover:bg-blue-700"
@@ -477,8 +478,11 @@
 					</div>
 				{:else if bodyType === 'raw'}
 					<div>
-						<label class="mb-2 block text-sm text-gray-600">Raw データ</label>
+						<label for="raw-body-textarea" class="mb-2 block text-sm text-gray-600"
+							>Raw データ</label
+						>
 						<textarea
+							id="raw-body-textarea"
 							bind:value={rawBody}
 							placeholder="テキストデータを入力してください"
 							class="h-32 w-full rounded border-gray-300 p-3 font-mono text-sm"
@@ -557,8 +561,9 @@
 						</label>
 					</div>
 					<div class="flex items-center gap-3">
-						<label class="text-sm">タイムアウト (秒):</label>
+						<label for="timeout-input" class="text-sm">タイムアウト (秒):</label>
 						<input
+							id="timeout-input"
 							type="number"
 							bind:value={timeout}
 							min="0"

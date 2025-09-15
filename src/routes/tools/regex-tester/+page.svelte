@@ -186,7 +186,9 @@
 		<div class="flex flex-col gap-4">
 			<div class="rounded-lg border border-gray-200 bg-white p-4">
 				<div class="mb-2 flex items-center justify-between">
-					<label class="text-sm font-medium text-gray-700">【入力】正規表現</label>
+					<label for="regex-pattern-input" class="text-sm font-medium text-gray-700"
+						>【入力】正規表現</label
+					>
 					<button
 						on:click={() => {
 							pattern = '';
@@ -199,6 +201,7 @@
 				</div>
 				<div class="mt-1 flex items-center gap-2">
 					<input
+						id="regex-pattern-input"
 						type="text"
 						bind:value={pattern}
 						on:input={recompute}
@@ -240,7 +243,9 @@
 
 			<div class="rounded-lg border border-gray-200 bg-white p-4">
 				<div class="mb-2 flex items-center justify-between">
-					<label class="text-sm font-medium text-gray-700">【入力】テスト文字列</label>
+					<label for="test-text-textarea" class="text-sm font-medium text-gray-700"
+						>【入力】テスト文字列</label
+					>
 					<button
 						on:click={() => {
 							inputText = '';
@@ -251,6 +256,7 @@
 					>
 				</div>
 				<textarea
+					id="test-text-textarea"
 					bind:value={inputText}
 					on:input={recompute}
 					class="mt-1 h-32 w-full resize-y rounded border-gray-300 p-3 font-mono text-sm"

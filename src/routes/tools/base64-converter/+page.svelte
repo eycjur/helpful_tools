@@ -229,17 +229,33 @@
 
 			<!-- ファイル選択エリア -->
 			<div
+				role="button"
+				tabindex="0"
+				aria-label="ファイルをドラッグ&ドロップまたはクリックして選択"
 				on:dragover|preventDefault={() => (dragOver = true)}
 				on:dragleave={() => (dragOver = false)}
 				on:drop={handleDrop}
-				class="flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 text-center transition-colors {dragOver
+				on:click={() => document.getElementById('file-input')?.click()}
+				on:keydown={(e) => {
+					if (e.key === 'Enter' || e.key === ' ') {
+						e.preventDefault();
+						document.getElementById('file-input')?.click();
+					}
+				}}
+				class="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 text-center transition-colors {dragOver
 					? 'border-blue-400 bg-blue-50'
 					: 'border-gray-300 bg-gray-50'}"
 			>
 				<Icon icon="mdi:cloud-upload" class="mb-2 h-12 w-12 text-gray-400" />
 				<p class="mb-2 text-gray-700">画像ファイルをドラッグ＆ドロップ</p>
 				<p class="mb-3 text-xs text-gray-500">PNG / JPEG / WebP / GIF</p>
-				<input type="file" accept="image/*" on:change={handleFileSelect} class="block" />
+				<input
+					id="file-input"
+					type="file"
+					accept="image/*"
+					on:change={handleFileSelect}
+					class="block"
+				/>
 			</div>
 
 			<!-- プレビューと結果 -->
