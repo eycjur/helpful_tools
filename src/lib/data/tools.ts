@@ -49,6 +49,36 @@ export const tools: Tool[] = [
 		icon: 'mdi:numeric'
 	},
 	{
+		nameJa: 'Diffチェッカー',
+		name: 'diff-checker',
+		description: 'テキストの差分を視覚的に表示・比較します',
+		icon: 'mdi:file-compare'
+	},
+	{
+		nameJa: '接続元情報表示',
+		name: 'connection-info',
+		description: 'IPアドレスやブラウザなどの接続元情報を詳細表示します',
+		icon: 'mdi:ip-network'
+	},
+	{
+		nameJa: 'Whois・ドメイン情報',
+		name: 'whois-lookup',
+		description: 'ドメイン・IPアドレスのWhois情報とDNSレコードを調査します',
+		icon: 'mdi:dns'
+	},
+	{
+		nameJa: 'HTML/URL エンコーダ',
+		name: 'html-url-encoder',
+		description: 'HTML特殊文字やURLの文字列をエンコード・デコードします',
+		icon: 'mdi:code-tags'
+	},
+	{
+		nameJa: 'curlコマンドビルダー',
+		name: 'curl-builder',
+		description: 'HTTPリクエスト用のcurlコマンドを視覚的に構築します',
+		icon: 'mdi:console-network'
+	},
+	{
 		nameJa: 'X プロフィール QR',
 		name: 'x-qrcode-generator',
 		description: 'X（旧Twitter）プロフィール用のQRコードを生成します',

@@ -18,7 +18,7 @@
 	// 圧縮設定（デフォルトはMP4）
 	let compressionSettings = {
 		videoBitsPerSecond: 1000000, // 1Mbps
-		audioBitsPerSecond: 128000,  // 128kbps
+		audioBitsPerSecond: 128000, // 128kbps
 		mimeType: 'video/mp4;codecs=h264', // MP4をデフォルトに
 		quality: 0.8,
 		maxWidth: 1920,
@@ -54,18 +54,18 @@
 		'video/mpeg'
 	];
 
-	const availableMimeTypes = supportedMimeTypes.filter(type =>
+	const availableMimeTypes = supportedMimeTypes.filter((type) =>
 		MediaRecorder.isTypeSupported(type)
 	);
 
 	// デフォルトのMIMEタイプを利用可能な形式から自動選択
 	if (availableMimeTypes.length > 0) {
 		// MP4系を優先して探す
-		const preferredMp4 = availableMimeTypes.find(type =>
-			type.includes('mp4') && type.includes('h264')
+		const preferredMp4 = availableMimeTypes.find(
+			(type) => type.includes('mp4') && type.includes('h264')
 		);
-		const fallbackMp4 = availableMimeTypes.find(type => type.includes('mp4'));
-		const webmVp9 = availableMimeTypes.find(type => type.includes('vp9'));
+		const fallbackMp4 = availableMimeTypes.find((type) => type.includes('mp4'));
+		const webmVp9 = availableMimeTypes.find((type) => type.includes('vp9'));
 
 		compressionSettings.mimeType = preferredMp4 || fallbackMp4 || webmVp9 || availableMimeTypes[0];
 	}
@@ -122,7 +122,7 @@
 			duration: originalVideoEl.duration,
 			width: originalVideoEl.videoWidth,
 			height: originalVideoEl.videoHeight,
-			bitrate: Math.round(originalFile.size * 8 / originalVideoEl.duration)
+			bitrate: Math.round((originalFile.size * 8) / originalVideoEl.duration)
 		};
 
 		// 圧縮設定の自動調整
@@ -190,7 +190,7 @@
 					duration: originalStats.duration,
 					width: targetWidth,
 					height: targetHeight,
-					bitrate: Math.round(blob.size * 8 / originalStats.duration)
+					bitrate: Math.round((blob.size * 8) / originalStats.duration)
 				};
 
 				isCompressing = false;
@@ -209,7 +209,9 @@
 					ctx.drawImage(originalVideoEl, 0, 0, targetWidth, targetHeight);
 
 					// 進捗更新
-					compressionProgress = Math.round((originalVideoEl.currentTime / originalVideoEl.duration) * 100);
+					compressionProgress = Math.round(
+						(originalVideoEl.currentTime / originalVideoEl.duration) * 100
+					);
 
 					requestAnimationFrame(drawFrame);
 				} else {
@@ -218,12 +220,11 @@
 					originalVideoEl.pause();
 
 					// 音声ストリームのクリーンアップ
-					stream.getTracks().forEach(track => track.stop());
+					stream.getTracks().forEach((track) => track.stop());
 				}
 			};
 
 			drawFrame();
-
 		} catch (error) {
 			console.error('Compression failed:', error);
 			alert('圧縮に失敗しました: ' + (error as Error).message);
@@ -246,7 +247,10 @@
 		const baseName = originalFile.name.replace(/\.[^.]+$/, '');
 		let extension = 'webm';
 
-		if (compressionSettings.mimeType.includes('mp4') || compressionSettings.mimeType.includes('mpeg')) {
+		if (
+			compressionSettings.mimeType.includes('mp4') ||
+			compressionSettings.mimeType.includes('mpeg')
+		) {
 			extension = 'mp4';
 		} else if (compressionSettings.mimeType.includes('webm')) {
 			extension = 'webm';
@@ -309,10 +313,11 @@
 		const resolutionRatio = targetPixels / originalPixels;
 
 		// 解像度が下がる場合は、同じビットレートでより効率的に圧縮できると仮定
-		const adjustedVideoBitrate = compressionSettings.videoBitsPerSecond * Math.sqrt(resolutionRatio);
+		const adjustedVideoBitrate =
+			compressionSettings.videoBitsPerSecond * Math.sqrt(resolutionRatio);
 		const totalBitrate = adjustedVideoBitrate + compressionSettings.audioBitsPerSecond;
 
-		return Math.round(totalBitrate * originalStats.duration / 8);
+		return Math.round((totalBitrate * originalStats.duration) / 8);
 	}
 
 	// 想定サイズと現在のサイズとの削減率を計算
@@ -400,16 +405,23 @@
 						bind:value={compressionSettings.mimeType}
 						class="mt-1 w-full rounded border border-gray-300 px-3 py-2"
 					>
-						{#each availableMimeTypes as mimeType}
+						{#each availableMimeTypes as mimeType (mimeType)}
 							<option value={mimeType}>
-								{mimeType.includes('vp9') ? 'WebM (VP9 - 最高品質)' :
-								 mimeType.includes('vp8') ? 'WebM (VP8 - 高品質)' :
-								 mimeType.includes('h264') ? 'MP4 (H.264)' :
-								 mimeType.includes('avc1.42E01E') ? 'MP4 (H.264 Baseline)' :
-								 mimeType.includes('avc1.64001E') ? 'MP4 (H.264 High)' :
-								 mimeType.includes('mp4') ? 'MP4 (汎用)' :
-								 mimeType.includes('mpeg') ? 'MPEG' :
-								 'WebM (標準)'}
+								{mimeType.includes('vp9')
+									? 'WebM (VP9 - 最高品質)'
+									: mimeType.includes('vp8')
+										? 'WebM (VP8 - 高品質)'
+										: mimeType.includes('h264')
+											? 'MP4 (H.264)'
+											: mimeType.includes('avc1.42E01E')
+												? 'MP4 (H.264 Baseline)'
+												: mimeType.includes('avc1.64001E')
+													? 'MP4 (H.264 High)'
+													: mimeType.includes('mp4')
+														? 'MP4 (汎用)'
+														: mimeType.includes('mpeg')
+															? 'MPEG'
+															: 'WebM (標準)'}
 							</option>
 						{/each}
 					</select>
@@ -429,9 +441,14 @@
 		on:dragleave={() => (dragOver = false)}
 		on:drop={handleDrop}
 		on:click={() => document.getElementById('video-file-input')?.click()}
-		on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); document.getElementById('video-file-input')?.click(); } }}
-		class="mb-6 flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 text-center transition-all duration-300 cursor-pointer hover:border-blue-400 hover:bg-blue-50 {dragOver
-			? 'border-blue-400 bg-blue-50 scale-105'
+		on:keydown={(e) => {
+			if (e.key === 'Enter' || e.key === ' ') {
+				e.preventDefault();
+				document.getElementById('video-file-input')?.click();
+			}
+		}}
+		class="mb-6 flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 text-center transition-all duration-300 hover:border-blue-400 hover:bg-blue-50 {dragOver
+			? 'scale-105 border-blue-400 bg-blue-50'
 			: 'border-gray-300 bg-gray-50'}"
 	>
 		<Icon
@@ -447,7 +464,7 @@
 		<div class="flex flex-col items-center gap-3">
 			<button
 				type="button"
-				class="rounded-lg bg-blue-600 px-6 py-3 font-medium text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+				class="rounded-lg bg-blue-600 px-6 py-3 font-medium text-white transition-colors hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:outline-none"
 			>
 				<Icon icon="mdi:folder-open" class="mr-2 inline h-5 w-5" />
 				ファイルを選択
@@ -478,8 +495,10 @@
 						{formatFileSize(estimatedSize)}
 					</div>
 					<div class="text-sm text-blue-700">
-						{estimatedReduction > 0 ? '-' : '+'}{Math.abs(estimatedReduction).toFixed(1)}%
-						({estimatedReduction > 0 ? '削減' : '増加'}予想)
+						{estimatedReduction > 0 ? '-' : '+'}{Math.abs(estimatedReduction).toFixed(1)}% ({estimatedReduction >
+						0
+							? '削減'
+							: '増加'}予想)
 					</div>
 				</div>
 			</div>
@@ -497,11 +516,11 @@
 				<button
 					on:click={compressVideo}
 					disabled={isCompressing || !availableMimeTypes.length}
-					class="rounded bg-blue-600 px-6 py-3 text-white disabled:opacity-50 hover:bg-blue-700"
+					class="rounded bg-blue-600 px-6 py-3 text-white hover:bg-blue-700 disabled:opacity-50"
 				>
 					{#if isCompressing}
 						<div class="flex items-center">
-							<div class="mr-2 animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+							<div class="mr-2 h-4 w-4 animate-spin rounded-full border-b-2 border-white"></div>
 							圧縮中... {compressionProgress}%
 						</div>
 					{:else}
@@ -594,7 +613,7 @@
 						<!-- 圧縮率表示 -->
 						{#if originalStats.size > 0 && compressedStats.size > 0}
 							{@const sizeDiff = originalStats.size - compressedStats.size}
-							{@const compressionRatio = (sizeDiff / originalStats.size * 100)}
+							{@const compressionRatio = (sizeDiff / originalStats.size) * 100}
 							{@const isReduced = sizeDiff > 0}
 							<div class="mt-3 rounded p-2 text-center {isReduced ? 'bg-green-50' : 'bg-red-50'}">
 								<span class="font-medium {isReduced ? 'text-green-700' : 'text-red-700'}">
@@ -604,20 +623,22 @@
 							</div>
 						{/if}
 					{:else if isCompressing}
-						<div class="flex items-center justify-center h-48 bg-gray-100 rounded">
+						<div class="flex h-48 items-center justify-center rounded bg-gray-100">
 							<div class="text-center">
-								<div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+								<div
+									class="mx-auto mb-2 h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600"
+								></div>
 								<p class="text-gray-600">圧縮中... {compressionProgress}%</p>
-								<div class="w-32 bg-gray-200 rounded-full h-2 mt-2 mx-auto">
+								<div class="mx-auto mt-2 h-2 w-32 rounded-full bg-gray-200">
 									<div
-										class="bg-blue-600 h-2 rounded-full transition-all duration-300"
+										class="h-2 rounded-full bg-blue-600 transition-all duration-300"
 										style="width: {compressionProgress}%"
 									></div>
 								</div>
 							</div>
 						</div>
 					{:else}
-						<div class="flex items-center justify-center h-48 bg-gray-100 rounded text-gray-500">
+						<div class="flex h-48 items-center justify-center rounded bg-gray-100 text-gray-500">
 							圧縮を実行すると、結果がここに表示されます
 						</div>
 					{/if}
@@ -625,7 +646,6 @@
 			</div>
 		</div>
 	{/if}
-
 
 	<!-- 隠しCanvas（描画処理用） -->
 	<canvas bind:this={hiddenCanvas} class="hidden"></canvas>
