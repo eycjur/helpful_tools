@@ -16,14 +16,14 @@
 	let compressionProgress = 0;
 	let dragOver = false;
 
-	// 圧縮設定（デフォルトはMP4）
+	// 圧縮設定（デフォルトはMP4、4K対応）
 	let compressionSettings = {
 		videoBitsPerSecond: 1000000, // 1Mbps
 		audioBitsPerSecond: 128000, // 128kbps
 		mimeType: 'video/mp4;codecs=h264', // MP4をデフォルトに
 		quality: 0.8,
-		maxWidth: 1920,
-		maxHeight: 1080
+		maxWidth: 3840,
+		maxHeight: 2160
 	};
 
 	// 動画情報
@@ -132,9 +132,45 @@
 			bitrate: Math.round((originalFile.size * 8) / originalVideoEl.duration)
 		};
 
-		// 圧縮設定の自動調整
-		compressionSettings.maxWidth = Math.min(originalStats.width, 1920);
-		compressionSettings.maxHeight = Math.min(originalStats.height, 1080);
+		// 圧縮設定の自動調整（アスペクト比を維持、4K対応）
+		const { width: autoMaxWidth, height: autoMaxHeight } = calculateAspectRatioConstrainedSize(
+			originalStats.width,
+			originalStats.height,
+			3840,
+			2160
+		);
+		compressionSettings.maxWidth = autoMaxWidth;
+		compressionSettings.maxHeight = autoMaxHeight;
+	}
+
+	// アスペクト比を維持しながら最大サイズ制限を適用する関数
+	function calculateAspectRatioConstrainedSize(
+		originalWidth: number,
+		originalHeight: number,
+		maxWidth: number,
+		maxHeight: number
+	): { width: number; height: number } {
+		if (originalWidth <= 0 || originalHeight <= 0) {
+			return { width: maxWidth, height: maxHeight };
+		}
+
+		const aspectRatio = originalWidth / originalHeight;
+
+		// 幅制限とアスペクト比から高さを計算
+		let targetWidth = Math.min(originalWidth, maxWidth);
+		let targetHeight = targetWidth / aspectRatio;
+
+		// 高さが制限を超える場合は高さベースで再計算
+		if (targetHeight > maxHeight) {
+			targetHeight = Math.min(originalHeight, maxHeight);
+			targetWidth = targetHeight * aspectRatio;
+		}
+
+		// 8の倍数に調整（動画エンコーディングの最適化）
+		return {
+			width: Math.round(targetWidth / 8) * 8,
+			height: Math.round(targetHeight / 8) * 8
+		};
 	}
 
 	// 動画圧縮処理
@@ -145,10 +181,14 @@
 		compressionProgress = 0;
 
 		try {
-			// キャンバスの設定
+			// キャンバスの設定（アスペクト比を維持）
 			const canvas = hiddenCanvas;
-			const targetWidth = Math.min(originalStats.width, compressionSettings.maxWidth);
-			const targetHeight = Math.min(originalStats.height, compressionSettings.maxHeight);
+			const { width: targetWidth, height: targetHeight } = calculateAspectRatioConstrainedSize(
+				originalStats.width,
+				originalStats.height,
+				compressionSettings.maxWidth,
+				compressionSettings.maxHeight
+			);
 
 			canvas.width = targetWidth;
 			canvas.height = targetHeight;
@@ -156,19 +196,8 @@
 			const ctx = canvas.getContext('2d');
 			if (!ctx) throw new Error('Canvas context not available');
 
-			// MediaStream取得
+			// MediaStream取得（映像のみ）
 			const stream = canvas.captureStream(30); // 30fps
-
-			// 元動画の音声ストリームを取得（可能であれば）
-			try {
-				const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-				const audioTrack = audioStream.getAudioTracks()[0];
-				if (audioTrack) {
-					stream.addTrack(audioTrack);
-				}
-			} catch {
-				// 音声取得できない場合は続行
-			}
 
 			// MediaRecorder設定
 			const recordOptions = {
@@ -311,9 +340,13 @@
 	function calculateEstimatedSize(): number {
 		if (!originalStats.duration || !originalStats.width || !originalStats.height) return 0;
 
-		// 解像度変更による影響を計算
-		const targetWidth = Math.min(originalStats.width, compressionSettings.maxWidth);
-		const targetHeight = Math.min(originalStats.height, compressionSettings.maxHeight);
+		// 解像度変更による影響を計算（アスペクト比を維持）
+		const { width: targetWidth, height: targetHeight } = calculateAspectRatioConstrainedSize(
+			originalStats.width,
+			originalStats.height,
+			compressionSettings.maxWidth,
+			compressionSettings.maxHeight
+		);
 
 		const originalPixels = originalStats.width * originalStats.height;
 		const targetPixels = targetWidth * targetHeight;
@@ -389,7 +422,7 @@
 						type="number"
 						bind:value={compressionSettings.maxWidth}
 						min="320"
-						max="3840"
+						max="7680"
 						step="8"
 						class="mt-1 w-full rounded border border-gray-300 px-3 py-2"
 					/>
@@ -403,7 +436,7 @@
 						type="number"
 						bind:value={compressionSettings.maxHeight}
 						min="240"
-						max="2160"
+						max="4320"
 						step="8"
 						class="mt-1 w-full rounded border border-gray-300 px-3 py-2"
 					/>
