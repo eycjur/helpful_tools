@@ -6,14 +6,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 「困った時のツール集」は、日常的に使える便利ツール集のWebアプリケーションです。
 
-### 提供ツール（7カテゴリ、19ツール）
+### 提供ツール（7カテゴリ、20ツール）
 
 - **生成AI**: HTML/リッチテキスト → Markdown変換（AI活用）
 - **文字・テキスト処理**: 正規表現テスター、文字数カウンタ、HTML/URLエンコーダ
 - **データ変換**: JSON構造化表示、Base64変換、Notion/LaTeX変換
 - **画像・メディア**: 画像形式変換、動画圧縮
 - **QRコード**: 汎用QR、XプロフィールQR
-- **開発・比較ツール**: コード整形、Diffチェッカー、curlビルダー、クリップボード検査
+- **開発・比較ツール**: コード整形、Diffチェッカー、curlビルダー、クリップボード検査、Pythonコード解析
 - **ネットワーク・情報**: 接続元情報、Whois/ドメイン調査
 
 ### 主な特徴
@@ -205,6 +205,15 @@ helpful_tools/
 - **MVP形式**: PNG/JPEG/WebPに対応。
 - **リソース解放**: `URL.createObjectURL`で作成したURLは使用後に`URL.revokeObjectURL`で解放。
 - **バッチ処理**: 大量画像はUIブロック回避のため、段階的にWeb Worker + OffscreenCanvas導入を検討。
+
+#### Pythonコード解析（新規ツール）
+
+- **Pyodide使用**: ブラウザ上でPythonを実行できるPyodide (v0.25.0) をCDN経由で動的読み込み。
+- **インジェクション対策**: ユーザーコードは`pyodide.globals.set()`で安全に渡す（`JSON.stringify()`によるインジェクションリスク回避）。
+- **メモリリーク対策**: onMountで追加したスクリプトタグをクリーンアップ関数で削除。
+- **型定義**: PyodideInterfaceインターフェースで`any`型を最小限に抑制。
+- **エラーハンドリング**: `instanceof Error`で型安全なエラーメッセージ表示。
+- **表示機能**: AST（抽象構文木）とBytecode（dis.Bytecode）の2つの視点でPythonコード解析、実行出力も確認可能。
 
 ## 開発時の注意点
 

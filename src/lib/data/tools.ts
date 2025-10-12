@@ -57,6 +57,13 @@ export const tools: Tool[] = [
 		category: '開発・比較ツール'
 	},
 	{
+		nameJa: 'Pythonコード解析',
+		name: 'python-analyzer',
+		description: 'PythonコードのAST・Bytecode・実行トレースを確認',
+		icon: 'mdi:language-python',
+		category: '開発・比較ツール'
+	},
+	{
 		nameJa: '正規表現テスター',
 		name: 'regex-tester',
 		description: 'JavaScript正規表現で一致箇所・グループを確認',
