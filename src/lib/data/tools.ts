@@ -64,6 +64,20 @@ export const tools: Tool[] = [
 		category: '開発・比較ツール'
 	},
 	{
+		nameJa: 'ハッシュ値計算',
+		name: 'hash-calculator',
+		description: 'ファイルやテキストのハッシュ値を計算（MD5/SHA-1/SHA-256/SHA-384/SHA-512）',
+		icon: 'mdi:fingerprint',
+		category: '開発・比較ツール'
+	},
+	{
+		nameJa: 'Hexダンプ',
+		name: 'hex-dump',
+		description: 'バイナリファイルを16進数ダンプ形式で表示',
+		icon: 'mdi:file-code',
+		category: '開発・比較ツール'
+	},
+	{
 		nameJa: '正規表現テスター',
 		name: 'regex-tester',
 		description: 'JavaScript正規表現で一致箇所・グループを確認',

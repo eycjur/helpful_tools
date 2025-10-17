@@ -23,6 +23,7 @@
 		"@sveltejs/vite-plugin-svelte": "^6.0.0",
 		"@tailwindcss/typography": "^0.5.15",
 		"@tailwindcss/vite": "^4.0.0",
+		"@types/crypto-js": "^4.2.2",
 		"@types/diff": "^7.0.2",
 		"@types/quill": "^2.0.14",
 		"@types/turndown": "^5.0.5",
@@ -60,6 +61,7 @@
 		"@iconify/json": "^2.2.360",
 		"@iconify/svelte": "^5.0.0",
 		"@sveltejs/adapter-static": "^3.0.8",
+		"crypto-js": "^4.2.0",
 		"diff": "^8.0.2",
 		"quill": "^2.0.3",
 		"turndown": "^7.2.0"
