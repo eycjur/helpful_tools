@@ -338,6 +338,8 @@
 						{#each line.bytes as byte, i (byte.offset)}
 							{#if i > 0 && i % 2 === 0}<span> </span>{/if}
 							<span
+								role="button"
+								tabindex="0"
 								class="hex-byte cursor-pointer transition-colors {hoveredByteIndex === byte.offset
 									? 'bg-yellow-200'
 									: 'hover:bg-blue-100'}"
@@ -360,6 +362,8 @@
 						<!-- ASCII表示 -->
 						{#each line.bytes as byte (byte.offset)}
 							<span
+								role="button"
+								tabindex="0"
 								class="ascii-byte cursor-pointer transition-colors {hoveredByteIndex === byte.offset
 									? 'bg-yellow-200'
 									: 'hover:bg-blue-100'}"

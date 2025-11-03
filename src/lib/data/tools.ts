@@ -99,6 +99,13 @@ export const tools: Tool[] = [
 		category: '文字・テキスト処理'
 	},
 	{
+		nameJa: 'エンコード文字列デコーダ',
+		name: 'string-decoder',
+		description: '20種類以上のエンコード形式を自動検出・デコードします',
+		icon: 'mdi:file-code-outline',
+		category: '文字・テキスト処理'
+	},
+	{
 		nameJa: '接続元情報表示',
 		name: 'connection-info',
 		description: 'IPアドレスやブラウザなどの接続元情報を詳細表示します',
