@@ -102,9 +102,9 @@
 
 		// リクエストボディ
 		if (bodyType === 'json' && jsonBody.trim()) {
-			parts.push(`-d '${jsonBody.trim()}'`);
+			parts.push(`-d '${escapeSingleQuotes(jsonBody.trim())}'`);
 		} else if (bodyType === 'raw' && rawBody.trim()) {
-			parts.push(`-d '${rawBody.trim()}'`);
+			parts.push(`-d '${escapeSingleQuotes(rawBody.trim())}'`);
 		} else if (bodyType === 'form') {
 			const enabledFormData = formData.filter((f) => f.enabled && f.key.trim());
 			enabledFormData.forEach((form) => {
@@ -131,9 +131,15 @@
 		}
 	}
 
-	// 引用符をエスケープ
+	// ダブルクォートをエスケープ（ダブルクォートで囲む場合用）
 	function escapeQuotes(str: string): string {
 		return str.replace(/"/g, '\\"');
+	}
+
+	// シングルクォートをエスケープ（シングルクォートで囲む場合用）
+	// シェルでは 'text' 内の ' は '\'' でエスケープする
+	function escapeSingleQuotes(str: string): string {
+		return str.replace(/'/g, "'\\''");
 	}
 
 	// リアルタイム更新（依存する変数の変更を検知）

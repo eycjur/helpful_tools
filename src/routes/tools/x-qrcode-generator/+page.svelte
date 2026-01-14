@@ -96,6 +96,47 @@
 	$: if (username && showXIcon) {
 		generateXQR();
 	}
+
+	// QRコードをダウンロード
+	async function downloadQRCode() {
+		if (!username) return;
+
+		try {
+			let dataUrl: string;
+			let filename: string;
+
+			const cleanUsername = username.startsWith('@') ? username.slice(1) : username;
+
+			if (showXIcon && canvasRef) {
+				// Xアイコン付きの場合: canvasからダウンロード
+				dataUrl = canvasRef.toDataURL('image/png');
+				filename = `x-qrcode-${cleanUsername}.png`;
+			} else {
+				// アイコンなしの場合: 外部APIの画像をfetchしてダウンロード
+				const response = await fetch(qrUrl);
+				const blob = await response.blob();
+				dataUrl = URL.createObjectURL(blob);
+				filename = `x-qrcode-${cleanUsername}.png`;
+
+				// ダウンロード後にURLを解放
+				const link = document.createElement('a');
+				link.href = dataUrl;
+				link.download = filename;
+				link.click();
+				URL.revokeObjectURL(dataUrl);
+				return;
+			}
+
+			// canvasの場合のダウンロード
+			const link = document.createElement('a');
+			link.href = dataUrl;
+			link.download = filename;
+			link.click();
+		} catch (error) {
+			console.error('ダウンロードに失敗しました:', error);
+			errorMessage = 'ダウンロードに失敗しました。';
+		}
+	}
 </script>
 
 <div class="mx-auto max-w-2xl">
@@ -131,7 +172,7 @@
 			</p>
 		</div>
 
-		<div class="flex justify-center">
+		<div class="flex flex-col items-center">
 			<!-- Loading中に非表示になると、canvasRefが失われるので、else if節にしてはいけない -->
 			<canvas
 				bind:this={canvasRef}
@@ -153,6 +194,17 @@
 				</div>
 			{:else if !showXIcon}
 				<img src={qrUrl} alt="QRコード" class="max-w-xs rounded-lg border border-gray-300" />
+			{/if}
+
+			<!-- ダウンロードボタン -->
+			{#if !isLoading && !errorMessage}
+				<button
+					on:click={downloadQRCode}
+					class="mt-4 flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-white transition-colors hover:bg-green-700"
+				>
+					<Icon icon="mdi:download" class="h-5 w-5" />
+					QRコードをダウンロード
+				</button>
 			{/if}
 		</div>
 	{/if}

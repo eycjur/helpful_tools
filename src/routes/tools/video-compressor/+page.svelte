@@ -196,8 +196,35 @@
 			const ctx = canvas.getContext('2d');
 			if (!ctx) throw new Error('Canvas context not available');
 
-			// MediaStream取得（映像のみ）
-			const stream = canvas.captureStream(30); // 30fps
+			// MediaStream取得（映像）
+			const videoStream = canvas.captureStream(30); // 30fps
+
+			// 元動画から音声トラックを取得して追加
+			// 注意: captureStream()はHTMLMediaElementのメソッドで、一部のブラウザでは利用不可
+			let audioContext: AudioContext | null = null;
+			let audioSource: MediaElementAudioSourceNode | null = null;
+			let audioDestination: MediaStreamAudioDestinationNode | null = null;
+
+			try {
+				// AudioContext経由で音声を取得（より広いブラウザサポート）
+				audioContext = new AudioContext();
+				audioSource = audioContext.createMediaElementSource(originalVideoEl);
+				audioDestination = audioContext.createMediaStreamDestination();
+
+				// 音声をMediaStreamDestinationに接続（録音用）
+				audioSource.connect(audioDestination);
+				// スピーカーにも接続（再生音を聞けるように）
+				audioSource.connect(audioContext.destination);
+
+				// 音声トラックを映像ストリームに追加
+				const audioTracks = audioDestination.stream.getAudioTracks();
+				if (audioTracks.length > 0) {
+					videoStream.addTrack(audioTracks[0]);
+				}
+			} catch (audioError) {
+				// 音声取得に失敗した場合は映像のみで続行（CORS制約等）
+				console.warn('音声トラックの取得に失敗しました。映像のみで圧縮を続行します:', audioError);
+			}
 
 			// MediaRecorder設定
 			const recordOptions = {
@@ -206,7 +233,7 @@
 				audioBitsPerSecond: compressionSettings.audioBitsPerSecond
 			};
 
-			const recorder = new MediaRecorder(stream, recordOptions);
+			const recorder = new MediaRecorder(videoStream, recordOptions);
 			const chunks: Blob[] = [];
 
 			recorder.ondataavailable = (event) => {
@@ -255,8 +282,13 @@
 					recorder.stop();
 					originalVideoEl.pause();
 
-					// 音声ストリームのクリーンアップ
-					stream.getTracks().forEach((track) => track.stop());
+					// ストリームのクリーンアップ
+					videoStream.getTracks().forEach((track) => track.stop());
+
+					// AudioContextのクリーンアップ
+					if (audioContext && audioContext.state !== 'closed') {
+						audioContext.close().catch(console.error);
+					}
 				}
 			};
 

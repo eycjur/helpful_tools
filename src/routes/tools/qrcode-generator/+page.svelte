@@ -109,6 +109,45 @@
 	$: if (input && logoDataUrl) {
 		generateQRWithLogo();
 	}
+
+	// QRコードをダウンロード
+	async function downloadQRCode() {
+		if (!input) return;
+
+		try {
+			let dataUrl: string;
+			let filename: string;
+
+			if (logoDataUrl && canvasRef) {
+				// ロゴ付きの場合: canvasからダウンロード
+				dataUrl = canvasRef.toDataURL('image/png');
+				filename = 'qrcode-with-logo.png';
+			} else {
+				// ロゴなしの場合: 外部APIの画像をfetchしてダウンロード
+				const response = await fetch(qrUrl);
+				const blob = await response.blob();
+				dataUrl = URL.createObjectURL(blob);
+				filename = 'qrcode.png';
+
+				// ダウンロード後にURLを解放
+				const link = document.createElement('a');
+				link.href = dataUrl;
+				link.download = filename;
+				link.click();
+				URL.revokeObjectURL(dataUrl);
+				return;
+			}
+
+			// canvasの場合のダウンロード
+			const link = document.createElement('a');
+			link.href = dataUrl;
+			link.download = filename;
+			link.click();
+		} catch (error) {
+			console.error('ダウンロードに失敗しました:', error);
+			errorMessage = 'ダウンロードに失敗しました。';
+		}
+	}
 </script>
 
 <div class="mx-auto max-w-2xl">
@@ -153,7 +192,7 @@
 
 	{#if input}
 		<p class="mb-4 text-gray-700">↓ 生成されたQRコード：</p>
-		<div class="flex justify-center">
+		<div class="flex flex-col items-center">
 			<canvas
 				bind:this={canvasRef}
 				class="max-w-xs rounded-lg border border-gray-300 {logoDataUrl && !isLoading
@@ -176,6 +215,17 @@
 				</div>
 			{:else if !logoDataUrl}
 				<img src={qrUrl} alt="QRコード" class="max-w-xs rounded-lg border border-gray-300" />
+			{/if}
+
+			<!-- ダウンロードボタン -->
+			{#if !isLoading && !errorMessage}
+				<button
+					on:click={downloadQRCode}
+					class="mt-4 flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-white transition-colors hover:bg-green-700"
+				>
+					<Icon icon="mdi:download" class="h-5 w-5" />
+					QRコードをダウンロード
+				</button>
 			{/if}
 		</div>
 	{/if}

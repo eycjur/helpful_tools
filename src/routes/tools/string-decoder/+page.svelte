@@ -195,7 +195,11 @@
 
 	function decodeBase64(text: string): string {
 		try {
-			return atob(text.trim());
+			// atob()はISO-8859-1としてデコードするため、UTF-8に対応するために
+			// Uint8Array経由でTextDecoderを使用
+			const binaryStr = atob(text.trim());
+			const bytes = Uint8Array.from(binaryStr, (c) => c.charCodeAt(0));
+			return new TextDecoder('utf-8').decode(bytes);
 		} catch {
 			throw new Error('Base64デコードに失敗');
 		}
