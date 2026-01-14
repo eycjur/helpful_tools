@@ -28,6 +28,26 @@
 		longitude: number;
 		org: string;
 		postal: string;
+		// 拡張フィールド
+		isp?: string;
+		as?: string;
+		asname?: string;
+		reverse?: string;
+		mobile?: boolean;
+		proxy?: boolean;
+		hosting?: boolean;
+	}
+
+	// IP解析結果の型
+	interface IPAnalysis {
+		version: 'IPv4' | 'IPv6';
+		isPrivate: boolean;
+		isLoopback: boolean;
+		isLinkLocal: boolean;
+		isMulticast: boolean;
+		ipClass?: 'A' | 'B' | 'C' | 'D' | 'E';
+		binary?: string;
+		hex?: string;
 	}
 
 	interface DomainInfo {
@@ -39,6 +59,7 @@
 		rootDnsRecords?: DNSRecord[]; // ルートドメインのDNS（サブドメインの場合のみ）
 		ipGeoInfo?: IPGeoInfo;
 		rootIpGeoInfo?: IPGeoInfo; // ルートドメインのIP地理情報（異なる場合）
+		ipAnalysis?: IPAnalysis; // IP解析結果（IPアドレス入力時のみ）
 		registrationInfo?: Record<string, unknown>;
 		error?: string;
 	}
@@ -313,8 +334,9 @@
 	async function fetchIPGeolocation(ip: string): Promise<IPGeoInfo | null> {
 		try {
 			// ip-api.comはCORSに対応しており、HTTPでのリクエストが必要（無料プラン）
+			// 拡張フィールド: as, asname, reverse, mobile, proxy, hosting
 			const response = await fetch(
-				`http://ip-api.com/json/${ip}?fields=status,message,country,countryCode,region,regionName,city,zip,lat,lon,timezone,isp,org,query`
+				`http://ip-api.com/json/${ip}?fields=status,message,country,countryCode,region,regionName,city,zip,lat,lon,timezone,isp,org,as,asname,reverse,mobile,proxy,hosting,query`
 			);
 			if (!response.ok) throw new Error('IP geolocation query failed');
 
@@ -332,13 +354,68 @@
 				timezone: data.timezone || 'Unknown',
 				latitude: data.lat || 0,
 				longitude: data.lon || 0,
-				org: data.org || data.isp || 'Unknown',
-				postal: data.zip || 'Unknown'
+				org: data.org || 'Unknown',
+				postal: data.zip || 'Unknown',
+				// 拡張フィールド
+				isp: data.isp || undefined,
+				as: data.as || undefined,
+				asname: data.asname || undefined,
+				reverse: data.reverse || undefined,
+				mobile: data.mobile,
+				proxy: data.proxy,
+				hosting: data.hosting
 			};
 		} catch (err) {
 			console.error('IP geolocation error:', err);
 			return null;
 		}
+	}
+
+	// クライアントサイドIP解析
+	function analyzeIP(ip: string): IPAnalysis | null {
+		const ipv4Regex = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
+		const match = ip.match(ipv4Regex);
+
+		if (match) {
+			const parts = [
+				parseInt(match[1]),
+				parseInt(match[2]),
+				parseInt(match[3]),
+				parseInt(match[4])
+			];
+			const first = parts[0];
+
+			// 各オクテットが有効範囲内かチェック
+			if (parts.some((p) => p > 255)) return null;
+
+			return {
+				version: 'IPv4',
+				isPrivate:
+					first === 10 ||
+					(first === 172 && parts[1] >= 16 && parts[1] <= 31) ||
+					(first === 192 && parts[1] === 168),
+				isLoopback: first === 127,
+				isLinkLocal: first === 169 && parts[1] === 254,
+				isMulticast: first >= 224 && first <= 239,
+				ipClass:
+					first < 128 ? 'A' : first < 192 ? 'B' : first < 224 ? 'C' : first < 240 ? 'D' : 'E',
+				binary: parts.map((p) => p.toString(2).padStart(8, '0')).join('.'),
+				hex: parts.map((p) => p.toString(16).padStart(2, '0').toUpperCase()).join('')
+			};
+		}
+
+		// IPv6の簡易判定
+		if (ip.includes(':')) {
+			return {
+				version: 'IPv6',
+				isPrivate: ip.toLowerCase().startsWith('fc') || ip.toLowerCase().startsWith('fd'),
+				isLoopback: ip === '::1',
+				isLinkLocal: ip.toLowerCase().startsWith('fe80'),
+				isMulticast: ip.toLowerCase().startsWith('ff')
+			};
+		}
+
+		return null;
 	}
 
 	// ドメインのDNSレコードとIP地理情報を取得するヘルパー関数
@@ -428,12 +505,14 @@
 			if (isIP) {
 				// IPアドレスの場合
 				const geoInfo = await fetchIPGeolocation(cleanQuery);
+				const ipAnalysisResult = analyzeIP(cleanQuery);
 				result = {
 					domain: cleanQuery,
 					isIP: true,
 					isSubdomain: false,
 					dnsRecords: [],
-					ipGeoInfo: geoInfo || undefined
+					ipGeoInfo: geoInfo || undefined,
+					ipAnalysis: ipAnalysisResult || undefined
 				};
 			} else {
 				// ドメイン名の場合
@@ -535,6 +614,42 @@
 		return text;
 	}
 
+	// ネットワーク情報をテキスト形式で取得するヘルパー
+	function formatNetworkInfoAsText(geoInfo: IPGeoInfo): string {
+		let text = '';
+		if (geoInfo.as) text += `ASN: ${geoInfo.as}\n`;
+		if (geoInfo.asname) text += `AS組織名: ${geoInfo.asname}\n`;
+		if (geoInfo.isp) text += `ISP: ${geoInfo.isp}\n`;
+		if (geoInfo.reverse) text += `逆引きホスト名: ${geoInfo.reverse}\n`;
+		return text;
+	}
+
+	// セキュリティ情報をテキスト形式で取得するヘルパー
+	function formatSecurityInfoAsText(geoInfo: IPGeoInfo): string {
+		let text = '';
+		if (geoInfo.proxy !== undefined) text += `プロキシ/VPN: ${geoInfo.proxy ? '検出' : '未検出'}\n`;
+		if (geoInfo.mobile !== undefined)
+			text += `モバイル回線: ${geoInfo.mobile ? 'はい' : 'いいえ'}\n`;
+		if (geoInfo.hosting !== undefined)
+			text += `ホスティング/DC: ${geoInfo.hosting ? 'はい' : 'いいえ'}\n`;
+		return text;
+	}
+
+	// IP解析結果をテキスト形式で取得するヘルパー
+	function formatIPAnalysisAsText(analysis: IPAnalysis): string {
+		let text = '';
+		text += `IPバージョン: ${analysis.version}\n`;
+		if (analysis.isPrivate) text += `タイプ: プライベートアドレス\n`;
+		else if (analysis.isLoopback) text += `タイプ: ループバックアドレス\n`;
+		else if (analysis.isLinkLocal) text += `タイプ: リンクローカルアドレス\n`;
+		else if (analysis.isMulticast) text += `タイプ: マルチキャストアドレス\n`;
+		else text += `タイプ: パブリックアドレス\n`;
+		if (analysis.ipClass) text += `クラス: Class ${analysis.ipClass}\n`;
+		if (analysis.binary) text += `バイナリ: ${analysis.binary}\n`;
+		if (analysis.hex) text += `16進数: ${analysis.hex}\n`;
+		return text;
+	}
+
 	// 結果をテキスト形式で取得
 	function getResultAsText(): string {
 		if (!result) return '';
@@ -544,6 +659,33 @@
 			text += `（サブドメイン / ルートドメイン: ${result.rootDomain}）\n`;
 		}
 		text += '\n';
+
+		// IP解析結果（IPの場合）
+		if (result.isIP && result.ipAnalysis) {
+			text += '【IP解析】\n';
+			text += formatIPAnalysisAsText(result.ipAnalysis);
+			text += '\n';
+		}
+
+		// ネットワーク情報（IPの場合）
+		if (result.isIP && result.ipGeoInfo) {
+			const networkInfo = formatNetworkInfoAsText(result.ipGeoInfo);
+			if (networkInfo) {
+				text += '【ネットワーク情報】\n';
+				text += networkInfo;
+				text += '\n';
+			}
+		}
+
+		// セキュリティ情報（IPの場合）
+		if (result.isIP && result.ipGeoInfo) {
+			const securityInfo = formatSecurityInfoAsText(result.ipGeoInfo);
+			if (securityInfo) {
+				text += '【セキュリティ情報】\n';
+				text += securityInfo;
+				text += '\n';
+			}
+		}
 
 		// サブドメイン/ドメインの地理情報
 		if (result.ipGeoInfo) {
@@ -669,12 +811,46 @@
 
 				<div class="mb-4 rounded bg-gray-50 p-4">
 					<div class="font-mono text-2xl text-gray-900">{result.domain}</div>
-					<div class="flex items-center gap-2 text-sm text-gray-600">
+					<div class="flex flex-wrap items-center gap-2 text-sm text-gray-600">
 						{result.isIP ? 'IPアドレス' : 'ドメイン名'}
 						{#if result.isSubdomain}
 							<span class="rounded bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700">
 								サブドメイン
 							</span>
+						{/if}
+						{#if result.isIP && result.ipAnalysis}
+							<span class="rounded bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
+								{result.ipAnalysis.version}
+							</span>
+							{#if result.ipAnalysis.isPrivate}
+								<span class="rounded bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700">
+									プライベート
+								</span>
+							{:else if !result.ipAnalysis.isLoopback && !result.ipAnalysis.isLinkLocal}
+								<span class="rounded bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+									パブリック
+								</span>
+							{/if}
+							{#if result.ipAnalysis.isLoopback}
+								<span class="rounded bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-700">
+									ループバック
+								</span>
+							{/if}
+							{#if result.ipAnalysis.isLinkLocal}
+								<span class="rounded bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700">
+									リンクローカル
+								</span>
+							{/if}
+							{#if result.ipAnalysis.isMulticast}
+								<span class="rounded bg-pink-100 px-2 py-0.5 text-xs font-medium text-pink-700">
+									マルチキャスト
+								</span>
+							{/if}
+							{#if result.ipAnalysis.ipClass}
+								<span class="rounded bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700">
+									Class {result.ipAnalysis.ipClass}
+								</span>
+							{/if}
 						{/if}
 					</div>
 				</div>
@@ -703,6 +879,189 @@
 					</div>
 				{/if}
 			</div>
+
+			<!-- ネットワーク情報（IPの場合） -->
+			{#if result.isIP && result.ipGeoInfo && (result.ipGeoInfo.as || result.ipGeoInfo.isp || result.ipGeoInfo.reverse)}
+				<div class="rounded-lg border border-gray-200 bg-white p-6">
+					<div class="mb-4 flex items-center">
+						<Icon icon="mdi:lan" class="mr-2 h-6 w-6 text-cyan-600" />
+						<h3 class="text-lg font-semibold text-gray-900">ネットワーク情報</h3>
+					</div>
+
+					<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+						{#if result.ipGeoInfo.as}
+							<div class="flex justify-between">
+								<span class="font-medium text-gray-700">ASN:</span>
+								<span class="font-mono text-gray-900">{result.ipGeoInfo.as}</span>
+							</div>
+						{/if}
+						{#if result.ipGeoInfo.asname}
+							<div class="flex justify-between">
+								<span class="font-medium text-gray-700">AS組織名:</span>
+								<span class="text-gray-900">{result.ipGeoInfo.asname}</span>
+							</div>
+						{/if}
+						{#if result.ipGeoInfo.isp}
+							<div class="flex justify-between">
+								<span class="font-medium text-gray-700">ISP:</span>
+								<span class="text-gray-900">{result.ipGeoInfo.isp}</span>
+							</div>
+						{/if}
+						{#if result.ipGeoInfo.reverse}
+							<div class="flex justify-between">
+								<span class="font-medium text-gray-700">逆引きホスト名:</span>
+								<span class="font-mono text-gray-900">{result.ipGeoInfo.reverse}</span>
+							</div>
+						{/if}
+					</div>
+				</div>
+			{/if}
+
+			<!-- セキュリティ情報（IPの場合） -->
+			{#if result.isIP && result.ipGeoInfo && (result.ipGeoInfo.proxy !== undefined || result.ipGeoInfo.mobile !== undefined || result.ipGeoInfo.hosting !== undefined)}
+				<div class="rounded-lg border border-gray-200 bg-white p-6">
+					<div class="mb-4 flex items-center">
+						<Icon icon="mdi:shield-check" class="mr-2 h-6 w-6 text-amber-600" />
+						<h3 class="text-lg font-semibold text-gray-900">セキュリティ情報</h3>
+					</div>
+
+					<div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+						{#if result.ipGeoInfo.proxy !== undefined}
+							<div
+								class="flex items-center justify-between rounded-lg border p-4 {result.ipGeoInfo
+									.proxy
+									? 'border-red-200 bg-red-50'
+									: 'border-green-200 bg-green-50'}"
+							>
+								<div class="flex items-center">
+									<Icon
+										icon={result.ipGeoInfo.proxy ? 'mdi:shield-alert' : 'mdi:shield-check'}
+										class="mr-2 h-5 w-5 {result.ipGeoInfo.proxy
+											? 'text-red-600'
+											: 'text-green-600'}"
+									/>
+									<span
+										class="font-medium {result.ipGeoInfo.proxy ? 'text-red-800' : 'text-green-800'}"
+										>プロキシ/VPN</span
+									>
+								</div>
+								<span
+									class="text-sm font-bold {result.ipGeoInfo.proxy
+										? 'text-red-700'
+										: 'text-green-700'}"
+								>
+									{result.ipGeoInfo.proxy ? '検出' : '未検出'}
+								</span>
+							</div>
+						{/if}
+						{#if result.ipGeoInfo.mobile !== undefined}
+							<div
+								class="flex items-center justify-between rounded-lg border p-4 {result.ipGeoInfo
+									.mobile
+									? 'border-blue-200 bg-blue-50'
+									: 'border-gray-200 bg-gray-50'}"
+							>
+								<div class="flex items-center">
+									<Icon
+										icon="mdi:cellphone"
+										class="mr-2 h-5 w-5 {result.ipGeoInfo.mobile
+											? 'text-blue-600'
+											: 'text-gray-500'}"
+									/>
+									<span
+										class="font-medium {result.ipGeoInfo.mobile
+											? 'text-blue-800'
+											: 'text-gray-700'}">モバイル回線</span
+									>
+								</div>
+								<span
+									class="text-sm font-bold {result.ipGeoInfo.mobile
+										? 'text-blue-700'
+										: 'text-gray-600'}"
+								>
+									{result.ipGeoInfo.mobile ? 'はい' : 'いいえ'}
+								</span>
+							</div>
+						{/if}
+						{#if result.ipGeoInfo.hosting !== undefined}
+							<div
+								class="flex items-center justify-between rounded-lg border p-4 {result.ipGeoInfo
+									.hosting
+									? 'border-purple-200 bg-purple-50'
+									: 'border-gray-200 bg-gray-50'}"
+							>
+								<div class="flex items-center">
+									<Icon
+										icon="mdi:server"
+										class="mr-2 h-5 w-5 {result.ipGeoInfo.hosting
+											? 'text-purple-600'
+											: 'text-gray-500'}"
+									/>
+									<span
+										class="font-medium {result.ipGeoInfo.hosting
+											? 'text-purple-800'
+											: 'text-gray-700'}">ホスティング/DC</span
+									>
+								</div>
+								<span
+									class="text-sm font-bold {result.ipGeoInfo.hosting
+										? 'text-purple-700'
+										: 'text-gray-600'}"
+								>
+									{result.ipGeoInfo.hosting ? 'はい' : 'いいえ'}
+								</span>
+							</div>
+						{/if}
+					</div>
+				</div>
+			{/if}
+
+			<!-- 技術的詳細（IPの場合） -->
+			{#if result.isIP && result.ipAnalysis && (result.ipAnalysis.binary || result.ipAnalysis.hex)}
+				<div class="rounded-lg border border-gray-200 bg-white p-6">
+					<div class="mb-4 flex items-center">
+						<Icon icon="mdi:code-braces" class="mr-2 h-6 w-6 text-gray-600" />
+						<h3 class="text-lg font-semibold text-gray-900">技術的詳細</h3>
+					</div>
+
+					<div class="space-y-3">
+						{#if result.ipAnalysis.binary}
+							<div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+								<span class="font-medium text-gray-700">バイナリ表現:</span>
+								<div class="flex items-center gap-2">
+									<code class="rounded bg-gray-100 px-3 py-1 font-mono text-sm text-gray-900"
+										>{result.ipAnalysis.binary}</code
+									>
+									<button
+										on:click={() =>
+											result?.ipAnalysis?.binary && copyToClipboard(result.ipAnalysis.binary)}
+										class="rounded bg-gray-100 px-2 py-1 text-xs text-gray-600 hover:bg-gray-200"
+									>
+										<Icon icon="mdi:content-copy" class="h-3 w-3" />
+									</button>
+								</div>
+							</div>
+						{/if}
+						{#if result.ipAnalysis.hex}
+							<div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+								<span class="font-medium text-gray-700">16進数表現:</span>
+								<div class="flex items-center gap-2">
+									<code class="rounded bg-gray-100 px-3 py-1 font-mono text-sm text-gray-900"
+										>{result.ipAnalysis.hex}</code
+									>
+									<button
+										on:click={() =>
+											result?.ipAnalysis?.hex && copyToClipboard(result.ipAnalysis.hex)}
+										class="rounded bg-gray-100 px-2 py-1 text-xs text-gray-600 hover:bg-gray-200"
+									>
+										<Icon icon="mdi:content-copy" class="h-3 w-3" />
+									</button>
+								</div>
+							</div>
+						{/if}
+					</div>
+				</div>
+			{/if}
 
 			<!-- 地理情報（IPの場合） -->
 			{#if result.ipGeoInfo}
@@ -860,11 +1219,13 @@
 								<h4 class="mb-3 font-medium text-gray-800">{type} レコード ({records.length}件)</h4>
 								<div class="space-y-2">
 									{#each records as record, idx (record.type + record.name + record.data + idx)}
-										<div class="flex items-center justify-between rounded bg-white p-3">
-											<div class="font-mono text-sm text-gray-900">
+										<div
+											class="flex flex-col gap-2 rounded bg-white p-3 sm:flex-row sm:items-start sm:justify-between"
+										>
+											<div class="min-w-0 flex-1 font-mono text-sm break-all text-gray-900">
 												{record.data}
 											</div>
-											<div class="flex items-center gap-2">
+											<div class="flex shrink-0 items-center gap-2">
 												{#if record.ttl}
 													<span class="rounded bg-blue-100 px-2 py-1 text-xs text-blue-700">
 														TTL: {record.ttl}s
@@ -921,11 +1282,13 @@
 								<h4 class="mb-3 font-medium text-gray-800">{type} レコード ({records.length}件)</h4>
 								<div class="space-y-2">
 									{#each records as record, idx (record.type + record.name + record.data + idx)}
-										<div class="flex items-center justify-between rounded bg-white p-3">
-											<div class="font-mono text-sm text-gray-900">
+										<div
+											class="flex flex-col gap-2 rounded bg-white p-3 sm:flex-row sm:items-start sm:justify-between"
+										>
+											<div class="min-w-0 flex-1 font-mono text-sm break-all text-gray-900">
 												{record.data}
 											</div>
-											<div class="flex items-center gap-2">
+											<div class="flex shrink-0 items-center gap-2">
 												{#if record.ttl}
 													<span class="rounded bg-purple-100 px-2 py-1 text-xs text-purple-700">
 														TTL: {record.ttl}s
