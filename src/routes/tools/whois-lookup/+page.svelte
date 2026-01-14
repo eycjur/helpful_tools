@@ -33,8 +33,12 @@
 	interface DomainInfo {
 		domain: string;
 		isIP: boolean;
+		isSubdomain: boolean;
+		rootDomain?: string;
 		dnsRecords: DNSRecord[];
+		rootDnsRecords?: DNSRecord[]; // ルートドメインのDNS（サブドメインの場合のみ）
 		ipGeoInfo?: IPGeoInfo;
+		rootIpGeoInfo?: IPGeoInfo; // ルートドメインのIP地理情報（異なる場合）
 		registrationInfo?: Record<string, unknown>;
 		error?: string;
 	}
@@ -49,8 +53,208 @@
 	}
 
 	function isDomainName(input: string): boolean {
-		const domainRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9]?\.[a-zA-Z]{2,}$/;
+		// サブドメインを含むドメイン名を許容（例: www.example.com, api.staging.example.com）
+		// RFC 1035に準拠: 各ラベルは63文字以下、全体は253文字以下
+		if (input.length > 253) return false;
+
+		// 各ラベルの長さを検証
+		const labels = input.split('.');
+		if (labels.some((label) => label.length > 63 || label.length === 0)) return false;
+
+		const domainRegex = /^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/;
 		return domainRegex.test(input);
+	}
+
+	// 2レベルTLD（ccSLD）のリスト
+	// 注意: これは完全なリストではなく、よく使われるものをカバーしています
+	// 正確なルートドメイン抽出が必要な場合は、Public Suffix Listの使用を検討してください
+	// https://publicsuffix.org/
+	const twoLevelTLDs = new Set([
+		// 日本
+		'co.jp',
+		'ne.jp',
+		'or.jp',
+		'ac.jp',
+		'go.jp',
+		'ed.jp',
+		'gr.jp',
+		'ad.jp',
+		'lg.jp',
+		// イギリス
+		'co.uk',
+		'org.uk',
+		'me.uk',
+		'ac.uk',
+		'gov.uk',
+		'net.uk',
+		'sch.uk',
+		// オーストラリア
+		'com.au',
+		'net.au',
+		'org.au',
+		'edu.au',
+		'gov.au',
+		'asn.au',
+		'id.au',
+		// ニュージーランド
+		'co.nz',
+		'net.nz',
+		'org.nz',
+		'govt.nz',
+		'ac.nz',
+		'school.nz',
+		'geek.nz',
+		// 中国
+		'com.cn',
+		'net.cn',
+		'org.cn',
+		'gov.cn',
+		'edu.cn',
+		'ac.cn',
+		// 韓国
+		'co.kr',
+		'ne.kr',
+		'or.kr',
+		'go.kr',
+		're.kr',
+		'pe.kr',
+		'ac.kr',
+		// ブラジル
+		'com.br',
+		'net.br',
+		'org.br',
+		'gov.br',
+		'edu.br',
+		// インド
+		'co.in',
+		'net.in',
+		'org.in',
+		'gov.in',
+		'ac.in',
+		'res.in',
+		// その他
+		'com.tw',
+		'org.tw',
+		'net.tw',
+		'gov.tw',
+		'com.hk',
+		'org.hk',
+		'net.hk',
+		'gov.hk',
+		'edu.hk',
+		'com.sg',
+		'org.sg',
+		'net.sg',
+		'gov.sg',
+		'edu.sg',
+		'co.th',
+		'or.th',
+		'ac.th',
+		'go.th',
+		'in.th',
+		'mi.th',
+		'net.th',
+		'com.my',
+		'net.my',
+		'org.my',
+		'gov.my',
+		'edu.my',
+		'co.id',
+		'or.id',
+		'ac.id',
+		'go.id',
+		'net.id',
+		'web.id',
+		'com.ph',
+		'net.ph',
+		'org.ph',
+		'gov.ph',
+		'edu.ph',
+		'co.za',
+		'org.za',
+		'net.za',
+		'gov.za',
+		'ac.za',
+		'com.mx',
+		'org.mx',
+		'net.mx',
+		'gob.mx',
+		'edu.mx',
+		'com.ar',
+		'net.ar',
+		'org.ar',
+		'gov.ar',
+		'edu.ar',
+		'co.il',
+		'org.il',
+		'net.il',
+		'ac.il',
+		'gov.il',
+		'muni.il',
+		'co.ke',
+		'or.ke',
+		'ne.ke',
+		'go.ke',
+		'ac.ke',
+		'com.ng',
+		'org.ng',
+		'net.ng',
+		'gov.ng',
+		'edu.ng',
+		'com.eg',
+		'org.eg',
+		'net.eg',
+		'gov.eg',
+		'edu.eg',
+		'com.pk',
+		'org.pk',
+		'net.pk',
+		'gov.pk',
+		'edu.pk',
+		'com.bd',
+		'org.bd',
+		'net.bd',
+		'gov.bd',
+		'edu.bd',
+		'com.vn',
+		'org.vn',
+		'net.vn',
+		'gov.vn',
+		'edu.vn',
+		'co.ve',
+		'com.ve',
+		'net.ve',
+		'org.ve',
+		'edu.ve',
+		'gob.ve',
+		'com.co',
+		'net.co',
+		'org.co',
+		'gov.co',
+		'edu.co',
+		'mil.co'
+	]);
+
+	// ルートドメイン（登録可能ドメイン）を抽出
+	function extractRootDomain(domain: string): string {
+		const parts = domain.toLowerCase().split('.');
+		if (parts.length <= 2) return domain;
+
+		// 最後の2パーツが2レベルTLDかチェック
+		const lastTwo = parts.slice(-2).join('.');
+		if (twoLevelTLDs.has(lastTwo)) {
+			// 2レベルTLDの場合、最後の3パーツを返す
+			return parts.slice(-3).join('.');
+		}
+
+		// 通常のTLDの場合、最後の2パーツを返す
+		return parts.slice(-2).join('.');
+	}
+
+	// サブドメインかどうか判定
+	function isSubdomain(domain: string): boolean {
+		const rootDomain = extractRootDomain(domain);
+		return domain.toLowerCase() !== rootDomain;
 	}
 
 	// DNS-over-HTTPS クエリ
@@ -105,29 +309,98 @@
 		return typeMap[type] || `TYPE${type}`;
 	}
 
-	// IP地理情報取得
+	// IP地理情報取得（ip-api.comを使用 - CORS対応）
 	async function fetchIPGeolocation(ip: string): Promise<IPGeoInfo | null> {
 		try {
-			const response = await fetch(`https://ipapi.co/${ip}/json/`);
+			// ip-api.comはCORSに対応しており、HTTPでのリクエストが必要（無料プラン）
+			const response = await fetch(
+				`http://ip-api.com/json/${ip}?fields=status,message,country,countryCode,region,regionName,city,zip,lat,lon,timezone,isp,org,query`
+			);
 			if (!response.ok) throw new Error('IP geolocation query failed');
 
 			const data = await response.json();
+			if (data.status === 'fail') {
+				throw new Error(data.message || 'IP lookup failed');
+			}
+
 			return {
-				ip: data.ip || ip,
+				ip: data.query || ip,
 				city: data.city || 'Unknown',
-				region: data.region || 'Unknown',
-				country: data.country_name || 'Unknown',
-				countryCode: data.country_code || 'Unknown',
+				region: data.regionName || 'Unknown',
+				country: data.country || 'Unknown',
+				countryCode: data.countryCode || 'Unknown',
 				timezone: data.timezone || 'Unknown',
-				latitude: data.latitude || 0,
-				longitude: data.longitude || 0,
-				org: data.org || 'Unknown',
-				postal: data.postal || 'Unknown'
+				latitude: data.lat || 0,
+				longitude: data.lon || 0,
+				org: data.org || data.isp || 'Unknown',
+				postal: data.zip || 'Unknown'
 			};
 		} catch (err) {
 			console.error('IP geolocation error:', err);
 			return null;
 		}
+	}
+
+	// ドメインのDNSレコードとIP地理情報を取得するヘルパー関数
+	async function fetchDomainInfo(domain: string): Promise<{
+		dnsRecords: DNSRecord[];
+		ipGeoInfo?: IPGeoInfo;
+		resolvedIP?: string;
+	}> {
+		const dnsRecords: DNSRecord[] = [];
+
+		// 複数のDNSレコードタイプを並列で取得
+		const recordTypes = ['A', 'AAAA', 'MX', 'NS', 'TXT', 'CNAME'];
+		const promises = recordTypes.map((type) => queryDNSOverHTTPS(domain, type));
+		const results = await Promise.all(promises);
+
+		// 結果をマージ
+		results.forEach((records) => dnsRecords.push(...records));
+
+		// IPアドレスを取得（Aレコードがない場合はCNAMEを解決）
+		const aRecords = dnsRecords.filter((r) => r.type === 'A');
+		let resolvedIP: string | undefined;
+		let ipGeoInfo: IPGeoInfo | undefined;
+
+		if (aRecords.length > 0) {
+			// 直接Aレコードがある場合
+			resolvedIP = aRecords[0].data;
+		} else {
+			// CNAMEがある場合、CNAMEの先を解決してAレコードを取得
+			const cnameRecords = dnsRecords.filter((r) => r.type === 'CNAME');
+			if (cnameRecords.length > 0) {
+				// CNAMEの先のAレコードを取得（最大3段階まで追跡）
+				let targetDomain = cnameRecords[0].data.replace(/\.$/, ''); // 末尾のドットを除去
+				for (let i = 0; i < 3 && !resolvedIP; i++) {
+					const cnameARecords = await queryDNSOverHTTPS(targetDomain, 'A');
+					if (cnameARecords.length > 0) {
+						resolvedIP = cnameARecords[0].data;
+						// 解決されたAレコードも追加（参考情報として）
+						dnsRecords.push(
+							...cnameARecords.map((r) => ({
+								...r,
+								name: `${r.name} (via CNAME)`
+							}))
+						);
+					} else {
+						// さらにCNAMEがある場合は追跡
+						const nextCname = await queryDNSOverHTTPS(targetDomain, 'CNAME');
+						if (nextCname.length > 0) {
+							targetDomain = nextCname[0].data.replace(/\.$/, '');
+						} else {
+							break;
+						}
+					}
+				}
+			}
+		}
+
+		// IP地理情報を取得
+		if (resolvedIP) {
+			ipGeoInfo = (await fetchIPGeolocation(resolvedIP)) || undefined;
+		}
+
+		return { dnsRecords, ipGeoInfo, resolvedIP };
 	}
 
 	// メインの検索関数
@@ -158,35 +431,43 @@
 				result = {
 					domain: cleanQuery,
 					isIP: true,
+					isSubdomain: false,
 					dnsRecords: [],
 					ipGeoInfo: geoInfo || undefined
 				};
 			} else {
 				// ドメイン名の場合
-				const dnsRecords: DNSRecord[] = [];
+				const isSub = isSubdomain(cleanQuery);
+				const rootDomain = extractRootDomain(cleanQuery);
 
-				// 複数のDNSレコードタイプを並列で取得
-				const recordTypes = ['A', 'AAAA', 'MX', 'NS', 'TXT', 'CNAME'];
-				const promises = recordTypes.map((type) => queryDNSOverHTTPS(cleanQuery, type));
-				const results = await Promise.all(promises);
+				// サブドメインのDNS情報を取得
+				const { dnsRecords, ipGeoInfo } = await fetchDomainInfo(cleanQuery);
 
-				// 結果をマージ
-				results.forEach((records) => dnsRecords.push(...records));
+				let rootDnsRecords: DNSRecord[] | undefined;
+				let rootIpGeoInfo: IPGeoInfo | undefined;
 
-				// ドメインのIPアドレスがある場合、そのGeo情報も取得
-				const aRecords = dnsRecords.filter((r) => r.type === 'A');
-				let ipGeoInfo: IPGeoInfo | undefined;
+				// サブドメインの場合、ルートドメインの情報も取得
+				if (isSub) {
+					const rootInfo = await fetchDomainInfo(rootDomain);
+					rootDnsRecords = rootInfo.dnsRecords;
 
-				if (aRecords.length > 0) {
-					// 最初のAレコードのIPでGeo情報を取得
-					ipGeoInfo = (await fetchIPGeolocation(aRecords[0].data)) || undefined;
+					// ルートドメインのIPがサブドメインと異なる場合のみ保存
+					const subdomainIP = ipGeoInfo?.ip;
+					const rootIP = rootInfo.ipGeoInfo?.ip;
+					if (rootIP && rootIP !== subdomainIP) {
+						rootIpGeoInfo = rootInfo.ipGeoInfo;
+					}
 				}
 
 				result = {
 					domain: cleanQuery,
 					isIP: false,
+					isSubdomain: isSub,
+					rootDomain: isSub ? rootDomain : undefined,
 					dnsRecords,
-					ipGeoInfo
+					rootDnsRecords,
+					ipGeoInfo,
+					rootIpGeoInfo
 				};
 			}
 		} catch (err) {
@@ -224,50 +505,83 @@
 		);
 	}
 
+	// DNSレコードをテキスト形式で取得するヘルパー
+	function formatDnsRecordsAsText(records: DNSRecord[]): string {
+		let text = '';
+		const groupedRecords = groupRecordsByType(records);
+
+		// 各タイプのレコードを表示
+		Object.entries(groupedRecords).forEach(([type, recs]) => {
+			text += `${type}レコード:\n`;
+			recs.forEach((record) => {
+				text += `  ${record.data}${record.ttl ? ` (TTL: ${record.ttl}s)` : ''}\n`;
+			});
+			text += '\n';
+		});
+
+		return text;
+	}
+
+	// 地理情報をテキスト形式で取得するヘルパー
+	function formatGeoInfoAsText(geoInfo: IPGeoInfo): string {
+		let text = '';
+		text += `IPアドレス: ${geoInfo.ip}\n`;
+		text += `国/地域: ${geoInfo.country} (${geoInfo.countryCode})\n`;
+		text += `州/県: ${geoInfo.region}\n`;
+		text += `都市: ${geoInfo.city}\n`;
+		text += `組織: ${geoInfo.org}\n`;
+		text += `タイムゾーン: ${geoInfo.timezone}\n`;
+		text += `緯度経度: ${geoInfo.latitude}, ${geoInfo.longitude}\n`;
+		return text;
+	}
+
 	// 結果をテキスト形式で取得
 	function getResultAsText(): string {
 		if (!result) return '';
 
-		let text = `=== ${result.isIP ? 'IP' : 'ドメイン'}情報: ${result.domain} ===\n\n`;
+		let text = `=== ${result.isIP ? 'IP' : 'ドメイン'}情報: ${result.domain} ===\n`;
+		if (result.isSubdomain && result.rootDomain) {
+			text += `（サブドメイン / ルートドメイン: ${result.rootDomain}）\n`;
+		}
+		text += '\n';
 
+		// サブドメイン/ドメインの地理情報
 		if (result.ipGeoInfo) {
-			text += '【地理情報】\n';
-			text += `IPアドレス: ${result.ipGeoInfo.ip}\n`;
-			text += `国/地域: ${result.ipGeoInfo.country} (${result.ipGeoInfo.countryCode})\n`;
-			text += `州/県: ${result.ipGeoInfo.region}\n`;
-			text += `都市: ${result.ipGeoInfo.city}\n`;
-			text += `組織: ${result.ipGeoInfo.org}\n`;
-			text += `タイムゾーン: ${result.ipGeoInfo.timezone}\n`;
-			text += `緯度経度: ${result.ipGeoInfo.latitude}, ${result.ipGeoInfo.longitude}\n\n`;
+			text += result.isSubdomain ? `【${result.domain} の地理情報】\n` : '【地理情報】\n';
+			text += formatGeoInfoAsText(result.ipGeoInfo);
+			text += '\n';
 		}
 
+		// ルートドメインの地理情報（異なる場合）
+		if (result.isSubdomain && result.rootIpGeoInfo) {
+			text += `【${result.rootDomain} の地理情報（ルートドメイン）】\n`;
+			text += formatGeoInfoAsText(result.rootIpGeoInfo);
+			text += '\n';
+		}
+
+		// サブドメイン/ドメインのDNSレコード
 		if (result.dnsRecords.length > 0) {
-			text += '【DNSレコード】\n';
-			const groupedRecords: { [key: string]: DNSRecord[] } = {};
+			text += result.isSubdomain ? `【${result.domain} のDNSレコード】\n` : '【DNSレコード】\n';
+			text += formatDnsRecordsAsText(result.dnsRecords);
+		}
 
-			// レコードタイプ別にグループ化
-			result.dnsRecords.forEach((record) => {
-				if (!groupedRecords[record.type]) {
-					groupedRecords[record.type] = [];
-				}
-				groupedRecords[record.type].push(record);
-			});
-
-			// 各タイプのレコードを表示
-			Object.entries(groupedRecords).forEach(([type, records]) => {
-				text += `${type}レコード:\n`;
-				records.forEach((record) => {
-					text += `  ${record.data}${record.ttl ? ` (TTL: ${record.ttl}s)` : ''}\n`;
-				});
-				text += '\n';
-			});
+		// ルートドメインのDNSレコード
+		if (result.isSubdomain && result.rootDnsRecords && result.rootDnsRecords.length > 0) {
+			text += `【${result.rootDomain} のDNSレコード（ルートドメイン）】\n`;
+			text += formatDnsRecordsAsText(result.rootDnsRecords);
 		}
 
 		return text;
 	}
 
-	// サンプルドメイン
-	const sampleDomains = ['google.com', 'github.com', 'cloudflare.com', '8.8.8.8', '1.1.1.1'];
+	// サンプルドメイン（サブドメイン例も追加）
+	const sampleDomains = [
+		'google.com',
+		'www.github.com',
+		'api.cloudflare.com',
+		'docs.aws.amazon.com',
+		'8.8.8.8'
+	];
 
 	function loadSample(domain: string) {
 		query = domain;
@@ -292,7 +606,7 @@
 					type="text"
 					bind:value={query}
 					on:keydown={handleKeydown}
-					placeholder="例: google.com, github.com, 8.8.8.8"
+					placeholder="例: google.com, www.github.com, api.example.co.jp, 8.8.8.8"
 					class="flex-1 rounded border-gray-300 px-4 py-2 font-mono text-sm"
 				/>
 				<button
@@ -355,10 +669,39 @@
 
 				<div class="mb-4 rounded bg-gray-50 p-4">
 					<div class="font-mono text-2xl text-gray-900">{result.domain}</div>
-					<div class="text-sm text-gray-600">
+					<div class="flex items-center gap-2 text-sm text-gray-600">
 						{result.isIP ? 'IPアドレス' : 'ドメイン名'}
+						{#if result.isSubdomain}
+							<span class="rounded bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700">
+								サブドメイン
+							</span>
+						{/if}
 					</div>
 				</div>
+
+				{#if result.isSubdomain && result.rootDomain}
+					<div class="rounded border border-purple-200 bg-purple-50 p-4">
+						<div class="flex items-center gap-2 text-sm">
+							<Icon icon="mdi:arrow-right" class="h-4 w-4 text-purple-600" />
+							<span class="text-purple-700">ルートドメイン:</span>
+							<button
+								on:click={() => {
+									if (result?.rootDomain) {
+										query = result.rootDomain;
+										performLookup();
+									}
+								}}
+								class="font-mono font-medium text-purple-800 underline hover:text-purple-900"
+								aria-label={`ルートドメイン ${result.rootDomain} を検索`}
+							>
+								{result.rootDomain}
+							</button>
+						</div>
+						<p class="mt-1 text-xs text-purple-600">
+							※ WHOISなどのドメイン登録情報はルートドメインで確認できます
+						</p>
+					</div>
+				{/if}
 			</div>
 
 			<!-- 地理情報（IPの場合） -->
@@ -367,7 +710,9 @@
 					<div class="mb-4 flex items-center justify-between">
 						<div class="flex items-center">
 							<Icon icon="mdi:earth" class="mr-2 h-6 w-6 text-blue-600" />
-							<h3 class="text-lg font-semibold text-gray-900">地理情報</h3>
+							<h3 class="text-lg font-semibold text-gray-900">
+								{result.isSubdomain ? `${result.domain} の地理情報` : '地理情報'}
+							</h3>
 						</div>
 						<button
 							on:click={() => copyToClipboard(JSON.stringify(result?.ipGeoInfo, null, 2))}
@@ -422,13 +767,86 @@
 				</div>
 			{/if}
 
+			<!-- ルートドメインの地理情報（サブドメインと異なるIPの場合） -->
+			{#if result.isSubdomain && result.rootIpGeoInfo}
+				<div class="rounded-lg border border-purple-200 bg-white p-6">
+					<div class="mb-4 flex items-center justify-between">
+						<div class="flex items-center">
+							<Icon icon="mdi:earth" class="mr-2 h-6 w-6 text-purple-600" />
+							<h3 class="text-lg font-semibold text-gray-900">
+								{result.rootDomain} の地理情報
+							</h3>
+							<span class="ml-2 rounded bg-purple-100 px-2 py-0.5 text-xs text-purple-700">
+								ルートドメイン
+							</span>
+						</div>
+						<button
+							on:click={() => copyToClipboard(JSON.stringify(result?.rootIpGeoInfo, null, 2))}
+							class="rounded bg-gray-100 px-3 py-1 text-xs text-gray-600 hover:bg-gray-200"
+						>
+							<Icon icon="mdi:content-copy" class="inline h-3 w-3" />
+						</button>
+					</div>
+
+					<div class="mb-3 rounded bg-yellow-50 p-3 text-sm text-yellow-800">
+						<Icon icon="mdi:information-outline" class="mr-1 inline h-4 w-4" />
+						サブドメインとルートドメインでIPアドレスが異なります
+					</div>
+
+					<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+						<div class="space-y-3">
+							<div class="flex justify-between">
+								<span class="font-medium text-gray-700">IPアドレス:</span>
+								<span class="font-mono text-gray-900">{result.rootIpGeoInfo.ip}</span>
+							</div>
+							<div class="flex justify-between">
+								<span class="font-medium text-gray-700">国/地域:</span>
+								<span class="text-gray-900"
+									>{result.rootIpGeoInfo.country} ({result.rootIpGeoInfo.countryCode})</span
+								>
+							</div>
+							<div class="flex justify-between">
+								<span class="font-medium text-gray-700">州/県:</span>
+								<span class="text-gray-900">{result.rootIpGeoInfo.region}</span>
+							</div>
+							<div class="flex justify-between">
+								<span class="font-medium text-gray-700">都市:</span>
+								<span class="text-gray-900">{result.rootIpGeoInfo.city}</span>
+							</div>
+						</div>
+						<div class="space-y-3">
+							<div class="flex justify-between">
+								<span class="font-medium text-gray-700">タイムゾーン:</span>
+								<span class="text-gray-900">{result.rootIpGeoInfo.timezone}</span>
+							</div>
+							<div class="flex justify-between">
+								<span class="font-medium text-gray-700">郵便番号:</span>
+								<span class="text-gray-900">{result.rootIpGeoInfo.postal}</span>
+							</div>
+							<div class="flex justify-between">
+								<span class="font-medium text-gray-700">緯度経度:</span>
+								<span class="font-mono text-gray-900"
+									>{result.rootIpGeoInfo.latitude}, {result.rootIpGeoInfo.longitude}</span
+								>
+							</div>
+							<div class="flex justify-between">
+								<span class="font-medium text-gray-700">組織:</span>
+								<span class="text-sm text-gray-900">{result.rootIpGeoInfo.org}</span>
+							</div>
+						</div>
+					</div>
+				</div>
+			{/if}
+
 			<!-- DNSレコード -->
 			{#if result.dnsRecords.length > 0}
 				<div class="rounded-lg border border-gray-200 bg-white p-6">
 					<div class="mb-4 flex items-center justify-between">
 						<div class="flex items-center">
 							<Icon icon="mdi:dns" class="mr-2 h-6 w-6 text-green-600" />
-							<h3 class="text-lg font-semibold text-gray-900">DNSレコード</h3>
+							<h3 class="text-lg font-semibold text-gray-900">
+								{result.isSubdomain ? `${result.domain} のDNSレコード` : 'DNSレコード'}
+							</h3>
 						</div>
 						<div class="text-sm text-gray-500">
 							{result.dnsRecords.length} 件
@@ -441,7 +859,7 @@
 							<div class="rounded border border-gray-100 bg-gray-50 p-4">
 								<h4 class="mb-3 font-medium text-gray-800">{type} レコード ({records.length}件)</h4>
 								<div class="space-y-2">
-									{#each records as record (record.name + record.data)}
+									{#each records as record, idx (record.type + record.name + record.data + idx)}
 										<div class="flex items-center justify-between rounded bg-white p-3">
 											<div class="font-mono text-sm text-gray-900">
 												{record.data}
@@ -472,6 +890,62 @@
 					このドメインのDNSレコードが見つかりませんでした
 				</div>
 			{/if}
+
+			<!-- ルートドメインのDNSレコード（サブドメインの場合） -->
+			{#if result.isSubdomain && result.rootDnsRecords && result.rootDnsRecords.length > 0}
+				<div class="rounded-lg border border-purple-200 bg-white p-6">
+					<div class="mb-4 flex items-center justify-between">
+						<div class="flex items-center">
+							<Icon icon="mdi:dns" class="mr-2 h-6 w-6 text-purple-600" />
+							<h3 class="text-lg font-semibold text-gray-900">
+								{result.rootDomain} のDNSレコード
+							</h3>
+							<span class="ml-2 rounded bg-purple-100 px-2 py-0.5 text-xs text-purple-700">
+								ルートドメイン
+							</span>
+						</div>
+						<div class="text-sm text-gray-500">
+							{result.rootDnsRecords.length} 件
+						</div>
+					</div>
+
+					<div class="mb-3 rounded bg-gray-100 p-3 text-sm text-gray-700">
+						<Icon icon="mdi:information-outline" class="mr-1 inline h-4 w-4" />
+						NS/MXなどのドメイン管理レコードはルートドメインで確認できます
+					</div>
+
+					<!-- レコードタイプ別にグループ化して表示 -->
+					<div class="space-y-4">
+						{#each Object.entries(groupRecordsByType(result.rootDnsRecords)) as [type, records] (type)}
+							<div class="rounded border border-purple-100 bg-purple-50/50 p-4">
+								<h4 class="mb-3 font-medium text-gray-800">{type} レコード ({records.length}件)</h4>
+								<div class="space-y-2">
+									{#each records as record, idx (record.type + record.name + record.data + idx)}
+										<div class="flex items-center justify-between rounded bg-white p-3">
+											<div class="font-mono text-sm text-gray-900">
+												{record.data}
+											</div>
+											<div class="flex items-center gap-2">
+												{#if record.ttl}
+													<span class="rounded bg-purple-100 px-2 py-1 text-xs text-purple-700">
+														TTL: {record.ttl}s
+													</span>
+												{/if}
+												<button
+													on:click={() => copyToClipboard(record.data)}
+													class="rounded bg-gray-100 px-2 py-1 text-xs text-gray-600 hover:bg-gray-200"
+												>
+													<Icon icon="mdi:content-copy" class="h-3 w-3" />
+												</button>
+											</div>
+										</div>
+									{/each}
+								</div>
+							</div>
+						{/each}
+					</div>
+				</div>
+			{/if}
 		</div>
 	{:else if !isLoading}
 		<div class="rounded-lg border border-gray-200 bg-gray-50 p-8 text-center text-gray-500">
@@ -489,7 +963,12 @@
 				<p class="mb-2 font-medium">機能について</p>
 				<ul class="space-y-1 text-xs">
 					<li>• DNS情報はCloudflare DNS-over-HTTPSから取得されます</li>
-					<li>• IP地理情報はipapi.coから取得されます</li>
+					<li>• IP地理情報はip-api.comから取得されます</li>
+					<li>
+						• <strong>サブドメイン対応:</strong> www.example.comなどのサブドメインも検索可能です
+					</li>
+					<li>• サブドメインの場合、ルートドメインのDNS情報も同時に取得・表示します</li>
+					<li>• CNAMEレコードのみのサブドメインも、IPアドレスを自動解決します</li>
 					<li>• ブラウザの制限により、直接のWhois情報取得は行えません</li>
 					<li>• 対応レコードタイプ: A, AAAA, MX, NS, TXT, CNAME</li>
 				</ul>
