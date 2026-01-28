@@ -15,6 +15,7 @@
 	let progressMessage = $state('');
 	let dragOver = $state(false);
 	let errorMessage = $state('');
+	let warningMessage = $state('');
 
 	// ファイル関連
 	let originalFile: File | null = $state(null);
@@ -57,8 +58,8 @@
 		{ value: 48000, label: '48 kHz', description: 'プロ品質' }
 	];
 
-	// ファイルサイズ制限（500MB）
-	const MAX_FILE_SIZE = 500 * 1024 * 1024;
+	// ファイルサイズ警告しきい値（500MB以上で警告）
+	const FILE_SIZE_WARNING_THRESHOLD = 500 * 1024 * 1024;
 
 	// 有効な設定値（ホワイトリスト）
 	const VALID_FORMATS = ['mp3', 'aac', 'wav', 'ogg', 'flac'];
@@ -161,14 +162,14 @@
 			return;
 		}
 
-		// ファイルサイズ制限のチェック
-		if (file.size > MAX_FILE_SIZE) {
-			errorMessage = `ファイルサイズが大きすぎます（最大${MAX_FILE_SIZE / 1024 / 1024}MB）`;
-			return;
-		}
-
 		// 前回のファイルをクリア
 		clearAll();
+
+		// ファイルサイズの警告チェック
+		if (file.size > FILE_SIZE_WARNING_THRESHOLD) {
+			const sizeMB = Math.round(file.size / 1024 / 1024);
+			warningMessage = `ファイルサイズが大きいため（${sizeMB}MB）、変換に時間がかかる場合があります。ブラウザがメモリ不足になる可能性もあります。`;
+		}
 
 		originalFile = file;
 		originalVideoUrl = URL.createObjectURL(file);
@@ -366,6 +367,7 @@
 		conversionProgress = 0;
 		progressMessage = '';
 		errorMessage = '';
+		warningMessage = '';
 		videoInfo = { duration: 0, size: 0 };
 	}
 
@@ -407,6 +409,16 @@
 			<div class="flex items-center">
 				<Icon icon="mdi:alert-circle" class="mr-2 h-5 w-5 text-red-600" />
 				<p class="text-red-700">{errorMessage}</p>
+			</div>
+		</div>
+	{/if}
+
+	<!-- 警告メッセージ -->
+	{#if warningMessage}
+		<div class="mb-6 rounded-lg border border-yellow-200 bg-yellow-50 p-4">
+			<div class="flex items-start">
+				<Icon icon="mdi:alert" class="mr-2 h-5 w-5 flex-shrink-0 text-yellow-600" />
+				<p class="text-yellow-800">{warningMessage}</p>
 			</div>
 		</div>
 	{/if}
