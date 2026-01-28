@@ -148,6 +148,13 @@ export const tools: Tool[] = [
 		category: '画像・メディア'
 	},
 	{
+		nameJa: '動画→音声変換',
+		name: 'video-to-audio',
+		description: '動画ファイルから音声を抽出してMP3/WAV/AAC等に変換します',
+		icon: 'mdi:waveform',
+		category: '画像・メディア'
+	},
+	{
 		nameJa: 'X プロフィール QR',
 		name: 'x-qrcode-generator',
 		description: 'X（旧Twitter）プロフィール用のQRコードを生成します',

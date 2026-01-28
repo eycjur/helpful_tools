@@ -6,12 +6,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 「困った時のツール集」は、日常的に使える便利ツール集のWebアプリケーションです。
 
-### 提供ツール（7カテゴリ、20ツール）
+### 提供ツール（7カテゴリ、25ツール）
 
 - **生成AI**: HTML/リッチテキスト → Markdown変換（AI活用）
 - **文字・テキスト処理**: 正規表現テスター、文字数カウンタ、HTML/URLエンコーダ
 - **データ変換**: JSON構造化表示、Base64変換、Notion/LaTeX変換
-- **画像・メディア**: 画像形式変換、動画圧縮
+- **画像・メディア**: 画像形式変換、動画圧縮、動画→音声変換
 - **QRコード**: 汎用QR、XプロフィールQR
 - **開発・比較ツール**: コード整形、Diffチェッカー、curlビルダー、クリップボード検査、Pythonコード解析
 - **ネットワーク・情報**: 接続元情報、Whois/ドメイン調査
@@ -238,6 +238,16 @@ helpful_tools/
 - **非推奨API回避**: `String.prototype.substr()`を`substring()`に置き換え、将来のブラウザ互換性を確保
 - **エラーハンドリング**: `instanceof Error`による型安全なエラー処理、各デコード関数で適切な例外スロー
 - **パフォーマンス**: `replaceAll()`を使用してRegExpオブジェクト生成を回避、HTMLエンティティデコードを高速化
+
+#### 動画→音声変換（新規ツール）
+
+- **FFmpeg.wasm使用**: WebAssembly版FFmpeg（@ffmpeg/ffmpeg）を使用。ブラウザ上で動画から音声を抽出。
+- **CDN経由の動的読み込み**: FFmpegコア（ffmpeg-core.js, ffmpeg-core.wasm）はunpkg CDNから読み込み。初回ロードに時間がかかる。
+- **対応出力形式**: MP3, AAC (M4A), WAV, OGG Vorbis, FLAC。形式ごとに適切なコーデックを使用。
+- **コマンドインジェクション対策**: ビットレート・サンプルレート・出力形式をホワイトリストで検証してから使用。
+- **ファイルサイズ制限**: 500MBまで。大きすぎるファイルはメモリ不足でブラウザクラッシュを防ぐため拒否。
+- **仮想ファイルシステムのクリーンアップ**: `ffmpeg.writeFile()`で書き込んだファイルは変換後に`ffmpeg.deleteFile()`で削除。
+- **型安全性**: `@ffmpeg/ffmpeg`から`FFmpegType`をインポートして型安全に使用。`readFile`の戻り値は`Uint8Array`であることを検証。
 
 ## 開発時の注意点
 
