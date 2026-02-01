@@ -173,6 +173,16 @@ helpful_tools/
 - **ローディング状態**: 外部API呼び出し時の`isLoading`状態とスピナー表示パターン
 - **LaTeX特殊文字エスケープ**: CSV→LaTeXツールで特殊文字（$, &, %, #, ^, \_, {, }, \, ~）を適切にエスケープ
 
+#### CTF暗号解読（新規ツール）
+
+- **Brute forceアプローチ**: Caesar cipher（26パターン）、XOR single-byte（255パターン）など、全パターンを試行して信頼度順にソート
+- **信頼度評価システム**: 印字可能文字の割合（30点）、英単語の出現（30点）、文字頻度分析（40点）で平文らしさを0-100で評価
+- **XOR brute force**: `TextDecoder`の`fatal: true`オプションでUTF-8デコード失敗時に例外をスロー、印字可能文字（0x20-0x7E）のみをフィルタリング
+- **Rail Fence cipher**: レール数2-5のパターンを試行。ジグザグパターンの復号化には、まず各レールに文字を配置し、その後ジグザグ順に読み取る2段階処理
+- **Base64多段デコード**: 最大10回までBase64デコードを繰り返し、各段階の結果を保存。無限ループ防止のため、デコード結果が元と同じ場合は中断
+- **文字頻度分析**: 英語の文字頻度（ETAOIN...）と比較して上位5文字の一致度を計算。英単語（the, be, to...）の出現も評価
+- **パフォーマンス**: XOR brute forceで255パターン、Caesar cipherで26パターンを試行するため、入力サイズは1MBに制限
+
 ### レスポンシブサイドバー
 
 プロジェクトには高機能なレスポンシブサイドバーを実装：
@@ -259,16 +269,19 @@ helpful_tools/
 - **Svelteリアクティビティ**: 配列への追加は`push()`ではなくスプレッド演算子（`[...array, newItem]`）を使用してリアクティビティを確保。
 - **型安全性**: `unknown`型を使用してメタデータの型安全性を確保。`formatValue()`関数で適切な型判定と文字列変換を実施。
 
-#### PDFメタデータ・セキュリティ情報（新規ツール）
+#### PDFメタデータ・セキュリティ情報（改善版）
 
-- **pdf.js使用**: Mozilla開発の`pdfjs-dist`ライブラリでPDF解析。WebWorkerを使用して非同期処理を実現。
-- **メタデータ抽出**: `getMetadata()`でPDFメタデータ（Title, Author, Subject, Keywords, Creator, Producer, CreationDate, ModDate）を取得。
-- **JavaScript検出と警告**: PDFに埋め込まれたJavaScriptを検出し、セキュリティリスクについて赤色警告を表示。悪意あるコードの可能性を明示。
-- **添付ファイル情報**: `getAttachments()`でPDFに添付されたファイルの情報（ファイル名、サイズ、説明）を表示。
+- **pdfjs-dist使用**: Mozilla開発の`pdfjs-dist`ライブラリ（v4.0.379以降）でPDF解析。WebWorkerを使用して非同期処理を実現。
+- **見た目と無関係な要素にフォーカス**: レンダリング結果に影響しない要素（メタデータ、埋め込みファイル、アクティブ要素、セキュリティ、フォーム）を抽出。
+- **包括的な解析**: `/Info`辞書、XMPメタデータ、ドキュメントID、埋め込みファイル（`/Names/EmbeddedFiles`）、OpenAction、Additional Actions、JavaScript、外部参照（URI/Launch/GoToR）、フォーム情報（AcroForm/XFA）、セキュリティ情報（暗号化/署名/権限）を網羅的に抽出。
+- **Finding機能**: ルールベースで検出結果を重要度（high/medium/low）付きで分類。OpenActionのJavaScript/Launch、実行可能ファイルの埋め込み、JavaScript検出などを自動検出。
+- **SHA-256ハッシュ計算**: Web Crypto APIの`crypto.subtle.digest()`を使用して、JavaScriptコードや埋め込みファイルのハッシュ値を計算。同一性確認や追跡に有用。
+- **非同期処理**: `parsePDFNonRender()`は`async`関数で、pdfjs-distの非同期API（`getDocument()`, `getMetadata()`, `getAttachments()`など）を適切に処理。
+- **型安全性**: `PDFReport`インターフェースで構造化されたレポート形式を定義。`Finding`型で検出結果の重要度とコードを管理。
+- **後方互換性**: 既存の`parsePDF()`関数と`PDFInfo`型を維持し、レガシーコードとの互換性を確保。
 - **ファイルサイズ警告**: 100MB以上のファイルは警告を表示。大きなPDFファイルでのメモリ不足を防ぐ。
-- **暗号化検出**: `_pdfInfo.IsEncrypted`で暗号化の有無を確認し、警告メッセージを表示。
-- **型アサーション**: pdf.jsの内部プロパティ（`_pdfInfo`）やメソッド（`getJavaScript`）へのアクセスには型アサーションを使用。
-- **CDN経由Worker**: pdf.jsのWebWorkerはunpkg CDNから動的読み込み（`pdf.worker.min.mjs?url`）。
+- **型アサーション**: pdf.jsの内部プロパティ（`_pdfInfo`、`openAction`、`additionalActions`など）へのアクセスには型アサーション（`as unknown as`）を使用。
+- **CDN経由Worker**: pdf.jsのWebWorkerはunpkg CDNから動的読み込み（`pdf.worker.min.mjs`）。バージョンは`pdfjsLib.version`で自動取得。
 
 ## 開発時の注意点
 
