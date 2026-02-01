@@ -123,70 +123,6 @@
 				const metadata = await exifr.parse(file, true);
 
 				if (metadata) {
-					// EXIF基本情報
-					const exifBasic: Record<string, unknown> = {};
-					const exifFields = [
-						'Make',
-						'Model',
-						'DateTime',
-						'DateTimeOriginal',
-						'DateTimeDigitized',
-						'Software',
-						'Orientation',
-						'XResolution',
-						'YResolution',
-						'ResolutionUnit',
-						'Copyright',
-						'Artist'
-					];
-					for (const field of exifFields) {
-						if (metadata[field] !== undefined) {
-							exifBasic[field] = metadata[field];
-						}
-					}
-					if (Object.keys(exifBasic).length > 0) {
-						metadataSections.push({
-							title: '基本EXIF情報',
-							icon: 'mdi:information-outline',
-							data: exifBasic
-						});
-					}
-
-					// カメラ設定
-					const cameraSettings: Record<string, unknown> = {};
-					const cameraFields = [
-						'ExposureTime',
-						'FNumber',
-						'ISO',
-						'ExposureProgram',
-						'ExposureMode',
-						'ExposureBiasValue',
-						'MeteringMode',
-						'Flash',
-						'FocalLength',
-						'FocalLengthIn35mmFormat',
-						'LensModel',
-						'LensMake',
-						'WhiteBalance',
-						'DigitalZoomRatio',
-						'SceneCaptureType',
-						'Contrast',
-						'Saturation',
-						'Sharpness'
-					];
-					for (const field of cameraFields) {
-						if (metadata[field] !== undefined) {
-							cameraSettings[field] = metadata[field];
-						}
-					}
-					if (Object.keys(cameraSettings).length > 0) {
-						metadataSections.push({
-							title: 'カメラ設定',
-							icon: 'mdi:camera',
-							data: cameraSettings
-						});
-					}
-
 					// GPS情報
 					const gpsData = await exifr.gps(file);
 					if (gpsData) {
@@ -221,11 +157,10 @@
 						});
 					}
 
-					// その他のメタデータ
-					const otherMetadata: Record<string, unknown> = {};
-					const excludeFields = new Set([
-						...exifFields,
-						...cameraFields,
+					// すべてのEXIFメタデータ
+					const allMetadata: Record<string, unknown> = {};
+					// GPS関連フィールドは除外（別セクションで表示済み）
+					const gpsFields = new Set([
 						'latitude',
 						'longitude',
 						'GPSLatitude',
@@ -235,23 +170,27 @@
 						'GPSAltitude',
 						'GPSAltitudeRef',
 						'GPSDateStamp',
-						'GPSTimeStamp'
+						'GPSTimeStamp',
+						'GPSVersionID',
+						'GPSMapDatum',
+						'GPSProcessingMethod',
+						'GPSAreaInformation'
 					]);
 
 					for (const [key, value] of Object.entries(metadata)) {
-						if (!excludeFields.has(key) && value !== undefined && value !== null) {
+						if (!gpsFields.has(key) && value !== undefined && value !== null) {
 							// バイナリデータや関数はスキップ
 							if (typeof value !== 'function' && !isBinaryData(value)) {
-								otherMetadata[key] = value;
+								allMetadata[key] = value;
 							}
 						}
 					}
 
-					if (Object.keys(otherMetadata).length > 0) {
+					if (Object.keys(allMetadata).length > 0) {
 						metadataSections.push({
-							title: 'その他のメタデータ',
-							icon: 'mdi:database',
-							data: otherMetadata
+							title: 'EXIFメタデータ',
+							icon: 'mdi:information-outline',
+							data: allMetadata
 						});
 					}
 				} else {
@@ -303,23 +242,6 @@
 		basicInfo = null;
 		metadataSections = [];
 		warnings = [];
-	}
-
-	function exportMetadata() {
-		if (!basicInfo) return;
-
-		const exportData = {
-			basicInfo,
-			metadata: metadataSections
-		};
-
-		const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-		const url = URL.createObjectURL(blob);
-		const a = document.createElement('a');
-		a.href = url;
-		a.download = `${basicInfo.fileName}_metadata.json`;
-		a.click();
-		URL.revokeObjectURL(url);
 	}
 </script>
 
@@ -393,15 +315,7 @@
 	{/each}
 
 	{#if basicInfo && imageUrl}
-		<div class="mb-4 flex justify-end gap-2">
-			<button
-				on:click={exportMetadata}
-				class="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
-				title="メタデータをJSONファイルとしてダウンロード"
-			>
-				<Icon icon="mdi:download" class="inline-block h-5 w-5" />
-				エクスポート
-			</button>
+		<div class="mb-4 flex justify-end">
 			<button on:click={clearAll} class="rounded bg-gray-500 px-4 py-2 text-white hover:bg-gray-600"
 				>クリア</button
 			>
