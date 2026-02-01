@@ -6,12 +6,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 「困った時のツール集」は、日常的に使える便利ツール集のWebアプリケーションです。
 
-### 提供ツール（7カテゴリ、26ツール）
+### 提供ツール（7カテゴリ、27ツール）
 
 - **生成AI**: HTML/リッチテキスト → Markdown変換（AI活用）
 - **文字・テキスト処理**: 正規表現テスター、文字数カウンタ、HTML/URLエンコーダ
 - **データ変換**: JSON構造化表示、Base64変換、Notion/LaTeX変換
-- **画像・メディア**: 画像形式変換、画像メタデータ表示、動画圧縮、動画→音声変換
+- **画像・メディア**: 画像形式変換、画像メタデータ表示、PDFメタデータ・セキュリティ情報、動画圧縮、動画→音声変換
 - **QRコード**: 汎用QR、XプロフィールQR
 - **開発・比較ツール**: コード整形、Diffチェッカー、curlビルダー、クリップボード検査、Pythonコード解析
 - **ネットワーク・情報**: 接続元情報、Whois/ドメイン調査
@@ -251,14 +251,24 @@ helpful_tools/
 
 #### 画像メタデータ表示（新規ツール）
 
-- **exifr使用**: EXIF/GPS/IPTC/XMPメタデータの抽出に`exifr`ライブラリ（v7.1.3以降）を使用。`exifr.parse(file, true)`ですべてのメタデータセグメントを取得。
+- **exifr使用**: EXIF/GPS/IPTC/XMPメタデータの抽出に`exifr`ライブラリ（v7.1.3以降）を使用。`translateKeys: true`で数値キーを人間が読める名前に変換。
 - **ファイルサイズ警告**: 50MB以上のファイルは警告を表示。大きな画像ファイルでのメモリ不足を防ぐ。
 - **GPS警告**: GPS位置情報が含まれる場合、プライバシーリスクについて赤色の強調警告を表示。SNS投稿前のユーザー注意喚起。
 - **複数警告の同時表示**: 警告を配列で管理（`warnings: Array<{ message: string; type: 'warning' | 'error' }>`）し、ファイルサイズとGPS警告を同時に表示可能。
 - **バイナリデータフィルタリング**: `isBinaryData()`関数で複数の型付き配列（Uint8Array、ArrayBuffer、Int8Array等）を検出し、メタデータ表示から除外。
-- **メタデータエクスポート**: `exportMetadata()`関数でJSON形式のメタデータダウンロード機能を提供。基本情報とすべてのメタデータセクションを含む。
-- **セクション別表示**: メタデータを「基本EXIF情報」「カメラ設定」「GPS情報」「その他のメタデータ」に分類して階層的に表示。
+- **Svelteリアクティビティ**: 配列への追加は`push()`ではなくスプレッド演算子（`[...array, newItem]`）を使用してリアクティビティを確保。
 - **型安全性**: `unknown`型を使用してメタデータの型安全性を確保。`formatValue()`関数で適切な型判定と文字列変換を実施。
+
+#### PDFメタデータ・セキュリティ情報（新規ツール）
+
+- **pdf.js使用**: Mozilla開発の`pdfjs-dist`ライブラリでPDF解析。WebWorkerを使用して非同期処理を実現。
+- **メタデータ抽出**: `getMetadata()`でPDFメタデータ（Title, Author, Subject, Keywords, Creator, Producer, CreationDate, ModDate）を取得。
+- **JavaScript検出と警告**: PDFに埋め込まれたJavaScriptを検出し、セキュリティリスクについて赤色警告を表示。悪意あるコードの可能性を明示。
+- **添付ファイル情報**: `getAttachments()`でPDFに添付されたファイルの情報（ファイル名、サイズ、説明）を表示。
+- **ファイルサイズ警告**: 100MB以上のファイルは警告を表示。大きなPDFファイルでのメモリ不足を防ぐ。
+- **暗号化検出**: `_pdfInfo.IsEncrypted`で暗号化の有無を確認し、警告メッセージを表示。
+- **型アサーション**: pdf.jsの内部プロパティ（`_pdfInfo`）やメソッド（`getJavaScript`）へのアクセスには型アサーションを使用。
+- **CDN経由Worker**: pdf.jsのWebWorkerはunpkg CDNから動的読み込み（`pdf.worker.min.mjs?url`）。
 
 ## 開発時の注意点
 

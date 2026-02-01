@@ -148,6 +148,13 @@ export const tools: Tool[] = [
 		category: '画像・メディア'
 	},
 	{
+		nameJa: 'PDFメタデータ・セキュリティ情報',
+		name: 'pdf-metadata',
+		description: 'PDFのメタデータ、JavaScript、セキュリティ設定を表示します',
+		icon: 'mdi:file-pdf-box',
+		category: '画像・メディア'
+	},
+	{
 		nameJa: '動画圧縮',
 		name: 'video-compressor',
 		description: '動画ファイルのサイズを圧縮してファイルサイズを削減します',
