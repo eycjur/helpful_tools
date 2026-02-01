@@ -141,6 +141,13 @@ export const tools: Tool[] = [
 		category: '画像・メディア'
 	},
 	{
+		nameJa: '画像メタデータ表示',
+		name: 'image-metadata',
+		description: '画像ファイルのEXIF情報やメタデータを詳細表示します',
+		icon: 'mdi:image-search',
+		category: '画像・メディア'
+	},
+	{
 		nameJa: '動画圧縮',
 		name: 'video-compressor',
 		description: '動画ファイルのサイズを圧縮してファイルサイズを削減します',
