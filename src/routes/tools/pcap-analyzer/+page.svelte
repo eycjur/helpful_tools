@@ -7,7 +7,9 @@
 		getLinkTypeName,
 		type PcapAnalysisResult,
 		type ParsedPacket
-	} from '$lib/pcap-parser';
+	} from './pcap-parser';
+	import PacketDetailView from './PacketDetailView.svelte';
+	import PacketFilterPanel from './PacketFilterPanel.svelte';
 
 	const tool = tools.find((t) => t.name === 'pcap-analyzer');
 
@@ -29,6 +31,8 @@
 	let filterSourcePort = '';
 	let filterDestinationPort = '';
 	let searchQuery = '';
+	let groupBy: 'none' | 'dns' | 'conversation' = 'none';
+	let expandedGroups = new Set<string>();
 
 	function formatFileSize(bytes: number): string {
 		if (bytes < 1024) return `${bytes} B`;
@@ -133,6 +137,8 @@
 		filterSourcePort = '';
 		filterDestinationPort = '';
 		searchQuery = '';
+		groupBy = 'none';
+		expandedGroups = new Set<string>();
 	}
 
 	function formatPacketTime(timestamp: number, baseTime: number): string {
@@ -141,6 +147,22 @@
 	}
 
 	function getPacketInfo(packet: ParsedPacket): string {
+		// DNS情報を優先表示（レスポンスを優先）
+		if (packet.dns) {
+			// レスポンスの場合（answersが存在する場合）
+			if (packet.dns.answers && packet.dns.answers.length > 0) {
+				const answer = packet.dns.answers[0];
+				if (answer) {
+					return `Response ${answer.data}`;
+				}
+			}
+			// クエリの場合
+			if (packet.dns.queryName) {
+				const queryType = packet.dns.queryType === 1 ? 'A' : packet.dns.queryType === 28 ? 'AAAA' : packet.dns.queryType === 5 ? 'CNAME' : `Type${packet.dns.queryType}`;
+				return `Query ${queryType} ${packet.dns.queryName}`;
+			}
+		}
+
 		if (packet.tcp) {
 			const flags = [];
 			if (packet.tcp.flags & 0x02) flags.push('SYN');
@@ -156,39 +178,6 @@
 		return packet.protocol;
 	}
 
-	function formatHexDump(data: Uint8Array | undefined): string {
-		if (!data || data.length === 0) return '';
-
-		const lines: string[] = [];
-		const maxBytes = Math.min(data.length, 512); // DOMパフォーマンス考慮で512バイトまで表示
-
-		for (let i = 0; i < maxBytes; i += 16) {
-			const offset = i.toString(16).padStart(8, '0');
-			const chunk = data.slice(i, Math.min(i + 16, maxBytes));
-
-			// 16進数表示
-			const hex = Array.from(chunk)
-				.map((b, idx) => {
-					const h = b.toString(16).padStart(2, '0');
-					return idx === 7 ? h + '  ' : h + ' ';
-				})
-				.join('')
-				.padEnd(50, ' ');
-
-			// ASCII表示
-			const ascii = Array.from(chunk)
-				.map((b) => (b >= 0x20 && b <= 0x7e ? String.fromCharCode(b) : '.'))
-				.join('');
-
-			lines.push(`${offset}  ${hex} |${ascii}|`);
-		}
-
-		if (data.length > maxBytes) {
-			lines.push(`... (${data.length - maxBytes} bytes omitted)`);
-		}
-
-		return lines.join('\n');
-	}
 
 	function filterPackets(packets: ParsedPacket[]): ParsedPacket[] {
 		return packets.filter((packet) => {
@@ -243,6 +232,77 @@
 
 			return true;
 		});
+	}
+
+	type PacketGroup = {
+		key: string;
+		label: string;
+		packets: ParsedPacket[];
+		count: number;
+	};
+
+	function groupPackets(packets: ParsedPacket[]): PacketGroup[] {
+		if (groupBy === 'none') {
+			return [];
+		}
+
+		const groups = new Map<string, ParsedPacket[]>();
+
+		for (const packet of packets) {
+			let key: string;
+			let label: string;
+
+			if (groupBy === 'dns') {
+				// DNSクエリ名でグループ化
+				if (packet.dns?.queryName) {
+					key = packet.dns.queryName;
+					label = `DNS: ${packet.dns.queryName}`;
+				} else {
+					key = '_no_dns';
+					label = 'Non-DNS or Unknown';
+				}
+			} else if (groupBy === 'conversation') {
+				// 会話（送信元⇄宛先）でグループ化
+				const srcIp = packet.ipv4?.sourceIp ?? 'unknown';
+				const dstIp = packet.ipv4?.destinationIp ?? 'unknown';
+				const srcPort = packet.tcp?.sourcePort ?? packet.udp?.sourcePort ?? 0;
+				const dstPort = packet.tcp?.destinationPort ?? packet.udp?.destinationPort ?? 0;
+
+				// 会話は双方向なので、IP:Portペアを正規化
+				const conv1 = `${srcIp}:${srcPort} ⇄ ${dstIp}:${dstPort}`;
+				const conv2 = `${dstIp}:${dstPort} ⇄ ${srcIp}:${srcPort}`;
+				key = conv1 < conv2 ? conv1 : conv2;
+				label = `${srcIp}:${srcPort} ⇄ ${dstIp}:${dstPort}`;
+			} else {
+				key = '_unknown';
+				label = 'Unknown';
+			}
+
+			if (!groups.has(key)) {
+				groups.set(key, []);
+			}
+			groups.get(key)!.push(packet);
+		}
+
+		// グループを配列に変換してソート
+		return Array.from(groups.entries())
+			.map(([key, packets]) => ({
+				key,
+				label: packets[0] ? (groupBy === 'dns' ? `DNS: ${packets[0].dns?.queryName ?? 'Unknown'}` :
+					`${packets[0].ipv4?.sourceIp ?? '?'}:${packets[0].tcp?.sourcePort ?? packets[0].udp?.sourcePort ?? '?'} ⇄ ${packets[0].ipv4?.destinationIp ?? '?'}:${packets[0].tcp?.destinationPort ?? packets[0].udp?.destinationPort ?? '?'}`) : 'Unknown',
+				packets,
+				count: packets.length
+			}))
+			.sort((a, b) => b.count - a.count); // パケット数の多い順
+	}
+
+	function toggleGroup(key: string) {
+		if (expandedGroups.has(key)) {
+			expandedGroups.delete(key);
+		} else {
+			expandedGroups.add(key);
+		}
+		expandedGroups = expandedGroups; // Svelteリアクティビティのため再代入
 	}
 
 	onDestroy(() => {
@@ -570,104 +630,15 @@
 		{:else}
 			<!-- パケットビューア -->
 			<!-- フィルター -->
-			<div class="mb-4 overflow-hidden rounded-lg border border-gray-200 bg-white p-4">
-				<div class="mb-3 flex items-center justify-between">
-					<h3 class="font-semibold text-gray-800">フィルター</h3>
-					<button
-						on:click={() => {
-							filterProtocol = '';
-							filterSourceIp = '';
-							filterDestinationIp = '';
-							filterSourcePort = '';
-							filterDestinationPort = '';
-							searchQuery = '';
-						}}
-						class="text-sm text-blue-600 hover:text-blue-800"
-					>
-						フィルタークリア
-					</button>
-				</div>
-				<div class="grid grid-cols-1 gap-3 md:grid-cols-3">
-					<div>
-						<label for="filter-protocol" class="mb-1 block text-xs font-medium text-gray-600"
-							>プロトコル</label
-						>
-						<select
-							id="filter-protocol"
-							bind:value={filterProtocol}
-							class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-						>
-							<option value="">すべて</option>
-							<option value="TCP">TCP</option>
-							<option value="UDP">UDP</option>
-							<option value="ICMP">ICMP</option>
-							<option value="ARP">ARP</option>
-							<option value="IPv6">IPv6</option>
-							<option value="Other">Other</option>
-						</select>
-					</div>
-					<div>
-						<label for="filter-source-ip" class="mb-1 block text-xs font-medium text-gray-600"
-							>送信元IP</label
-						>
-						<input
-							id="filter-source-ip"
-							type="text"
-							bind:value={filterSourceIp}
-							placeholder="例: 192.168.1.1"
-							class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-						/>
-					</div>
-					<div>
-						<label for="filter-dest-ip" class="mb-1 block text-xs font-medium text-gray-600"
-							>宛先IP</label
-						>
-						<input
-							id="filter-dest-ip"
-							type="text"
-							bind:value={filterDestinationIp}
-							placeholder="例: 192.168.1.1"
-							class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-						/>
-					</div>
-					<div>
-						<label for="filter-source-port" class="mb-1 block text-xs font-medium text-gray-600"
-							>送信元ポート</label
-						>
-						<input
-							id="filter-source-port"
-							type="number"
-							bind:value={filterSourcePort}
-							placeholder="例: 80"
-							class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-						/>
-					</div>
-					<div>
-						<label for="filter-dest-port" class="mb-1 block text-xs font-medium text-gray-600"
-							>宛先ポート</label
-						>
-						<input
-							id="filter-dest-port"
-							type="number"
-							bind:value={filterDestinationPort}
-							placeholder="例: 443"
-							class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-						/>
-					</div>
-					<div>
-						<label for="filter-search" class="mb-1 block text-xs font-medium text-gray-600"
-							>ペイロード検索</label
-						>
-						<input
-							id="filter-search"
-							type="text"
-							bind:value={searchQuery}
-							placeholder="正規表現または文字列"
-							class="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-						/>
-					</div>
-				</div>
-			</div>
+			<PacketFilterPanel
+				bind:filterProtocol
+				bind:filterSourceIp
+				bind:filterDestinationIp
+				bind:filterSourcePort
+				bind:filterDestinationPort
+				bind:searchQuery
+				bind:groupBy
+			/>
 
 			<!-- パケット一覧 -->
 			<div class="mb-4 overflow-hidden rounded-lg border border-gray-200 bg-white">
@@ -704,7 +675,9 @@
 							</tr>
 						</thead>
 						<tbody class="divide-y divide-gray-200 bg-white">
-							{#each filterPackets(result.packets).slice(0, 1000) as packet (packet.index)}
+							{#if groupBy === 'none'}
+								<!-- グループ化なし：通常表示 -->
+								{#each filterPackets(result.packets).slice(0, 1000) as packet (packet.index)}
 								<tr
 									class="cursor-pointer hover:bg-gray-50 {selectedPacketIndex === packet.index
 										? 'bg-blue-50'
@@ -727,10 +700,20 @@
 										{formatPacketTime(packet.timestamp, result.statistics.captureStartTime)}
 									</td>
 									<td class="px-4 py-2 font-mono text-xs text-gray-900">
-										{packet.ipv4?.sourceIp ?? '-'}
+										{#if packet.ipv4}
+											{packet.ipv4.sourceIp}{#if packet.tcp || packet.udp}:{packet.tcp
+													?.sourcePort ?? packet.udp?.sourcePort}{/if}
+										{:else}
+											-
+										{/if}
 									</td>
 									<td class="px-4 py-2 font-mono text-xs text-gray-900">
-										{packet.ipv4?.destinationIp ?? '-'}
+										{#if packet.ipv4}
+											{packet.ipv4.destinationIp}{#if packet.tcp || packet.udp}:{packet.tcp
+													?.destinationPort ?? packet.udp?.destinationPort}{/if}
+										{:else}
+											-
+										{/if}
 									</td>
 									<td class="px-4 py-2 text-sm text-gray-900">{packet.protocol}</td>
 									<td class="px-4 py-2 text-sm text-gray-900">{packet.capturedLength}</td>
@@ -871,6 +854,47 @@
 													</div>
 												{/if}
 
+												<!-- DNS -->
+												{#if packet.dns}
+													<div>
+														<h4 class="mb-2 font-semibold text-gray-800">DNS</h4>
+														<dl class="grid grid-cols-1 gap-2 text-sm">
+															{#if packet.dns.queryName}
+																<div>
+																	<dt class="font-medium text-gray-600">Query Name:</dt>
+																	<dd class="font-mono text-gray-900">{packet.dns.queryName}</dd>
+																</div>
+															{/if}
+															{#if packet.dns.queryType}
+																<div>
+																	<dt class="font-medium text-gray-600">Query Type:</dt>
+																	<dd class="font-mono text-gray-900">
+																		{packet.dns.queryType === 1
+																			? 'A (IPv4)'
+																			: packet.dns.queryType === 28
+																				? 'AAAA (IPv6)'
+																				: packet.dns.queryType === 5
+																					? 'CNAME'
+																					: `Type ${packet.dns.queryType}`}
+																	</dd>
+																</div>
+															{/if}
+															{#if packet.dns.answers && packet.dns.answers.length > 0}
+																<div>
+																	<dt class="font-medium text-gray-600">Answers:</dt>
+																	<dd class="space-y-1">
+																		{#each packet.dns.answers as answer}
+																			<div class="font-mono text-xs text-gray-900">
+																				{answer.name} → {answer.data}
+																			</div>
+																		{/each}
+																	</dd>
+																</div>
+															{/if}
+														</dl>
+													</div>
+												{/if}
+
 												<!-- Payload (Hex Dump) -->
 												{#if packet.payload && packet.payload.length > 0}
 													<div>
@@ -887,7 +911,288 @@
 										</td>
 									</tr>
 								{/if}
-							{/each}
+								{/each}
+							{:else}
+								<!-- グループ化あり：グループ表示 -->
+								{@const groups = groupPackets(filterPackets(result.packets))}
+								{#each groups as group (group.key)}
+									<!-- グループヘッダー -->
+									<tr
+										class="cursor-pointer bg-blue-100 hover:bg-blue-200"
+										on:click={() => toggleGroup(group.key)}
+										on:keydown={(e) => {
+											if (e.key === 'Enter' || e.key === ' ') {
+												e.preventDefault();
+												toggleGroup(group.key);
+											}
+										}}
+										role="button"
+										tabindex="0"
+									>
+										<td colspan="7" class="px-4 py-3">
+											<div class="flex items-center justify-between">
+												<div class="flex items-center">
+													<Icon
+														icon={expandedGroups.has(group.key)
+															? 'mdi:chevron-down'
+															: 'mdi:chevron-right'}
+														class="mr-2 h-5 w-5 text-blue-700"
+													/>
+													<span class="font-semibold text-blue-900">{group.label}</span>
+												</div>
+												<span class="text-sm font-medium text-blue-700"
+													>{group.count} パケット</span
+												>
+											</div>
+										</td>
+									</tr>
+
+									<!-- グループ内のパケット（展開時のみ表示） -->
+									{#if expandedGroups.has(group.key)}
+										{#each group.packets.slice(0, 1000) as packet (packet.index)}
+											<tr
+												class="cursor-pointer hover:bg-gray-50 {selectedPacketIndex === packet.index
+													? 'bg-blue-50'
+													: ''}"
+												on:click={() =>
+													(selectedPacketIndex =
+														selectedPacketIndex === packet.index ? null : packet.index)}
+												on:keydown={(e) => {
+													if (e.key === 'Enter' || e.key === ' ') {
+														e.preventDefault();
+														selectedPacketIndex =
+															selectedPacketIndex === packet.index ? null : packet.index;
+													}
+												}}
+												role="button"
+												tabindex="0"
+											>
+												<td class="px-4 py-2 text-sm text-gray-900">{packet.index + 1}</td>
+												<td class="px-4 py-2 font-mono text-xs text-gray-900">
+													{formatPacketTime(packet.timestamp, result.statistics.captureStartTime)}
+												</td>
+												<td class="px-4 py-2 font-mono text-xs text-gray-900">
+													{#if packet.ipv4}
+														{packet.ipv4.sourceIp}{#if packet.tcp || packet.udp}:{packet.tcp
+																?.sourcePort ?? packet.udp?.sourcePort}{/if}
+													{:else}
+														-
+													{/if}
+												</td>
+												<td class="px-4 py-2 font-mono text-xs text-gray-900">
+													{#if packet.ipv4}
+														{packet.ipv4.destinationIp}{#if packet.tcp || packet.udp}:{packet.tcp
+																?.destinationPort ?? packet.udp?.destinationPort}{/if}
+													{:else}
+														-
+													{/if}
+												</td>
+												<td class="px-4 py-2 text-sm text-gray-900">{packet.protocol}</td>
+												<td class="px-4 py-2 text-sm text-gray-900">{packet.capturedLength}</td>
+												<td class="px-4 py-2 text-sm text-gray-600">{getPacketInfo(packet)}</td>
+											</tr>
+											{#if selectedPacketIndex === packet.index}
+												<tr>
+													<td colspan="7" class="bg-gray-50 px-4 py-4">
+														<!-- パケット詳細（グループ化版） -->
+														<div class="space-y-4">
+															<!-- Ethernet -->
+															{#if packet.ethernet}
+																<div>
+																	<h4 class="mb-2 font-semibold text-gray-800">Ethernet</h4>
+																	<dl class="grid grid-cols-2 gap-2 text-sm">
+																		<div>
+																			<dt class="font-medium text-gray-600">Source MAC:</dt>
+																			<dd class="font-mono text-gray-900">
+																				{packet.ethernet.sourceMac}
+																			</dd>
+																		</div>
+																		<div>
+																			<dt class="font-medium text-gray-600">Destination MAC:</dt>
+																			<dd class="font-mono text-gray-900">
+																				{packet.ethernet.destinationMac}
+																			</dd>
+																		</div>
+																		<div>
+																			<dt class="font-medium text-gray-600">EtherType:</dt>
+																			<dd class="font-mono text-gray-900">
+																				0x{packet.ethernet.etherType.toString(16).padStart(4, '0')}
+																			</dd>
+																		</div>
+																	</dl>
+																</div>
+															{/if}
+
+															<!-- IPv4 -->
+															{#if packet.ipv4}
+																<div>
+																	<h4 class="mb-2 font-semibold text-gray-800">IPv4</h4>
+																	<dl class="grid grid-cols-2 gap-2 text-sm">
+																		<div>
+																			<dt class="font-medium text-gray-600">Source IP:</dt>
+																			<dd class="font-mono text-gray-900">{packet.ipv4.sourceIp}</dd>
+																		</div>
+																		<div>
+																			<dt class="font-medium text-gray-600">Destination IP:</dt>
+																			<dd class="font-mono text-gray-900">
+																				{packet.ipv4.destinationIp}
+																			</dd>
+																		</div>
+																		<div>
+																			<dt class="font-medium text-gray-600">Protocol:</dt>
+																			<dd class="font-mono text-gray-900">{packet.ipv4.protocol}</dd>
+																		</div>
+																		<div>
+																			<dt class="font-medium text-gray-600">TTL:</dt>
+																			<dd class="font-mono text-gray-900">{packet.ipv4.ttl}</dd>
+																		</div>
+																		<div>
+																			<dt class="font-medium text-gray-600">Total Length:</dt>
+																			<dd class="font-mono text-gray-900">{packet.ipv4.totalLength}</dd>
+																		</div>
+																		<div>
+																			<dt class="font-medium text-gray-600">Identification:</dt>
+																			<dd class="font-mono text-gray-900">
+																				{packet.ipv4.identification}
+																			</dd>
+																		</div>
+																	</dl>
+																</div>
+															{/if}
+
+															<!-- TCP -->
+															{#if packet.tcp}
+																<div>
+																	<h4 class="mb-2 font-semibold text-gray-800">TCP</h4>
+																	<dl class="grid grid-cols-2 gap-2 text-sm">
+																		<div>
+																			<dt class="font-medium text-gray-600">Source Port:</dt>
+																			<dd class="font-mono text-gray-900">{packet.tcp.sourcePort}</dd>
+																		</div>
+																		<div>
+																			<dt class="font-medium text-gray-600">Destination Port:</dt>
+																			<dd class="font-mono text-gray-900">
+																				{packet.tcp.destinationPort}
+																			</dd>
+																		</div>
+																		<div>
+																			<dt class="font-medium text-gray-600">Sequence Number:</dt>
+																			<dd class="font-mono text-gray-900">
+																				{packet.tcp.sequenceNumber}
+																			</dd>
+																		</div>
+																		<div>
+																			<dt class="font-medium text-gray-600">Acknowledgment:</dt>
+																			<dd class="font-mono text-gray-900">
+																				{packet.tcp.acknowledgmentNumber}
+																			</dd>
+																		</div>
+																		<div>
+																			<dt class="font-medium text-gray-600">Flags:</dt>
+																			<dd class="font-mono text-gray-900">
+																				0x{packet.tcp.flags.toString(16).padStart(2, '0')} ({getPacketInfo(
+																					packet
+																				)})
+																			</dd>
+																		</div>
+																		<div>
+																			<dt class="font-medium text-gray-600">Window Size:</dt>
+																			<dd class="font-mono text-gray-900">{packet.tcp.windowSize}</dd>
+																		</div>
+																	</dl>
+																</div>
+															{/if}
+
+															<!-- UDP -->
+															{#if packet.udp}
+																<div>
+																	<h4 class="mb-2 font-semibold text-gray-800">UDP</h4>
+																	<dl class="grid grid-cols-2 gap-2 text-sm">
+																		<div>
+																			<dt class="font-medium text-gray-600">Source Port:</dt>
+																			<dd class="font-mono text-gray-900">{packet.udp.sourcePort}</dd>
+																		</div>
+																		<div>
+																			<dt class="font-medium text-gray-600">Destination Port:</dt>
+																			<dd class="font-mono text-gray-900">
+																				{packet.udp.destinationPort}
+																			</dd>
+																		</div>
+																		<div>
+																			<dt class="font-medium text-gray-600">Length:</dt>
+																			<dd class="font-mono text-gray-900">{packet.udp.length}</dd>
+																		</div>
+																		<div>
+																			<dt class="font-medium text-gray-600">Checksum:</dt>
+																			<dd class="font-mono text-gray-900">
+																				0x{packet.udp.checksum.toString(16).padStart(4, '0')}
+																			</dd>
+																		</div>
+																	</dl>
+																</div>
+															{/if}
+
+															<!-- DNS -->
+															{#if packet.dns}
+																<div>
+																	<h4 class="mb-2 font-semibold text-gray-800">DNS</h4>
+																	<dl class="grid grid-cols-1 gap-2 text-sm">
+																		{#if packet.dns.queryName}
+																			<div>
+																				<dt class="font-medium text-gray-600">Query Name:</dt>
+																				<dd class="font-mono text-gray-900">{packet.dns.queryName}</dd>
+																			</div>
+																		{/if}
+																		{#if packet.dns.queryType}
+																			<div>
+																				<dt class="font-medium text-gray-600">Query Type:</dt>
+																				<dd class="font-mono text-gray-900">
+																					{packet.dns.queryType === 1
+																						? 'A (IPv4)'
+																						: packet.dns.queryType === 28
+																							? 'AAAA (IPv6)'
+																							: packet.dns.queryType === 5
+																								? 'CNAME'
+																								: `Type ${packet.dns.queryType}`}
+																				</dd>
+																			</div>
+																		{/if}
+																		{#if packet.dns.answers && packet.dns.answers.length > 0}
+																			<div>
+																				<dt class="font-medium text-gray-600">Answers:</dt>
+																				<dd class="space-y-1">
+																					{#each packet.dns.answers as answer}
+																						<div class="font-mono text-xs text-gray-900">
+																							{answer.name} → {answer.data}
+																						</div>
+																					{/each}
+																				</dd>
+																			</div>
+																		{/if}
+																	</dl>
+																</div>
+															{/if}
+
+															<!-- Payload (Hex Dump) -->
+															{#if packet.payload && packet.payload.length > 0}
+																<div>
+																	<h4 class="mb-2 font-semibold text-gray-800">
+																		Payload ({packet.payload.length} bytes)
+																	</h4>
+																	<pre
+																		class="overflow-x-auto rounded bg-gray-900 p-4 font-mono text-xs text-green-400">{formatHexDump(
+																			packet.payload
+																		)}</pre>
+																</div>
+															{/if}
+														</div>
+													</td>
+												</tr>
+											{/if}
+										{/each}
+									{/if}
+								{/each}
+							{/if}
 						</tbody>
 					</table>
 					{#if filterPackets(result.packets).length > 1000}

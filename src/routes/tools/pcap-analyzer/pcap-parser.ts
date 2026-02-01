@@ -61,6 +61,20 @@ export type UDPHeader = {
 	checksum: number;
 };
 
+export type DNSHeader = {
+	transactionId: number;
+	flags: number;
+	isResponse: boolean;
+	questionCount: number;
+	answerCount: number;
+};
+
+export type DNSInfo = {
+	queryName?: string;
+	queryType?: number;
+	answers?: Array<{ name: string; type: number; data: string }>;
+};
+
 export type ParsedPacket = {
 	index: number;
 	timestamp: number;
@@ -70,6 +84,7 @@ export type ParsedPacket = {
 	ipv4?: IPv4Header;
 	tcp?: TCPHeader;
 	udp?: UDPHeader;
+	dns?: DNSInfo;
 	protocol: 'TCP' | 'UDP' | 'ICMP' | 'ARP' | 'IPv6' | 'Other';
 	payload?: Uint8Array;
 };
@@ -231,6 +246,124 @@ function parseUDPHeader(packetData: Uint8Array, offset: number): UDPHeader | nul
 }
 
 /**
+ * DNSドメイン名を解析（ラベル形式）
+ * 圧縮ポインタ（0xC0）にも対応
+ */
+function parseDNSName(data: Uint8Array, offset: number): { name: string; newOffset: number } {
+	const labels: string[] = [];
+	let pos = offset;
+	let jumped = false;
+	let jumpOffset = 0;
+	const MAX_JUMPS = 10; // 無限ループ防止
+	let jumps = 0;
+
+	while (pos < data.length && jumps < MAX_JUMPS) {
+		const length = data[pos]!;
+
+		// 終端（長さ0）
+		if (length === 0) {
+			pos++;
+			break;
+		}
+
+		// 圧縮ポインタ（先頭2ビットが11）
+		if ((length & 0xc0) === 0xc0) {
+			if (pos + 1 >= data.length) break;
+			const pointer = ((length & 0x3f) << 8) | data[pos + 1]!;
+			if (!jumped) {
+				jumpOffset = pos + 2;
+			}
+			pos = pointer;
+			jumped = true;
+			jumps++;
+			continue;
+		}
+
+		// 通常のラベル
+		if (pos + length >= data.length) break;
+		const label = String.fromCharCode(...Array.from(data.slice(pos + 1, pos + 1 + length)));
+		labels.push(label);
+		pos += length + 1;
+	}
+
+	return {
+		name: labels.join('.') + (labels.length > 0 ? '.' : ''),
+		newOffset: jumped ? jumpOffset : pos
+	};
+}
+
+/**
+ * DNS情報を解析（Question + Answer）
+ */
+function parseDNS(payload: Uint8Array): DNSInfo | null {
+	if (payload.length < 12) return null; // DNSヘッダー最小サイズ
+
+	// DNSヘッダー解析
+	const flags = (payload[2]! << 8) | payload[3]!;
+	const isResponse = (flags & 0x8000) !== 0;
+	const questionCount = (payload[4]! << 8) | payload[5]!;
+	const answerCount = (payload[6]! << 8) | payload[7]!;
+
+	const dnsInfo: DNSInfo = {};
+	let offset = 12; // DNSヘッダー終了位置
+
+	// Question Section解析
+	if (questionCount > 0 && offset < payload.length) {
+		const { name, newOffset } = parseDNSName(payload, offset);
+		dnsInfo.queryName = name;
+		offset = newOffset;
+
+		if (offset + 4 <= payload.length) {
+			dnsInfo.queryType = (payload[offset]! << 8) | payload[offset + 1]!;
+			offset += 4; // QTYPE + QCLASS
+		}
+	}
+
+	// Answer Section解析（レスポンスの場合）
+	if (isResponse && answerCount > 0) {
+		dnsInfo.answers = [];
+
+		for (let i = 0; i < Math.min(answerCount, 10) && offset < payload.length; i++) {
+			// 無限ループ防止で最大10件
+			const { name, newOffset } = parseDNSName(payload, offset);
+			offset = newOffset;
+
+			if (offset + 10 > payload.length) break;
+
+			const type = (payload[offset]! << 8) | payload[offset + 1]!;
+			const rdlength = (payload[offset + 8]! << 8) | payload[offset + 9]!;
+			offset += 10; // TYPE + CLASS + TTL + RDLENGTH
+
+			if (offset + rdlength > payload.length) break;
+
+			let data = '';
+			if (type === 1 && rdlength === 4) {
+				// A record (IPv4)
+				data = `${payload[offset]}.${payload[offset + 1]}.${payload[offset + 2]}.${payload[offset + 3]}`;
+			} else if (type === 28 && rdlength === 16) {
+				// AAAA record (IPv6)
+				const parts: string[] = [];
+				for (let j = 0; j < 16; j += 2) {
+					parts.push(
+						((payload[offset + j]! << 8) | payload[offset + j + 1]!).toString(16).padStart(4, '0')
+					);
+				}
+				data = parts.join(':');
+			} else if (type === 5) {
+				// CNAME
+				const { name: cname } = parseDNSName(payload, offset);
+				data = cname;
+			}
+
+			dnsInfo.answers.push({ name, type, data });
+			offset += rdlength;
+		}
+	}
+
+	return dnsInfo;
+}
+
+/**
  * パケットデータを解析
  */
 function parsePacketData(
@@ -284,6 +417,14 @@ function parsePacketData(
 				const payloadOffset = transportOffset + 8; // UDP header size
 				if (payloadOffset < packetData.length) {
 					packet.payload = packetData.slice(payloadOffset);
+
+					// DNS解析（port 53）
+					if (udp.sourcePort === 53 || udp.destinationPort === 53) {
+						const dnsInfo = parseDNS(packet.payload);
+						if (dnsInfo) {
+							packet.dns = dnsInfo;
+						}
+					}
 				}
 			}
 		} else if (ipv4.protocol === 1) {
