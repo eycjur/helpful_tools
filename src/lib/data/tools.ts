@@ -134,6 +134,13 @@ export const tools: Tool[] = [
 		category: 'ネットワーク・情報'
 	},
 	{
+		nameJa: 'Pcap解析',
+		name: 'pcap-analyzer',
+		description: 'Pcapファイルを解析してパケット統計・プロトコル分布を表示します',
+		icon: 'mdi:network-outline',
+		category: 'ネットワーク・情報'
+	},
+	{
 		nameJa: '画像形式変換',
 		name: 'image-converter',
 		description: '画像をPNG/JPEG/WebPに変換',
