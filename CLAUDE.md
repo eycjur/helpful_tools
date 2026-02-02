@@ -155,6 +155,113 @@ helpful_tools/
 - **外部API**: QRServer API (https://api.qrserver.com/)
 - **ライブラリ**: Quill（リッチテキストエディター）, Turndown（HTML→Markdown変換）
 
+### コンポーネント分割とコードの整理
+
+**コード配置の原則**:
+
+1. **Colocation（関連コードを近くに配置）**: ツール専用のコードは `src/routes/tools/<tool-name>/` 内に配置
+2. **分割の基準**:
+   - `+page.svelte` が **800行以上** の場合は分割を検討
+   - **1000行以上** の場合は分割を強く推奨
+   - 重複コードがある場合は即座にコンポーネント化
+
+**推奨ファイル構成**:
+
+```
+src/routes/tools/<tool-name>/
+├── +page.svelte              # メインUI（なるべく簡潔に）
+├── <ComponentName>.svelte    # UIコンポーネント（再利用可能な部品）
+├── <module-name>.ts          # ビジネスロジック・パーサー・ユーティリティ
+└── types.ts                  # 型定義（必要に応じて）
+```
+
+**分割例（Pcap解析ツール）**:
+
+```
+src/routes/tools/pcap-analyzer/
+├── +page.svelte              # メインUI（1348行 → 分割推奨）
+├── PacketFilterPanel.svelte  # フィルターUI
+├── PacketDetailView.svelte   # パケット詳細表示
+├── pcap-parser.ts            # Pcapファイル解析ロジック
+└── (将来的に)
+    └── pcap-parser.test.ts   # ユニットテスト
+```
+
+**分割の利点**:
+
+- ✅ 可読性向上（1ファイル500行以下が理想）
+- ✅ 保守性向上（関心の分離）
+- ✅ テストしやすい（ロジックとUIの分離）
+- ✅ 再利用しやすい（コンポーネント化）
+- ✅ ツールごと削除・移動が容易
+
+**`src/lib/` と `tools/<name>/` の使い分け**:
+
+- **`src/lib/`**: 複数のツールで共有するコード（例: `tools.ts`）
+- **`src/lib/components/`**: **全画面で共通のコンポーネントのみ**（例: `Sidebar.svelte`）
+  - ⚠️ **重要**: 特定のツールでのみ使用するコンポーネントは `src/lib/components/` に置かないこと
+  - 1つのツールでしか使わないコンポーネントは、そのツールのディレクトリに配置
+- **`tools/<name>/`**: そのツール専用のコード（例: pcap-parser.ts, PacketFilterPanel.svelte, JsonViewer.svelte）
+  - 将来的に他のツールでも使う可能性がある場合のみ `src/lib/` に移動
+
+**大規模ツールのリファクタリング優先度**:
+
+| ツール             | 行数 | 関数数 | 状態    | 推奨アクション                                                                              |
+| ------------------ | ---- | ------ | ------- | ------------------------------------------------------------------------------------------- |
+| **pdf-metadata**   | 1683 | 26     | ✅ 完了 | `types.ts`, `pdf-parser.ts`, `findings.ts`に分割済み（+page.svelte: 1683行→752行、55%削減） |
+| **whois-lookup**   | 1341 | 15     | ✅ 完了 | `types.ts`, `whois-parser.ts`に分割済み（+page.svelte: 1341行→739行、45%削減）              |
+| **pcap-analyzer**  | 1230 | -      | ✅ 完了 | `PacketFilterPanel.svelte`, `PacketDetailView.svelte`, `pcap-parser.ts`に分割済み           |
+| **string-decoder** | 984  | 23     | ✅ 完了 | `types.ts`, `decoders.ts`, `auto-detect.ts`に分割済み（+page.svelte: 984行→475行、52%削減） |
+| **ctf-cipher**     | 900  | 17     | ✅ 完了 | `types.ts`, `scoring.ts`, `cipher-tools.ts`に分割済み（+page.svelte: 900行→356行、60%削減） |
+| **json-formatter** | -    | -      | ✅ 完了 | `JsonViewer.svelte`をツール内に配置済み                                                     |
+
+**現在のコンポーネント分割状況**:
+
+- ✅ **適切に管理されているツール**: json-formatter, pcap-analyzer, ctf-cipher, pdf-metadata, whois-lookup, string-decoder
+- ❌ **分割が必要なツール**: なし（800行以上のツールはすべて分割完了）
+- ℹ️ **800行未満で分割不要**: video-compressor (735行), diff-checker (671行), video-to-audio (654行), curl-builder (618行)
+
+**ツール別分割推奨プラン**:
+
+**pdf-metadata** ✅ 完了（1683行→752行、55%削減）:
+
+```
+src/routes/tools/pdf-metadata/
+├── +page.svelte              # メインUI（752行、ファイルアップロード、結果表示）
+├── types.ts                  # 型定義（112行、PDFReport, Finding等）
+├── pdf-parser.ts             # PDF解析ロジック（849行、parsePDFNonRender等）
+└── findings.ts               # Findings生成・分析ロジック（50行）
+```
+
+**whois-lookup** ✅ 完了（1341行→739行、45%削減）:
+
+```
+src/routes/tools/whois-lookup/
+├── +page.svelte              # メインUI（739行、検索UI、結果表示）
+├── types.ts                  # 型定義（59行、DNSRecord, IPGeoInfo等）
+└── whois-parser.ts           # Whois解析ロジック（456行、performSearch等）
+```
+
+**string-decoder** ✅ 完了（984行→475行、52%削減）:
+
+```
+src/routes/tools/string-decoder/
+├── +page.svelte              # メインUI（475行、デコードUI、結果表示）
+├── types.ts                  # 型定義（34行、EncodingFormat, DecodeResult等）
+├── decoders.ts               # 18種類のデコーダー関数（229行）
+└── auto-detect.ts            # エンコード自動検出ロジック（289行）
+```
+
+**ctf-cipher** ✅ 完了（900行→356行、60%削減）:
+
+```
+src/routes/tools/ctf-cipher/
+├── +page.svelte              # メインUI（356行）
+├── types.ts                  # 型定義（DecryptResult, DecryptGroup）
+├── cipher-tools.ts           # 暗号解読関数（Caesar, XOR, Rail Fence等、260行）
+└── scoring.ts                # 信頼度評価システム（336行）
+```
+
 ### ツール一覧と技術的注意点
 
 **基本情報**: 全ツールは`src/lib/data/tools.ts`で管理、ファイルベースルーティング採用

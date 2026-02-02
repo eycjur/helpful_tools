@@ -5,7 +5,7 @@
 	export let filterSourcePort = '';
 	export let filterDestinationPort = '';
 	export let searchQuery = '';
-	export let groupBy: 'none' | 'dns' | 'conversation' = 'none';
+	export let groupBy: 'none' | 'dns' | 'conversation' | 'info' = 'none';
 
 	function clearAllFilters() {
 		filterProtocol = '';
@@ -37,6 +37,7 @@
 			<option value="none">なし</option>
 			<option value="dns">DNSクエリ別</option>
 			<option value="conversation">会話（IP:Port）別</option>
+			<option value="info">Info（パケット情報）別</option>
 		</select>
 	</div>
 
@@ -72,8 +73,7 @@
 			/>
 		</div>
 		<div>
-			<label for="filter-dest-ip" class="mb-1 block text-xs font-medium text-gray-600"
-				>宛先IP</label
+			<label for="filter-dest-ip" class="mb-1 block text-xs font-medium text-gray-600">宛先IP</label
 			>
 			<input
 				id="filter-dest-ip"

@@ -8,8 +8,8 @@
 		type PcapAnalysisResult,
 		type ParsedPacket
 	} from './pcap-parser';
-	import PacketDetailView from './PacketDetailView.svelte';
 	import PacketFilterPanel from './PacketFilterPanel.svelte';
+	import { SvelteSet, SvelteMap } from 'svelte/reactivity';
 
 	const tool = tools.find((t) => t.name === 'pcap-analyzer');
 
@@ -31,8 +31,8 @@
 	let filterSourcePort = '';
 	let filterDestinationPort = '';
 	let searchQuery = '';
-	let groupBy: 'none' | 'dns' | 'conversation' = 'none';
-	let expandedGroups = new Set<string>();
+	let groupBy: 'none' | 'dns' | 'conversation' | 'info' = 'none';
+	let expandedGroups = new SvelteSet<string>();
 
 	function formatFileSize(bytes: number): string {
 		if (bytes < 1024) return `${bytes} B`;
@@ -138,12 +138,44 @@
 		filterDestinationPort = '';
 		searchQuery = '';
 		groupBy = 'none';
-		expandedGroups = new Set<string>();
+		expandedGroups = new SvelteSet<string>();
 	}
 
 	function formatPacketTime(timestamp: number, baseTime: number): string {
 		const relative = timestamp - baseTime;
 		return relative.toFixed(6);
+	}
+
+	function formatHexDump(data: Uint8Array | undefined): string {
+		if (!data || data.length === 0) return '';
+
+		const lines: string[] = [];
+		const maxBytes = Math.min(data.length, 512);
+
+		for (let i = 0; i < maxBytes; i += 16) {
+			const offset = i.toString(16).padStart(8, '0');
+			const chunk = data.slice(i, Math.min(i + 16, maxBytes));
+
+			const hex = Array.from(chunk)
+				.map((b, idx) => {
+					const h = b.toString(16).padStart(2, '0');
+					return idx === 7 ? h + '  ' : h + ' ';
+				})
+				.join('')
+				.padEnd(50, ' ');
+
+			const ascii = Array.from(chunk)
+				.map((b) => (b >= 0x20 && b <= 0x7e ? String.fromCharCode(b) : '.'))
+				.join('');
+
+			lines.push(`${offset}  ${hex} |${ascii}|`);
+		}
+
+		if (data.length > maxBytes) {
+			lines.push(`... (残り ${data.length - maxBytes} バイト)`);
+		}
+
+		return lines.join('\n');
 	}
 
 	function getPacketInfo(packet: ParsedPacket): string {
@@ -158,7 +190,14 @@
 			}
 			// クエリの場合
 			if (packet.dns.queryName) {
-				const queryType = packet.dns.queryType === 1 ? 'A' : packet.dns.queryType === 28 ? 'AAAA' : packet.dns.queryType === 5 ? 'CNAME' : `Type${packet.dns.queryType}`;
+				const queryType =
+					packet.dns.queryType === 1
+						? 'A'
+						: packet.dns.queryType === 28
+							? 'AAAA'
+							: packet.dns.queryType === 5
+								? 'CNAME'
+								: `Type${packet.dns.queryType}`;
 				return `Query ${queryType} ${packet.dns.queryName}`;
 			}
 		}
@@ -177,7 +216,6 @@
 		}
 		return packet.protocol;
 	}
-
 
 	function filterPackets(packets: ParsedPacket[]): ParsedPacket[] {
 		return packets.filter((packet) => {
@@ -246,20 +284,17 @@
 			return [];
 		}
 
-		const groups = new Map<string, ParsedPacket[]>();
+		const groups = new SvelteMap<string, ParsedPacket[]>();
 
 		for (const packet of packets) {
 			let key: string;
-			let label: string;
 
 			if (groupBy === 'dns') {
 				// DNSクエリ名でグループ化
 				if (packet.dns?.queryName) {
 					key = packet.dns.queryName;
-					label = `DNS: ${packet.dns.queryName}`;
 				} else {
 					key = '_no_dns';
-					label = 'Non-DNS or Unknown';
 				}
 			} else if (groupBy === 'conversation') {
 				// 会話（送信元⇄宛先）でグループ化
@@ -272,10 +307,12 @@
 				const conv1 = `${srcIp}:${srcPort} ⇄ ${dstIp}:${dstPort}`;
 				const conv2 = `${dstIp}:${dstPort} ⇄ ${srcIp}:${srcPort}`;
 				key = conv1 < conv2 ? conv1 : conv2;
-				label = `${srcIp}:${srcPort} ⇄ ${dstIp}:${dstPort}`;
+			} else if (groupBy === 'info') {
+				// Info（パケット情報）でグループ化
+				const info = getPacketInfo(packet);
+				key = info || '_no_info';
 			} else {
 				key = '_unknown';
-				label = 'Unknown';
 			}
 
 			if (!groups.has(key)) {
@@ -286,13 +323,29 @@
 
 		// グループを配列に変換してソート
 		return Array.from(groups.entries())
-			.map(([key, packets]) => ({
-				key,
-				label: packets[0] ? (groupBy === 'dns' ? `DNS: ${packets[0].dns?.queryName ?? 'Unknown'}` :
-					`${packets[0].ipv4?.sourceIp ?? '?'}:${packets[0].tcp?.sourcePort ?? packets[0].udp?.sourcePort ?? '?'} ⇄ ${packets[0].ipv4?.destinationIp ?? '?'}:${packets[0].tcp?.destinationPort ?? packets[0].udp?.destinationPort ?? '?'}`) : 'Unknown',
-				packets,
-				count: packets.length
-			}))
+			.map(([key, packets]) => {
+				let label = 'Unknown';
+				if (packets[0]) {
+					if (groupBy === 'dns') {
+						label = `DNS: ${packets[0].dns?.queryName ?? 'Unknown'}`;
+					} else if (groupBy === 'conversation') {
+						const srcIp = packets[0].ipv4?.sourceIp ?? '?';
+						const srcPort = packets[0].tcp?.sourcePort ?? packets[0].udp?.sourcePort ?? '?';
+						const dstIp = packets[0].ipv4?.destinationIp ?? '?';
+						const dstPort =
+							packets[0].tcp?.destinationPort ?? packets[0].udp?.destinationPort ?? '?';
+						label = `${srcIp}:${srcPort} ⇄ ${dstIp}:${dstPort}`;
+					} else if (groupBy === 'info') {
+						label = `Info: ${getPacketInfo(packets[0])}`;
+					}
+				}
+				return {
+					key,
+					label,
+					packets,
+					count: packets.length
+				};
+			})
 			.sort((a, b) => b.count - a.count); // パケット数の多い順
 	}
 
@@ -678,239 +731,245 @@
 							{#if groupBy === 'none'}
 								<!-- グループ化なし：通常表示 -->
 								{#each filterPackets(result.packets).slice(0, 1000) as packet (packet.index)}
-								<tr
-									class="cursor-pointer hover:bg-gray-50 {selectedPacketIndex === packet.index
-										? 'bg-blue-50'
-										: ''}"
-									on:click={() =>
-										(selectedPacketIndex =
-											selectedPacketIndex === packet.index ? null : packet.index)}
-									on:keydown={(e) => {
-										if (e.key === 'Enter' || e.key === ' ') {
-											e.preventDefault();
-											selectedPacketIndex =
-												selectedPacketIndex === packet.index ? null : packet.index;
-										}
-									}}
-									role="button"
-									tabindex="0"
-								>
-									<td class="px-4 py-2 text-sm text-gray-900">{packet.index + 1}</td>
-									<td class="px-4 py-2 font-mono text-xs text-gray-900">
-										{formatPacketTime(packet.timestamp, result.statistics.captureStartTime)}
-									</td>
-									<td class="px-4 py-2 font-mono text-xs text-gray-900">
-										{#if packet.ipv4}
-											{packet.ipv4.sourceIp}{#if packet.tcp || packet.udp}:{packet.tcp
-													?.sourcePort ?? packet.udp?.sourcePort}{/if}
-										{:else}
-											-
-										{/if}
-									</td>
-									<td class="px-4 py-2 font-mono text-xs text-gray-900">
-										{#if packet.ipv4}
-											{packet.ipv4.destinationIp}{#if packet.tcp || packet.udp}:{packet.tcp
-													?.destinationPort ?? packet.udp?.destinationPort}{/if}
-										{:else}
-											-
-										{/if}
-									</td>
-									<td class="px-4 py-2 text-sm text-gray-900">{packet.protocol}</td>
-									<td class="px-4 py-2 text-sm text-gray-900">{packet.capturedLength}</td>
-									<td class="px-4 py-2 text-sm text-gray-600">{getPacketInfo(packet)}</td>
-								</tr>
-								{#if selectedPacketIndex === packet.index}
-									<tr>
-										<td colspan="7" class="bg-gray-50 px-4 py-4">
-											<!-- パケット詳細 -->
-											<div class="space-y-4">
-												<!-- Ethernet -->
-												{#if packet.ethernet}
-													<div>
-														<h4 class="mb-2 font-semibold text-gray-800">Ethernet</h4>
-														<dl class="grid grid-cols-2 gap-2 text-sm">
-															<div>
-																<dt class="font-medium text-gray-600">Source MAC:</dt>
-																<dd class="font-mono text-gray-900">{packet.ethernet.sourceMac}</dd>
-															</div>
-															<div>
-																<dt class="font-medium text-gray-600">Destination MAC:</dt>
-																<dd class="font-mono text-gray-900">
-																	{packet.ethernet.destinationMac}
-																</dd>
-															</div>
-															<div>
-																<dt class="font-medium text-gray-600">EtherType:</dt>
-																<dd class="font-mono text-gray-900">
-																	0x{packet.ethernet.etherType.toString(16).padStart(4, '0')}
-																</dd>
-															</div>
-														</dl>
-													</div>
-												{/if}
-
-												<!-- IPv4 -->
-												{#if packet.ipv4}
-													<div>
-														<h4 class="mb-2 font-semibold text-gray-800">IPv4</h4>
-														<dl class="grid grid-cols-2 gap-2 text-sm">
-															<div>
-																<dt class="font-medium text-gray-600">Source IP:</dt>
-																<dd class="font-mono text-gray-900">{packet.ipv4.sourceIp}</dd>
-															</div>
-															<div>
-																<dt class="font-medium text-gray-600">Destination IP:</dt>
-																<dd class="font-mono text-gray-900">{packet.ipv4.destinationIp}</dd>
-															</div>
-															<div>
-																<dt class="font-medium text-gray-600">Protocol:</dt>
-																<dd class="font-mono text-gray-900">{packet.ipv4.protocol}</dd>
-															</div>
-															<div>
-																<dt class="font-medium text-gray-600">TTL:</dt>
-																<dd class="font-mono text-gray-900">{packet.ipv4.ttl}</dd>
-															</div>
-															<div>
-																<dt class="font-medium text-gray-600">Total Length:</dt>
-																<dd class="font-mono text-gray-900">{packet.ipv4.totalLength}</dd>
-															</div>
-															<div>
-																<dt class="font-medium text-gray-600">Identification:</dt>
-																<dd class="font-mono text-gray-900">
-																	{packet.ipv4.identification}
-																</dd>
-															</div>
-														</dl>
-													</div>
-												{/if}
-
-												<!-- TCP -->
-												{#if packet.tcp}
-													<div>
-														<h4 class="mb-2 font-semibold text-gray-800">TCP</h4>
-														<dl class="grid grid-cols-2 gap-2 text-sm">
-															<div>
-																<dt class="font-medium text-gray-600">Source Port:</dt>
-																<dd class="font-mono text-gray-900">{packet.tcp.sourcePort}</dd>
-															</div>
-															<div>
-																<dt class="font-medium text-gray-600">Destination Port:</dt>
-																<dd class="font-mono text-gray-900">
-																	{packet.tcp.destinationPort}
-																</dd>
-															</div>
-															<div>
-																<dt class="font-medium text-gray-600">Sequence Number:</dt>
-																<dd class="font-mono text-gray-900">{packet.tcp.sequenceNumber}</dd>
-															</div>
-															<div>
-																<dt class="font-medium text-gray-600">Acknowledgment:</dt>
-																<dd class="font-mono text-gray-900">
-																	{packet.tcp.acknowledgmentNumber}
-																</dd>
-															</div>
-															<div>
-																<dt class="font-medium text-gray-600">Flags:</dt>
-																<dd class="font-mono text-gray-900">
-																	0x{packet.tcp.flags.toString(16).padStart(2, '0')} ({getPacketInfo(
-																		packet
-																	)})
-																</dd>
-															</div>
-															<div>
-																<dt class="font-medium text-gray-600">Window Size:</dt>
-																<dd class="font-mono text-gray-900">{packet.tcp.windowSize}</dd>
-															</div>
-														</dl>
-													</div>
-												{/if}
-
-												<!-- UDP -->
-												{#if packet.udp}
-													<div>
-														<h4 class="mb-2 font-semibold text-gray-800">UDP</h4>
-														<dl class="grid grid-cols-2 gap-2 text-sm">
-															<div>
-																<dt class="font-medium text-gray-600">Source Port:</dt>
-																<dd class="font-mono text-gray-900">{packet.udp.sourcePort}</dd>
-															</div>
-															<div>
-																<dt class="font-medium text-gray-600">Destination Port:</dt>
-																<dd class="font-mono text-gray-900">
-																	{packet.udp.destinationPort}
-																</dd>
-															</div>
-															<div>
-																<dt class="font-medium text-gray-600">Length:</dt>
-																<dd class="font-mono text-gray-900">{packet.udp.length}</dd>
-															</div>
-															<div>
-																<dt class="font-medium text-gray-600">Checksum:</dt>
-																<dd class="font-mono text-gray-900">
-																	0x{packet.udp.checksum.toString(16).padStart(4, '0')}
-																</dd>
-															</div>
-														</dl>
-													</div>
-												{/if}
-
-												<!-- DNS -->
-												{#if packet.dns}
-													<div>
-														<h4 class="mb-2 font-semibold text-gray-800">DNS</h4>
-														<dl class="grid grid-cols-1 gap-2 text-sm">
-															{#if packet.dns.queryName}
-																<div>
-																	<dt class="font-medium text-gray-600">Query Name:</dt>
-																	<dd class="font-mono text-gray-900">{packet.dns.queryName}</dd>
-																</div>
-															{/if}
-															{#if packet.dns.queryType}
-																<div>
-																	<dt class="font-medium text-gray-600">Query Type:</dt>
-																	<dd class="font-mono text-gray-900">
-																		{packet.dns.queryType === 1
-																			? 'A (IPv4)'
-																			: packet.dns.queryType === 28
-																				? 'AAAA (IPv6)'
-																				: packet.dns.queryType === 5
-																					? 'CNAME'
-																					: `Type ${packet.dns.queryType}`}
-																	</dd>
-																</div>
-															{/if}
-															{#if packet.dns.answers && packet.dns.answers.length > 0}
-																<div>
-																	<dt class="font-medium text-gray-600">Answers:</dt>
-																	<dd class="space-y-1">
-																		{#each packet.dns.answers as answer}
-																			<div class="font-mono text-xs text-gray-900">
-																				{answer.name} → {answer.data}
-																			</div>
-																		{/each}
-																	</dd>
-																</div>
-															{/if}
-														</dl>
-													</div>
-												{/if}
-
-												<!-- Payload (Hex Dump) -->
-												{#if packet.payload && packet.payload.length > 0}
-													<div>
-														<h4 class="mb-2 font-semibold text-gray-800">
-															Payload ({packet.payload.length} bytes)
-														</h4>
-														<pre
-															class="overflow-x-auto rounded bg-gray-900 p-4 font-mono text-xs text-green-400">{formatHexDump(
-																packet.payload
-															)}</pre>
-													</div>
-												{/if}
-											</div>
+									<tr
+										class="cursor-pointer hover:bg-gray-50 {selectedPacketIndex === packet.index
+											? 'bg-blue-50'
+											: ''}"
+										on:click={() =>
+											(selectedPacketIndex =
+												selectedPacketIndex === packet.index ? null : packet.index)}
+										on:keydown={(e) => {
+											if (e.key === 'Enter' || e.key === ' ') {
+												e.preventDefault();
+												selectedPacketIndex =
+													selectedPacketIndex === packet.index ? null : packet.index;
+											}
+										}}
+										role="button"
+										tabindex="0"
+									>
+										<td class="px-4 py-2 text-sm text-gray-900">{packet.index + 1}</td>
+										<td class="px-4 py-2 font-mono text-xs text-gray-900">
+											{formatPacketTime(packet.timestamp, result.statistics.captureStartTime)}
 										</td>
+										<td class="px-4 py-2 font-mono text-xs text-gray-900">
+											{#if packet.ipv4}
+												{packet.ipv4.sourceIp}{#if packet.tcp || packet.udp}:{packet.tcp
+														?.sourcePort ?? packet.udp?.sourcePort}{/if}
+											{:else}
+												-
+											{/if}
+										</td>
+										<td class="px-4 py-2 font-mono text-xs text-gray-900">
+											{#if packet.ipv4}
+												{packet.ipv4.destinationIp}{#if packet.tcp || packet.udp}:{packet.tcp
+														?.destinationPort ?? packet.udp?.destinationPort}{/if}
+											{:else}
+												-
+											{/if}
+										</td>
+										<td class="px-4 py-2 text-sm text-gray-900">{packet.protocol}</td>
+										<td class="px-4 py-2 text-sm text-gray-900">{packet.capturedLength}</td>
+										<td class="px-4 py-2 text-sm text-gray-600">{getPacketInfo(packet)}</td>
 									</tr>
-								{/if}
+									{#if selectedPacketIndex === packet.index}
+										<tr>
+											<td colspan="7" class="bg-gray-50 px-4 py-4">
+												<!-- パケット詳細 -->
+												<div class="space-y-4">
+													<!-- Ethernet -->
+													{#if packet.ethernet}
+														<div>
+															<h4 class="mb-2 font-semibold text-gray-800">Ethernet</h4>
+															<dl class="grid grid-cols-2 gap-2 text-sm">
+																<div>
+																	<dt class="font-medium text-gray-600">Source MAC:</dt>
+																	<dd class="font-mono text-gray-900">
+																		{packet.ethernet.sourceMac}
+																	</dd>
+																</div>
+																<div>
+																	<dt class="font-medium text-gray-600">Destination MAC:</dt>
+																	<dd class="font-mono text-gray-900">
+																		{packet.ethernet.destinationMac}
+																	</dd>
+																</div>
+																<div>
+																	<dt class="font-medium text-gray-600">EtherType:</dt>
+																	<dd class="font-mono text-gray-900">
+																		0x{packet.ethernet.etherType.toString(16).padStart(4, '0')}
+																	</dd>
+																</div>
+															</dl>
+														</div>
+													{/if}
+
+													<!-- IPv4 -->
+													{#if packet.ipv4}
+														<div>
+															<h4 class="mb-2 font-semibold text-gray-800">IPv4</h4>
+															<dl class="grid grid-cols-2 gap-2 text-sm">
+																<div>
+																	<dt class="font-medium text-gray-600">Source IP:</dt>
+																	<dd class="font-mono text-gray-900">{packet.ipv4.sourceIp}</dd>
+																</div>
+																<div>
+																	<dt class="font-medium text-gray-600">Destination IP:</dt>
+																	<dd class="font-mono text-gray-900">
+																		{packet.ipv4.destinationIp}
+																	</dd>
+																</div>
+																<div>
+																	<dt class="font-medium text-gray-600">Protocol:</dt>
+																	<dd class="font-mono text-gray-900">{packet.ipv4.protocol}</dd>
+																</div>
+																<div>
+																	<dt class="font-medium text-gray-600">TTL:</dt>
+																	<dd class="font-mono text-gray-900">{packet.ipv4.ttl}</dd>
+																</div>
+																<div>
+																	<dt class="font-medium text-gray-600">Total Length:</dt>
+																	<dd class="font-mono text-gray-900">{packet.ipv4.totalLength}</dd>
+																</div>
+																<div>
+																	<dt class="font-medium text-gray-600">Identification:</dt>
+																	<dd class="font-mono text-gray-900">
+																		{packet.ipv4.identification}
+																	</dd>
+																</div>
+															</dl>
+														</div>
+													{/if}
+
+													<!-- TCP -->
+													{#if packet.tcp}
+														<div>
+															<h4 class="mb-2 font-semibold text-gray-800">TCP</h4>
+															<dl class="grid grid-cols-2 gap-2 text-sm">
+																<div>
+																	<dt class="font-medium text-gray-600">Source Port:</dt>
+																	<dd class="font-mono text-gray-900">{packet.tcp.sourcePort}</dd>
+																</div>
+																<div>
+																	<dt class="font-medium text-gray-600">Destination Port:</dt>
+																	<dd class="font-mono text-gray-900">
+																		{packet.tcp.destinationPort}
+																	</dd>
+																</div>
+																<div>
+																	<dt class="font-medium text-gray-600">Sequence Number:</dt>
+																	<dd class="font-mono text-gray-900">
+																		{packet.tcp.sequenceNumber}
+																	</dd>
+																</div>
+																<div>
+																	<dt class="font-medium text-gray-600">Acknowledgment:</dt>
+																	<dd class="font-mono text-gray-900">
+																		{packet.tcp.acknowledgmentNumber}
+																	</dd>
+																</div>
+																<div>
+																	<dt class="font-medium text-gray-600">Flags:</dt>
+																	<dd class="font-mono text-gray-900">
+																		0x{packet.tcp.flags.toString(16).padStart(2, '0')} ({getPacketInfo(
+																			packet
+																		)})
+																	</dd>
+																</div>
+																<div>
+																	<dt class="font-medium text-gray-600">Window Size:</dt>
+																	<dd class="font-mono text-gray-900">{packet.tcp.windowSize}</dd>
+																</div>
+															</dl>
+														</div>
+													{/if}
+
+													<!-- UDP -->
+													{#if packet.udp}
+														<div>
+															<h4 class="mb-2 font-semibold text-gray-800">UDP</h4>
+															<dl class="grid grid-cols-2 gap-2 text-sm">
+																<div>
+																	<dt class="font-medium text-gray-600">Source Port:</dt>
+																	<dd class="font-mono text-gray-900">{packet.udp.sourcePort}</dd>
+																</div>
+																<div>
+																	<dt class="font-medium text-gray-600">Destination Port:</dt>
+																	<dd class="font-mono text-gray-900">
+																		{packet.udp.destinationPort}
+																	</dd>
+																</div>
+																<div>
+																	<dt class="font-medium text-gray-600">Length:</dt>
+																	<dd class="font-mono text-gray-900">{packet.udp.length}</dd>
+																</div>
+																<div>
+																	<dt class="font-medium text-gray-600">Checksum:</dt>
+																	<dd class="font-mono text-gray-900">
+																		0x{packet.udp.checksum.toString(16).padStart(4, '0')}
+																	</dd>
+																</div>
+															</dl>
+														</div>
+													{/if}
+
+													<!-- DNS -->
+													{#if packet.dns}
+														<div>
+															<h4 class="mb-2 font-semibold text-gray-800">DNS</h4>
+															<dl class="grid grid-cols-1 gap-2 text-sm">
+																{#if packet.dns.queryName}
+																	<div>
+																		<dt class="font-medium text-gray-600">Query Name:</dt>
+																		<dd class="font-mono text-gray-900">{packet.dns.queryName}</dd>
+																	</div>
+																{/if}
+																{#if packet.dns.queryType}
+																	<div>
+																		<dt class="font-medium text-gray-600">Query Type:</dt>
+																		<dd class="font-mono text-gray-900">
+																			{packet.dns.queryType === 1
+																				? 'A (IPv4)'
+																				: packet.dns.queryType === 28
+																					? 'AAAA (IPv6)'
+																					: packet.dns.queryType === 5
+																						? 'CNAME'
+																						: `Type ${packet.dns.queryType}`}
+																		</dd>
+																	</div>
+																{/if}
+																{#if packet.dns.answers && packet.dns.answers.length > 0}
+																	<div>
+																		<dt class="font-medium text-gray-600">Answers:</dt>
+																		<dd class="space-y-1">
+																			{#each packet.dns.answers as answer, idx (`${packet.index}-dns-answer-${idx}`)}
+																				<div class="font-mono text-xs text-gray-900">
+																					{answer.name} → {answer.data}
+																				</div>
+																			{/each}
+																		</dd>
+																	</div>
+																{/if}
+															</dl>
+														</div>
+													{/if}
+
+													<!-- Payload (Hex Dump) -->
+													{#if packet.payload && packet.payload.length > 0}
+														<div>
+															<h4 class="mb-2 font-semibold text-gray-800">
+																Payload ({packet.payload.length} bytes)
+															</h4>
+															<pre
+																class="overflow-x-auto rounded bg-gray-900 p-4 font-mono text-xs text-green-400">{formatHexDump(
+																	packet.payload
+																)}</pre>
+														</div>
+													{/if}
+												</div>
+											</td>
+										</tr>
+									{/if}
 								{/each}
 							{:else}
 								<!-- グループ化あり：グループ表示 -->
@@ -940,8 +999,7 @@
 													/>
 													<span class="font-semibold text-blue-900">{group.label}</span>
 												</div>
-												<span class="text-sm font-medium text-blue-700"
-													>{group.count} パケット</span
+												<span class="text-sm font-medium text-blue-700">{group.count} パケット</span
 												>
 											</div>
 										</td>
@@ -1030,7 +1088,9 @@
 																	<dl class="grid grid-cols-2 gap-2 text-sm">
 																		<div>
 																			<dt class="font-medium text-gray-600">Source IP:</dt>
-																			<dd class="font-mono text-gray-900">{packet.ipv4.sourceIp}</dd>
+																			<dd class="font-mono text-gray-900">
+																				{packet.ipv4.sourceIp}
+																			</dd>
 																		</div>
 																		<div>
 																			<dt class="font-medium text-gray-600">Destination IP:</dt>
@@ -1040,7 +1100,9 @@
 																		</div>
 																		<div>
 																			<dt class="font-medium text-gray-600">Protocol:</dt>
-																			<dd class="font-mono text-gray-900">{packet.ipv4.protocol}</dd>
+																			<dd class="font-mono text-gray-900">
+																				{packet.ipv4.protocol}
+																			</dd>
 																		</div>
 																		<div>
 																			<dt class="font-medium text-gray-600">TTL:</dt>
@@ -1048,7 +1110,9 @@
 																		</div>
 																		<div>
 																			<dt class="font-medium text-gray-600">Total Length:</dt>
-																			<dd class="font-mono text-gray-900">{packet.ipv4.totalLength}</dd>
+																			<dd class="font-mono text-gray-900">
+																				{packet.ipv4.totalLength}
+																			</dd>
 																		</div>
 																		<div>
 																			<dt class="font-medium text-gray-600">Identification:</dt>
@@ -1067,7 +1131,9 @@
 																	<dl class="grid grid-cols-2 gap-2 text-sm">
 																		<div>
 																			<dt class="font-medium text-gray-600">Source Port:</dt>
-																			<dd class="font-mono text-gray-900">{packet.tcp.sourcePort}</dd>
+																			<dd class="font-mono text-gray-900">
+																				{packet.tcp.sourcePort}
+																			</dd>
 																		</div>
 																		<div>
 																			<dt class="font-medium text-gray-600">Destination Port:</dt>
@@ -1097,7 +1163,9 @@
 																		</div>
 																		<div>
 																			<dt class="font-medium text-gray-600">Window Size:</dt>
-																			<dd class="font-mono text-gray-900">{packet.tcp.windowSize}</dd>
+																			<dd class="font-mono text-gray-900">
+																				{packet.tcp.windowSize}
+																			</dd>
 																		</div>
 																	</dl>
 																</div>
@@ -1110,7 +1178,9 @@
 																	<dl class="grid grid-cols-2 gap-2 text-sm">
 																		<div>
 																			<dt class="font-medium text-gray-600">Source Port:</dt>
-																			<dd class="font-mono text-gray-900">{packet.udp.sourcePort}</dd>
+																			<dd class="font-mono text-gray-900">
+																				{packet.udp.sourcePort}
+																			</dd>
 																		</div>
 																		<div>
 																			<dt class="font-medium text-gray-600">Destination Port:</dt>
@@ -1140,7 +1210,9 @@
 																		{#if packet.dns.queryName}
 																			<div>
 																				<dt class="font-medium text-gray-600">Query Name:</dt>
-																				<dd class="font-mono text-gray-900">{packet.dns.queryName}</dd>
+																				<dd class="font-mono text-gray-900">
+																					{packet.dns.queryName}
+																				</dd>
 																			</div>
 																		{/if}
 																		{#if packet.dns.queryType}
@@ -1161,7 +1233,7 @@
 																			<div>
 																				<dt class="font-medium text-gray-600">Answers:</dt>
 																				<dd class="space-y-1">
-																					{#each packet.dns.answers as answer}
+																					{#each packet.dns.answers as answer, idx (`${packet.index}-dns-answer-grp-${idx}`)}
 																						<div class="font-mono text-xs text-gray-900">
 																							{answer.name} → {answer.data}
 																						</div>

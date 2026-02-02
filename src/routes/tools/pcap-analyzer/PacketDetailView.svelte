@@ -194,7 +194,7 @@
 					<div>
 						<dt class="font-medium text-gray-600">Answers:</dt>
 						<dd class="space-y-1">
-							{#each packet.dns.answers as answer}
+							{#each packet.dns.answers as answer, idx (`dns-answer-${idx}`)}
 								<div class="font-mono text-xs text-gray-900">{answer.name} → {answer.data}</div>
 							{/each}
 						</dd>

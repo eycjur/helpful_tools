@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { tools } from '$lib/data/tools';
 	import Icon from '@iconify/svelte';
-	import JsonViewer from '$lib/components/JsonViewer.svelte';
+	import JsonViewer from './JsonViewer.svelte';
 
 	// JSON値の型定義
 	type JsonValue = string | number | boolean | null | JsonObject | JsonArray;
