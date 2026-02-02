@@ -109,6 +109,14 @@
 		matches = [];
 		highlightedHtml = '';
 
+		// 入力サイズ制限（100KB）- ReDoS対策
+		const MAX_INPUT_SIZE = 100_000; // 100KB
+		if (inputText.length > MAX_INPUT_SIZE) {
+			error = `入力が大きすぎます（最大: ${(MAX_INPUT_SIZE / 1000).toFixed(0)}KB）`;
+			highlightedHtml = `<pre class="whitespace-pre-wrap break-words">${escapeHtml(inputText)}</pre>`;
+			return;
+		}
+
 		if (!pattern) {
 			highlightedHtml = `<pre class="whitespace-pre-wrap break-words">${escapeHtml(inputText)}</pre>`;
 			return;

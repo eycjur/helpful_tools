@@ -1,5 +1,5 @@
 /**
- * CTF暗号解読 - 暗号解読アルゴリズム
+ * 暗号解読 - 暗号解読アルゴリズム
  */
 
 import { SvelteSet } from 'svelte/reactivity';

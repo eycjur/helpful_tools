@@ -141,12 +141,27 @@
 
 			if (inputLine !== outputLine) {
 				changed++;
-				if (inputLine) removed.push(`${i + 1}: "${inputLine}"`);
-				if (outputLine) added.push(`${i + 1}: "${outputLine}"`);
+				// 文字レベルの差分を表示
+				const diff = getCharDiff(inputLine, outputLine);
+				if (inputLine) removed.push(`${i + 1}: ${diff.removed}`);
+				if (outputLine) added.push(`${i + 1}: ${diff.added}`);
 			}
 		}
 
 		return { added, removed, changed };
+	}
+
+	// 文字レベルの差分を取得（空白を可視化）
+	function getCharDiff(oldLine: string, newLine: string): { removed: string; added: string } {
+		// 行末の空白を可視化
+		const visualizeSpaces = (str: string): string => {
+			return str.replace(/\t/g, '→').replace(/ /g, '·').replace(/\r/g, '⏎').replace(/\n/g, '↵');
+		};
+
+		return {
+			removed: visualizeSpaces(oldLine),
+			added: visualizeSpaces(newLine)
+		};
 	}
 </script>
 

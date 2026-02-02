@@ -22,6 +22,8 @@ for i in range(6):
 	let astOutput = '';
 	let bytecodeOutput = '';
 	let runOutput = '';
+	let warningMessage = '';
+	const EXEC_TIMEOUT_MS = 5000;
 
 	interface PyodideInterface {
 		runPythonAsync(code: string): Promise<[string, string] | string>;
@@ -29,11 +31,13 @@ for i in range(6):
 			set(name: string, value: string): void;
 			get(name: string): string;
 		};
+		setInterruptBuffer?: (buffer: Int32Array) => void;
 	}
 
 	let pyodide: PyodideInterface | null = null;
 	let isLoading = true;
 	let error = '';
+	let interruptBuffer: Int32Array | null = null;
 
 	onMount(() => {
 		let script: HTMLScriptElement | null = null;
@@ -51,6 +55,15 @@ for i in range(6):
 					pyodide = await loadPyodide({
 						indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.25.0/full/'
 					});
+
+					// タイムアウト用の割り込みバッファを設定（対応ブラウザのみ）
+					if (pyodide?.setInterruptBuffer && typeof SharedArrayBuffer !== 'undefined') {
+						interruptBuffer = new Int32Array(new SharedArrayBuffer(4));
+						pyodide.setInterruptBuffer(interruptBuffer);
+					} else {
+						warningMessage =
+							'このブラウザでは実行タイムアウトが効かない場合があります。無限ループに注意してください。';
+					}
 
 					// Pythonユーティリティ関数を定義
 					if (pyodide) {
@@ -107,7 +120,7 @@ def analyze_code(src: str):
 			// Pythonグローバル変数として安全に設定
 			pyodide.globals.set('user_code', code);
 
-			const result = (await pyodide.runPythonAsync(`
+			const result = (await runWithTimeout(`
 ast_dump, bc_text, _ = analyze_code(user_code)
 (ast_dump, bc_text)
 			`)) as [string, string];
@@ -115,7 +128,7 @@ ast_dump, bc_text, _ = analyze_code(user_code)
 			astOutput = result[0];
 			bytecodeOutput = result[1];
 		} catch (e) {
-			error = 'コード解析に失敗しました: ' + (e instanceof Error ? e.message : String(e));
+			error = formatExecutionError(e, 'コード解析');
 		}
 	}
 
@@ -128,7 +141,7 @@ ast_dump, bc_text, _ = analyze_code(user_code)
 			// Pythonグローバル変数として安全に設定
 			pyodide.globals.set('user_code', code);
 
-			const result = (await pyodide.runPythonAsync(`
+			const result = (await runWithTimeout(`
 import io, contextlib
 
 ast_dump, bc_text, codeobj = analyze_code(user_code)
@@ -141,8 +154,33 @@ buf.getvalue()
 
 			runOutput = result;
 		} catch (e) {
-			error = 'コード実行に失敗しました: ' + (e instanceof Error ? e.message : String(e));
+			error = formatExecutionError(e, 'コード実行');
 		}
+	}
+
+	async function runWithTimeout(code: string) {
+		if (!pyodide) return '';
+		let timeoutId: ReturnType<typeof setTimeout> | null = null;
+		try {
+			if (interruptBuffer) {
+				interruptBuffer[0] = 0;
+				timeoutId = setTimeout(() => {
+					interruptBuffer![0] = 2;
+				}, EXEC_TIMEOUT_MS);
+			}
+			return await pyodide.runPythonAsync(code);
+		} finally {
+			if (timeoutId) clearTimeout(timeoutId);
+			if (interruptBuffer) interruptBuffer[0] = 0;
+		}
+	}
+
+	function formatExecutionError(e: unknown, context: string): string {
+		const message = e instanceof Error ? e.message : String(e);
+		if (message.includes('KeyboardInterrupt')) {
+			return `${context}がタイムアウトしました（${EXEC_TIMEOUT_MS / 1000}秒）`;
+		}
+		return `${context}に失敗しました: ${message}`;
 	}
 </script>
 
@@ -194,6 +232,11 @@ buf.getvalue()
 				{#if error}
 					<div class="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
 						{error}
+					</div>
+				{/if}
+				{#if warningMessage}
+					<div class="rounded-lg border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-800">
+						{warningMessage}
 					</div>
 				{/if}
 

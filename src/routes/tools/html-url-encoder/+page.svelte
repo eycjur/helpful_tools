@@ -127,6 +127,13 @@
 	// リアルタイム変換（エンコード）
 	$: if (inputText !== undefined) {
 		if (inputText) {
+			// 入力サイズ制限（10MB）
+			const MAX_INPUT_SIZE = 10 * 1024 * 1024; // 10MB
+			if (inputText.length > MAX_INPUT_SIZE) {
+				outputText = `エラー: 入力が大きすぎます（最大: ${MAX_INPUT_SIZE / 1024 / 1024}MB）`;
+				return;
+			}
+
 			try {
 				if (activeTab === 'html') {
 					outputText = encodeHtml(inputText);

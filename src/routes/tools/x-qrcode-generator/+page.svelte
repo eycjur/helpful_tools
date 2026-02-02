@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { tools } from '$lib/data/tools';
 	import Icon from '@iconify/svelte';
+	import { validateUsername } from './username-validation';
+
 	let username = '';
 	let qrUrl = '';
 	let canvasRef: HTMLCanvasElement;
@@ -12,6 +14,14 @@
 		if (username) {
 			// Remove @ if present
 			const cleanUsername = username.startsWith('@') ? username.slice(1) : username;
+
+			// ユーザー名検証
+			if (!validateUsername(username)) {
+				errorMessage = 'ユーザー名は英数字とアンダースコアのみ、15文字以内で入力してください。';
+				qrUrl = '';
+				return;
+			}
+
 			const profileUrl = `https://x.com/${cleanUsername}`;
 			qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=600x600&ecc=H&margin=6&data=${encodeURIComponent(profileUrl)}`;
 			isLoading = true;

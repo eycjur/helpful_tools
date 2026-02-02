@@ -7,6 +7,9 @@ export interface Tool {
 }
 
 export const tools: Tool[] = [
+	// ============================================================
+	// 1. 生成AI
+	// ============================================================
 	{
 		nameJa: 'HTML → Markdown',
 		name: 'html-to-markdown',
@@ -21,13 +24,131 @@ export const tools: Tool[] = [
 		icon: 'mdi:file-document',
 		category: '生成AI'
 	},
+
+	// ============================================================
+	// 2. 文字・テキスト処理
+	// ============================================================
+	{
+		nameJa: '正規表現テスター',
+		name: 'regex-tester',
+		description: 'JavaScript正規表現で一致箇所・グループを確認',
+		icon: 'mdi:regex',
+		category: '文字・テキスト処理'
+	},
+	{
+		nameJa: '文字数カウンタ',
+		name: 'character-counter',
+		description: 'テキストの文字数をリアルタイムでカウントします',
+		icon: 'mdi:numeric',
+		category: '文字・テキスト処理'
+	},
+	{
+		nameJa: 'HTML/URL エンコーダ',
+		name: 'html-url-encoder',
+		description: 'HTML特殊文字やURLの文字列をエンコード・デコードします',
+		icon: 'mdi:code-tags',
+		category: '文字・テキスト処理'
+	},
+	{
+		nameJa: 'エンコード文字列デコーダ',
+		name: 'string-decoder',
+		description: '20種類以上のエンコード形式を自動検出・デコードします',
+		icon: 'mdi:file-code-outline',
+		category: '文字・テキスト処理'
+	},
+
+	// ============================================================
+	// 3. データ変換
+	// ============================================================
 	{
 		nameJa: '構造化データビューアー',
 		name: 'json-formatter',
 		description: 'JSON・Pythonオブジェクトを解析して見やすいツリー形式で表示します',
 		icon: 'mdi:file-tree',
-		category: '開発・比較ツール'
+		category: 'データ変換'
 	},
+	{
+		nameJa: 'Base64⇄画像変換',
+		name: 'base64-converter',
+		description: '画像とBase64文字列を相互に変換します',
+		icon: 'mdi:swap-vertical',
+		category: 'データ変換'
+	},
+	{
+		nameJa: 'Markdown → Notion',
+		name: 'markdown-to-notion',
+		description: 'MarkdownをNotion形式に変換します',
+		icon: 'mdi:swap-horizontal',
+		category: 'データ変換'
+	},
+	{
+		nameJa: 'CSV/Excel → LaTeX表',
+		name: 'csv-to-latex',
+		description: 'CSV/ExcelデータをLaTeX表形式に変換します',
+		icon: 'mdi:table-arrow-right',
+		category: 'データ変換'
+	},
+
+	// ============================================================
+	// 4. 画像・メディア
+	// ============================================================
+	{
+		nameJa: '画像形式変換',
+		name: 'image-converter',
+		description: '画像をPNG/JPEG/WebPに変換',
+		icon: 'mdi:image-sync',
+		category: '画像・メディア'
+	},
+	{
+		nameJa: '画像メタデータ表示',
+		name: 'image-metadata',
+		description: '画像ファイルのEXIF情報やメタデータを詳細表示します',
+		icon: 'mdi:image-search',
+		category: '画像・メディア'
+	},
+	{
+		nameJa: 'PDFメタデータ・セキュリティ情報',
+		name: 'pdf-metadata',
+		description: 'PDFのメタデータ、JavaScript、セキュリティ設定を表示します',
+		icon: 'mdi:file-pdf-box',
+		category: '画像・メディア'
+	},
+	{
+		nameJa: '動画圧縮',
+		name: 'video-compressor',
+		description: '動画ファイルのサイズを圧縮してファイルサイズを削減します',
+		icon: 'mdi:video-box',
+		category: '画像・メディア'
+	},
+	{
+		nameJa: '動画→音声変換',
+		name: 'video-to-audio',
+		description: '動画ファイルから音声を抽出してMP3/WAV/AAC等に変換します',
+		icon: 'mdi:waveform',
+		category: '画像・メディア'
+	},
+
+	// ============================================================
+	// 5. QRコード
+	// ============================================================
+	{
+		nameJa: 'QRコードジェネレーター',
+		name: 'qrcode-generator',
+		description: 'テキストからQRコードを生成します',
+		icon: 'mdi:qrcode',
+		category: 'QRコード'
+	},
+	{
+		nameJa: 'X プロフィール QR',
+		name: 'x-qrcode-generator',
+		description: 'X（旧Twitter）プロフィール用のQRコードを生成します',
+		icon: 'mdi:twitter',
+		category: 'QRコード'
+	},
+
+	// ============================================================
+	// 6. 開発・比較ツール
+	// ============================================================
 	{
 		nameJa: 'コード整形',
 		name: 'code-formatter',
@@ -91,34 +212,10 @@ export const tools: Tool[] = [
 		icon: 'mdi:shield-key',
 		category: '開発・比較ツール'
 	},
-	{
-		nameJa: '正規表現テスター',
-		name: 'regex-tester',
-		description: 'JavaScript正規表現で一致箇所・グループを確認',
-		icon: 'mdi:regex',
-		category: '文字・テキスト処理'
-	},
-	{
-		nameJa: '文字数カウンタ',
-		name: 'character-counter',
-		description: 'テキストの文字数をリアルタイムでカウントします',
-		icon: 'mdi:numeric',
-		category: '文字・テキスト処理'
-	},
-	{
-		nameJa: 'HTML/URL エンコーダ',
-		name: 'html-url-encoder',
-		description: 'HTML特殊文字やURLの文字列をエンコード・デコードします',
-		icon: 'mdi:code-tags',
-		category: '文字・テキスト処理'
-	},
-	{
-		nameJa: 'エンコード文字列デコーダ',
-		name: 'string-decoder',
-		description: '20種類以上のエンコード形式を自動検出・デコードします',
-		icon: 'mdi:file-code-outline',
-		category: '文字・テキスト処理'
-	},
+
+	// ============================================================
+	// 7. ネットワーク・情報
+	// ============================================================
 	{
 		nameJa: '接続元情報表示',
 		name: 'connection-info',
@@ -139,75 +236,5 @@ export const tools: Tool[] = [
 		description: 'Pcapファイルを解析してパケット統計・プロトコル分布を表示します',
 		icon: 'mdi:network-outline',
 		category: 'ネットワーク・情報'
-	},
-	{
-		nameJa: '画像形式変換',
-		name: 'image-converter',
-		description: '画像をPNG/JPEG/WebPに変換',
-		icon: 'mdi:image-sync',
-		category: '画像・メディア'
-	},
-	{
-		nameJa: 'Base64⇄画像変換',
-		name: 'base64-converter',
-		description: '画像とBase64文字列を相互に変換します',
-		icon: 'mdi:swap-vertical',
-		category: '画像・メディア'
-	},
-	{
-		nameJa: '画像メタデータ表示',
-		name: 'image-metadata',
-		description: '画像ファイルのEXIF情報やメタデータを詳細表示します',
-		icon: 'mdi:image-search',
-		category: '画像・メディア'
-	},
-	{
-		nameJa: 'PDFメタデータ・セキュリティ情報',
-		name: 'pdf-metadata',
-		description: 'PDFのメタデータ、JavaScript、セキュリティ設定を表示します',
-		icon: 'mdi:file-pdf-box',
-		category: '画像・メディア'
-	},
-	{
-		nameJa: '動画圧縮',
-		name: 'video-compressor',
-		description: '動画ファイルのサイズを圧縮してファイルサイズを削減します',
-		icon: 'mdi:video-box',
-		category: '画像・メディア'
-	},
-	{
-		nameJa: '動画→音声変換',
-		name: 'video-to-audio',
-		description: '動画ファイルから音声を抽出してMP3/WAV/AAC等に変換します',
-		icon: 'mdi:waveform',
-		category: '画像・メディア'
-	},
-	{
-		nameJa: 'X プロフィール QR',
-		name: 'x-qrcode-generator',
-		description: 'X（旧Twitter）プロフィール用のQRコードを生成します',
-		icon: 'mdi:twitter',
-		category: 'QRコード'
-	},
-	{
-		nameJa: 'QRコードジェネレーター',
-		name: 'qrcode-generator',
-		description: 'テキストからQRコードを生成します',
-		icon: 'mdi:qrcode',
-		category: 'QRコード'
-	},
-	{
-		nameJa: 'Markdown → Notion',
-		name: 'markdown-to-notion',
-		description: 'MarkdownをNotion形式に変換します',
-		icon: 'mdi:swap-horizontal',
-		category: 'データ変換'
-	},
-	{
-		nameJa: 'CSV/Excel → LaTeX表',
-		name: 'csv-to-latex',
-		description: 'CSV/ExcelデータをLaTeX表形式に変換します',
-		icon: 'mdi:table-arrow-right',
-		category: 'データ変換'
 	}
 ];

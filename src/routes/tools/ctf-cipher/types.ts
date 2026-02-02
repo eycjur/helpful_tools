@@ -1,5 +1,5 @@
 /**
- * CTF暗号解読ツールの型定義
+ * 暗号解読ツールの型定義
  */
 
 export interface DecryptResult {

@@ -1,28 +1,11 @@
 <script lang="ts">
 	import { tools } from '$lib/data/tools';
 	import Icon from '@iconify/svelte';
+	import { countGraphemes, countBytes, countLines } from './counter';
+
 	let text = '';
 
 	const tool = tools.find((t) => t.name === 'character-counter');
-
-	// グラフェム数（見た目の文字数）をカウント
-	// Intl.Segmenterを使用して絵文字等も正しくカウント
-	function countGraphemes(str: string): number {
-		if (!str) return 0;
-		const segmenter = new Intl.Segmenter('ja', { granularity: 'grapheme' });
-		return [...segmenter.segment(str)].length;
-	}
-
-	// バイト数をカウント（UTF-8）
-	function countBytes(str: string): number {
-		return new TextEncoder().encode(str).length;
-	}
-
-	// 行数をカウント
-	function countLines(str: string): number {
-		if (!str) return 0;
-		return str.split('\n').length;
-	}
 
 	// リアクティブな計算
 	$: graphemeCount = countGraphemes(text);

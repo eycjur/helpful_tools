@@ -9,7 +9,8 @@
 		formatGeoInfoAsText,
 		formatNetworkInfoAsText,
 		formatSecurityInfoAsText,
-		formatIPAnalysisAsText
+		formatIPAnalysisAsText,
+		groupRecordsByType
 	} from './whois-parser';
 
 	const tool = tools.find((t) => t.name === 'whois-lookup');
@@ -724,7 +725,7 @@
 				<p class="mb-2 font-medium">機能について</p>
 				<ul class="space-y-1 text-xs">
 					<li>• DNS情報はCloudflare DNS-over-HTTPSから取得されます</li>
-					<li>• IP地理情報はip-api.comから取得されます</li>
+					<li>• IP地理情報はipapi.coから取得されます</li>
 					<li>
 						• <strong>サブドメイン対応:</strong> www.example.comなどのサブドメインも検索可能です
 					</li>

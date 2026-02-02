@@ -3,6 +3,7 @@
 	import Icon from '@iconify/svelte';
 	import { diffLines, diffChars } from 'diff';
 	import { SvelteSet } from 'svelte/reactivity';
+	import { escapeHtml } from './html-escape';
 
 	const tool = tools.find((t) => t.name === 'diff-checker');
 
@@ -331,12 +332,6 @@
 	function clear() {
 		leftText = '';
 		rightText = '';
-	}
-
-	function escapeHtml(text: string): string {
-		return text.replace(/[&<>]/g, (match) => {
-			return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[match] || match;
-		});
 	}
 
 	// 文字レベル差分をHTMLで表示（スペース可視化付き）

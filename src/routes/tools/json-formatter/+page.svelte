@@ -33,6 +33,15 @@
 			return;
 		}
 
+		// 入力サイズ制限（1MB）
+		const MAX_INPUT_SIZE = 1_048_576; // 1MB
+		if (inputJson.length > MAX_INPUT_SIZE) {
+			errorMessage = `入力サイズが大きすぎます（最大: ${(MAX_INPUT_SIZE / 1024 / 1024).toFixed(1)}MB）`;
+			isValid = false;
+			outputJson = '';
+			return;
+		}
+
 		// まずJSON形式として解析を試行
 		try {
 			parsedData = JSON.parse(inputJson);
@@ -52,7 +61,13 @@
 		}
 	}
 
-	function parsePythonObject(text: string): DataValue {
+	function parsePythonObject(text: string, depth = 0): DataValue {
+		// 再帰深度制限（無限再帰防止）
+		const MAX_DEPTH = 100;
+		if (depth > MAX_DEPTH) {
+			throw new Error('オブジェクトが深すぎます（最大深度: 100）');
+		}
+
 		// Pythonオブジェクト形式のパーサー
 		text = text.trim();
 
@@ -75,12 +90,12 @@
 
 		// リスト形式
 		if (text.startsWith('[') && text.endsWith(']')) {
-			return parseList(text);
+			return parseList(text, depth);
 		}
 
 		// 辞書形式
 		if (text.startsWith('{') && text.endsWith('}')) {
-			return parseDict(text);
+			return parseDict(text, depth);
 		}
 
 		// 文字列
@@ -118,22 +133,22 @@
 			if (eqIndex > 0) {
 				const key = arg.substring(0, eqIndex).trim();
 				const value = arg.substring(eqIndex + 1).trim();
-				result[key] = parsePythonObject(value);
+				result[key] = parsePythonObject(value, depth + 1);
 			}
 		}
 
 		return result;
 	}
 
-	function parseList(text: string): JsonArray {
+	function parseList(text: string, depth = 0): JsonArray {
 		const content = text.slice(1, -1).trim();
 		if (!content) return [];
 
 		const items = splitArguments(content);
-		return items.map((item) => parsePythonObject(item));
+		return items.map((item) => parsePythonObject(item, depth + 1));
 	}
 
-	function parseDict(text: string): JsonObject {
+	function parseDict(text: string, depth = 0): JsonObject {
 		const content = text.slice(1, -1).trim();
 		if (!content) return {};
 
@@ -144,8 +159,8 @@
 			const colonIndex = pair.indexOf(':');
 			if (colonIndex > 0) {
 				const keyStr = pair.substring(0, colonIndex).trim();
-				const key = parsePythonObject(keyStr);
-				const value = parsePythonObject(pair.substring(colonIndex + 1).trim());
+				const key = parsePythonObject(keyStr, depth + 1);
+				const value = parsePythonObject(pair.substring(colonIndex + 1).trim(), depth + 1);
 				// keyを文字列として扱う
 				const keyAsString = typeof key === 'string' ? key : String(key);
 				result[keyAsString] = value;

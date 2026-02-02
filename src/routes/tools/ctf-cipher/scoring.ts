@@ -1,10 +1,10 @@
 /**
- * CTF暗号解読 - 信頼度評価システム
+ * 暗号解読 - 信頼度評価システム
  */
 
 import { SvelteSet, SvelteMap } from 'svelte/reactivity';
 
-// 英語の一般的な単語リスト（CTF関連用語を含む）
+// 英語の一般的な単語リスト
 const COMMON_WORD_LIST = [
 	'the',
 	'be',

@@ -9,7 +9,16 @@
 	let isLoading = false;
 	let errorMessage = '';
 
-	$: qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=600x600&ecc=H&margin=6&data=${encodeURIComponent(input)}`;
+	// 入力サイズ制限（2000文字）
+	const MAX_INPUT_LENGTH = 2000;
+
+	$: {
+		if (input.length > MAX_INPUT_LENGTH) {
+			input = input.slice(0, MAX_INPUT_LENGTH);
+			errorMessage = `入力は${MAX_INPUT_LENGTH}文字以内にしてください。`;
+		}
+		qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=600x600&ecc=H&margin=6&data=${encodeURIComponent(input)}`;
+	}
 
 	// Reset loading and error when input changes
 	$: if (input) {
@@ -36,7 +45,17 @@
 	function handleLogoUpload(event: Event) {
 		const target = event.target as HTMLInputElement;
 		if (target.files && target.files[0]) {
-			logoFile = target.files[0];
+			const file = target.files[0];
+
+			// ファイルサイズ制限（5MB）
+			const MAX_LOGO_SIZE = 5 * 1024 * 1024; // 5MB
+			if (file.size > MAX_LOGO_SIZE) {
+				errorMessage = `ロゴ画像は${MAX_LOGO_SIZE / 1024 / 1024}MB以下にしてください。`;
+				target.value = '';
+				return;
+			}
+
+			logoFile = file;
 			const reader = new FileReader();
 			reader.onload = (e) => {
 				const result = e.target?.result;

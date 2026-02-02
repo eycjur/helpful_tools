@@ -177,10 +177,36 @@ const twoLevelTLDs = new Set([
 /**
  * IPアドレスかどうかを判定
  */
+function isIPv4(input: string): boolean {
+	if (!/^(\d{1,3}\.){3}\d{1,3}$/.test(input)) return false;
+	const parts = input.split('.').map((p) => parseInt(p, 10));
+	return parts.length === 4 && parts.every((p) => p >= 0 && p <= 255);
+}
+
+function isIPv6(input: string): boolean {
+	if (!input.includes(':')) return false;
+	if (!/^[0-9a-fA-F:]+$/.test(input)) return false;
+	if (input.includes(':::')) return false;
+
+	const parts = input.split('::');
+	if (parts.length > 2) return false;
+
+	const left = parts[0] ? parts[0].split(':') : [];
+	const right = parts[1] ? parts[1].split(':') : [];
+
+	const isValidSeg = (seg: string) => /^[0-9a-fA-F]{1,4}$/.test(seg);
+	if (left.some((s) => !isValidSeg(s)) || right.some((s) => !isValidSeg(s))) return false;
+
+	if (parts.length === 1) {
+		return left.length === 8;
+	}
+
+	// 圧縮表記は全体で8セグメント未満
+	return left.length + right.length < 8;
+}
+
 export function isIPAddress(input: string): boolean {
-	const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}$/;
-	const ipv6Regex = /^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$/;
-	return ipv4Regex.test(input) || ipv6Regex.test(input);
+	return isIPv4(input) || isIPv6(input);
 }
 
 /**
@@ -277,34 +303,25 @@ function getRecordTypeName(type: number): string {
  */
 export async function fetchIPGeolocation(ip: string): Promise<IPGeoInfo | null> {
 	try {
-		const response = await fetch(
-			`http://ip-api.com/json/${ip}?fields=status,message,country,countryCode,region,regionName,city,zip,lat,lon,timezone,isp,org,as,asname,reverse,mobile,proxy,hosting,query`
-		);
+		const response = await fetch(`https://ipapi.co/${encodeURIComponent(ip)}/json/`);
 		if (!response.ok) throw new Error('IP geolocation query failed');
 
 		const data = await response.json();
-		if (data.status === 'fail') {
-			throw new Error(data.message || 'IP lookup failed');
+		if (data.error) {
+			throw new Error(data.reason || 'IP lookup failed');
 		}
 
 		return {
-			ip: data.query || ip,
+			ip: data.ip || ip,
 			city: data.city || 'Unknown',
-			region: data.regionName || 'Unknown',
-			country: data.country || 'Unknown',
-			countryCode: data.countryCode || 'Unknown',
+			region: data.region || 'Unknown',
+			country: data.country_name || 'Unknown',
+			countryCode: data.country_code || 'Unknown',
 			timezone: data.timezone || 'Unknown',
-			latitude: data.lat || 0,
-			longitude: data.lon || 0,
+			latitude: data.latitude || 0,
+			longitude: data.longitude || 0,
 			org: data.org || 'Unknown',
-			postal: data.zip || 'Unknown',
-			isp: data.isp || undefined,
-			as: data.as || undefined,
-			asname: data.asname || undefined,
-			reverse: data.reverse || undefined,
-			mobile: data.mobile,
-			proxy: data.proxy,
-			hosting: data.hosting
+			postal: data.postal || 'Unknown'
 		};
 	} catch (err) {
 		console.error('IP geolocation error:', err);

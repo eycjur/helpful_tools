@@ -139,10 +139,6 @@
 					mergeOutput: true // すべてを1つのオブジェクトにマージ
 				});
 
-				// デバッグ用：取得したメタデータをコンソールに出力
-				console.log('取得したメタデータ:', metadata);
-				console.log('メタデータのキー一覧:', metadata ? Object.keys(metadata) : []);
-
 				if (metadata) {
 					// GPS情報
 					const gpsData = await exifr.gps(file);
@@ -209,15 +205,9 @@
 							// バイナリデータや関数はスキップ
 							if (typeof value !== 'function' && !isBinaryData(value)) {
 								allMetadata[key] = value;
-								console.log(`追加: ${key} = ${value}`);
-							} else {
-								console.log(`スキップ（バイナリ/関数）: ${key}`);
 							}
 						}
 					}
-
-					console.log('allMetadata:', allMetadata);
-					console.log('allMetadata件数:', Object.keys(allMetadata).length);
 
 					if (Object.keys(allMetadata).length > 0) {
 						metadataSections = [
@@ -228,15 +218,9 @@
 								data: allMetadata
 							}
 						];
-						console.log('EXIFメタデータセクション追加完了');
-						console.log('metadataSections配列:', metadataSections);
-						console.log('metadataSections件数:', metadataSections.length);
-					} else {
-						console.log('allMetadataが空のため、セクションを追加しない');
 					}
 				} else {
 					// メタデータが存在しない場合
-					console.log('metadataがnullまたはundefinedです');
 					metadataSections = [
 						...metadataSections,
 						{

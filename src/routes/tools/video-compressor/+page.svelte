@@ -107,6 +107,28 @@
 			return;
 		}
 
+		// ファイルサイズ制限（2GB）
+		const FILE_SIZE_MAX_THRESHOLD = 2 * 1024 * 1024 * 1024; // 2GB
+		const FILE_SIZE_WARNING_THRESHOLD = 500 * 1024 * 1024; // 500MB
+
+		if (file.size > FILE_SIZE_MAX_THRESHOLD) {
+			alert(
+				`ファイルサイズが大きすぎます（${(file.size / 1024 / 1024 / 1024).toFixed(2)}GB）。${FILE_SIZE_MAX_THRESHOLD / 1024 / 1024 / 1024}GB以下のファイルを選択してください。`
+			);
+			return;
+		}
+
+		if (file.size > FILE_SIZE_WARNING_THRESHOLD) {
+			const sizeMB = (file.size / 1024 / 1024).toFixed(0);
+			if (
+				!confirm(
+					`ファイルサイズが大きいため（${sizeMB}MB）、圧縮に時間がかかる場合があります。続行しますか？`
+				)
+			) {
+				return;
+			}
+		}
+
 		// 前回のファイルを削除
 		clearAll();
 

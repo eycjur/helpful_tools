@@ -51,6 +51,15 @@
 			return;
 		}
 
+		// ファイルサイズ制限（10MB）
+		const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+		if (file.size > MAX_FILE_SIZE) {
+			alert(
+				`ファイルサイズが大きすぎます（${(file.size / 1024 / 1024).toFixed(2)}MB）。最大${MAX_FILE_SIZE / 1024 / 1024}MBまでです。`
+			);
+			return;
+		}
+
 		selectedFile = file;
 
 		// プレビュー用URL作成
@@ -92,6 +101,15 @@
 	function convertBase64ToImage() {
 		if (!base64Input.trim()) {
 			alert('Base64文字列を入力してください');
+			return;
+		}
+
+		// Base64文字列サイズ制限（20MB相当）
+		const MAX_BASE64_LENGTH = 20 * 1024 * 1024; // 20MB相当
+		if (base64Input.length > MAX_BASE64_LENGTH) {
+			alert(
+				`Base64文字列が長すぎます（${(base64Input.length / 1024 / 1024).toFixed(2)}MB相当）。最大${MAX_BASE64_LENGTH / 1024 / 1024}MB相当までです。`
+			);
 			return;
 		}
 

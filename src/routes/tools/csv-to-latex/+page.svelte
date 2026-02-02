@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { tools } from '$lib/data/tools';
 	import Icon from '@iconify/svelte';
+	import { escapeLatex } from './latex-escape';
 
 	let inputData = '';
 	let latexOutput = '';
@@ -69,20 +70,6 @@
 		}
 
 		return result;
-	}
-
-	function escapeLatex(text: string): string {
-		return text
-			.replace(/\\/g, '\\textbackslash{}')
-			.replace(/\{/g, '\\{')
-			.replace(/\}/g, '\\}')
-			.replace(/\$/g, '\\$')
-			.replace(/&/g, '\\&')
-			.replace(/%/g, '\\%')
-			.replace(/#/g, '\\#')
-			.replace(/\^/g, '\\textasciicircum{}')
-			.replace(/_/g, '\\_')
-			.replace(/~/g, '\\textasciitilde{}');
 	}
 
 	function generateLatexTable(data: string[][]): string {

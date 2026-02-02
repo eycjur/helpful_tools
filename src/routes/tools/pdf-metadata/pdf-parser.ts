@@ -6,6 +6,11 @@ import { SvelteSet, SvelteMap } from 'svelte/reactivity';
 import * as pdfjsLib from 'pdfjs-dist';
 import type { PDFReport, ParsedValue, RawObject } from './types';
 
+// PDF.jsのWorkerを設定
+if (typeof window !== 'undefined') {
+	pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+}
+
 type RawAction = {
 	type: string;
 	url?: string | null;
@@ -560,7 +565,6 @@ export async function parsePDFNonRender(
 	makeFindings: (report: PDFReport) => PDFReport['findings']
 ): Promise<PDFReport> {
 	const bytes = new Uint8Array(arrayBuffer);
-	console.log('parsePDFNonRender bytes.length', bytes.length);
 	const fileHash = await sha256Hex(bytes);
 
 	const loadingTask = pdfjsLib.getDocument({
@@ -715,11 +719,6 @@ export async function parsePDFNonRender(
 	let rawActions: Awaited<ReturnType<typeof extractRawActions>> | null = null;
 	try {
 		rawActions = await extractRawActions(bytes);
-		console.log('rawActions', {
-			openAction: Boolean(rawActions.openAction),
-			additionalActions: rawActions.additionalActions.length,
-			javascript: rawActions.javascript.length
-		});
 	} catch {
 		rawActions = null;
 	}

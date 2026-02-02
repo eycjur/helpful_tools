@@ -83,7 +83,6 @@
 		isLoading = true;
 		report = null;
 		warnings = [];
-		console.log('file.size', file.size);
 
 		// ファイルサイズの警告チェック
 		if (file.size > FILE_SIZE_WARNING_THRESHOLD) {
@@ -100,16 +99,13 @@
 		try {
 			// PDFのArrayBufferを取得
 			const arrayBuffer = await file.arrayBuffer();
-			console.log('arrayBuffer.byteLength', arrayBuffer.byteLength);
 
 			// URLを生成（プレビュー用）
 			const url = URL.createObjectURL(file);
 			pdfUrl = url;
 
 			// 新しいパーサーでPDF解析
-			console.log('PDF解析開始...');
 			report = await parsePDFNonRender(arrayBuffer, file.name, makeFindings);
-			console.log('PDF解析結果:', report);
 
 			// Findingから警告を生成
 			for (const finding of report.findings) {
@@ -131,8 +127,6 @@
 					];
 				}
 			}
-
-			console.log('PDF解析完了');
 		} catch (err) {
 			console.error('PDF処理エラー:', err);
 			warnings = [
