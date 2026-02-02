@@ -19,13 +19,12 @@
 			if (!validateUsername(username)) {
 				errorMessage = 'ユーザー名は英数字とアンダースコアのみ、15文字以内で入力してください。';
 				qrUrl = '';
-				return;
+			} else {
+				const profileUrl = `https://x.com/${cleanUsername}`;
+				qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=600x600&ecc=H&margin=6&data=${encodeURIComponent(profileUrl)}`;
+				isLoading = true;
+				errorMessage = '';
 			}
-
-			const profileUrl = `https://x.com/${cleanUsername}`;
-			qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=600x600&ecc=H&margin=6&data=${encodeURIComponent(profileUrl)}`;
-			isLoading = true;
-			errorMessage = '';
 		}
 	}
 

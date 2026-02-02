@@ -84,7 +84,7 @@
 
 			return {
 				__class__: className,
-				...parseArguments(args)
+				...parseArguments(args, depth)
 			};
 		}
 
@@ -121,7 +121,7 @@
 		return text;
 	}
 
-	function parseArguments(argsStr: string): JsonObject {
+	function parseArguments(argsStr: string, depth = 0): JsonObject {
 		const result: JsonObject = {};
 
 		if (!argsStr.trim()) return result;

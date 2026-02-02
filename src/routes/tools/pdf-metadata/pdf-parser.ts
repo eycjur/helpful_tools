@@ -306,15 +306,12 @@ function getDictBodyFromValue(value: ParsedValue): string | null {
 /**
  * ボディからアクションをパース
  */
-async function parseActionFromBody(
-	body: string,
-	objects: SvelteMap<string, RawObject>
-): Promise<RawAction | null> {
+async function parseActionFromBody(body: string): Promise<RawAction | null> {
 	const actionType = findKeyValue(body, 'S');
 	if (actionType?.type === 'name' && actionType.value === 'JavaScript') {
 		const jsValue = findKeyValue(body, 'JS');
 		if (!jsValue) return { type: 'JavaScript' };
-		const js = await extractJsFromValue(jsValue, objects);
+		const js = await extractJsFromValue(jsValue);
 		return {
 			type: 'JavaScript',
 			preview: js ? preview(js.script, 800) : null,
@@ -380,13 +377,13 @@ async function collectJavaScriptFromNameTree(
 			const actionVal = namesArray[i + 1];
 			if (!nameVal || !actionVal) continue;
 			const name = valueToName(nameVal) ?? `item_${i / 2}`;
-			const actionBody = getDictBodyFromValue(actionVal, objects);
+			const actionBody = getDictBodyFromValue(actionVal);
 			if (!actionBody) continue;
-			const action = await parseActionFromBody(actionBody, objects);
+			const action = await parseActionFromBody(actionBody);
 			if (action?.type === 'JavaScript') {
 				const jsValue = findKeyValue(actionBody, 'JS');
 				if (jsValue) {
-					const js = await extractJsFromValue(jsValue, objects);
+					const js = await extractJsFromValue(jsValue);
 					if (js) {
 						javascript.push({
 							trigger: `${scope}/${name}`,
@@ -402,7 +399,7 @@ async function collectJavaScriptFromNameTree(
 	const kidsArray = findArrayForKey(dictBody, 'Kids');
 	if (kidsArray) {
 		for (const kidVal of kidsArray) {
-			const kidBody = getDictBodyFromValue(kidVal, objects);
+			const kidBody = getDictBodyFromValue(kidVal);
 			if (!kidBody) continue;
 			await collectJavaScriptFromNameTree(kidBody, scope, objects, javascript);
 		}
@@ -435,11 +432,11 @@ async function extractRawActions(bytes: Uint8Array): Promise<{
 	if (catalogBody) {
 		const namesRootVal = findKeyValue(catalogBody, 'Names');
 		if (namesRootVal) {
-			const namesRootBody = getDictBodyFromValue(namesRootVal, objects);
+			const namesRootBody = getDictBodyFromValue(namesRootVal);
 			if (namesRootBody) {
 				const jsTreeVal = findKeyValue(namesRootBody, 'JavaScript');
 				if (jsTreeVal) {
-					const jsTreeBody = getDictBodyFromValue(jsTreeVal, objects);
+					const jsTreeBody = getDictBodyFromValue(jsTreeVal);
 					if (jsTreeBody) {
 						await collectJavaScriptFromNameTree(
 							jsTreeBody,
@@ -456,10 +453,10 @@ async function extractRawActions(bytes: Uint8Array): Promise<{
 		if (openActionValue) {
 			const actionBody = openActionValue.type === 'dict' ? openActionValue.value : null;
 			if (actionBody) {
-				openAction = await parseActionFromBody(actionBody, objects);
+				openAction = await parseActionFromBody(actionBody);
 				const jsValue = findKeyValue(actionBody, 'JS');
 				if (jsValue) {
-					const js = await extractJsFromValue(jsValue, objects);
+					const js = await extractJsFromValue(jsValue);
 					if (js) javascript.push({ trigger: 'OpenAction', script: js.script, sha256: js.sha256 });
 				}
 			}
@@ -487,11 +484,11 @@ async function extractRawActions(bytes: Uint8Array): Promise<{
 				}
 				const actionBody = actionVal.type === 'dict' ? actionVal.value : null;
 				if (actionBody) {
-					const action = await parseActionFromBody(actionBody, objects);
+					const action = await parseActionFromBody(actionBody);
 					if (action) additionalActions.push({ scope: `Catalog.AA/${key}`, action });
 					const jsValue = findKeyValue(actionBody, 'JS');
 					if (jsValue) {
-						const js = await extractJsFromValue(jsValue, objects);
+						const js = await extractJsFromValue(jsValue);
 						if (js)
 							javascript.push({
 								trigger: `Catalog.AA/${key}`,
@@ -509,7 +506,7 @@ async function extractRawActions(bytes: Uint8Array): Promise<{
 		if (!obj.body.includes('/JavaScript')) continue;
 		const jsValue = findKeyValue(obj.body, 'JS');
 		if (!jsValue) continue;
-		const js = await extractJsFromValue(jsValue, objects);
+		const js = await extractJsFromValue(jsValue);
 		if (js) {
 			javascript.push({
 				trigger: `obj:${obj.objNum} ${obj.genNum}`,
@@ -634,7 +631,7 @@ export async function parsePDFNonRender(
 	try {
 		const jsActions =
 			(await (
-				pdf as { getJSActions?: () => Promise<Record<string, string[]>> }
+				pdf as unknown as { getJSActions?: () => Promise<Record<string, string[]>> }
 			).getJSActions?.()) ?? null;
 		if (jsActions) {
 			for (const [key, list] of Object.entries(jsActions)) {
