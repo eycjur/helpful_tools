@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - **生成AI**: HTML/リッチテキスト → Markdown変換（AI活用）
 - **文字・テキスト処理**: 正規表現テスター、文字数カウンタ、HTML/URLエンコーダ
-- **データ変換**: JSON構造化表示、Base64変換、Notion/LaTeX変換
+- **データ変換**: 構造化データビューアー、Base64⇄画像変換、Notion/LaTeX変換
 - **画像・メディア**: 画像形式変換、画像メタデータ表示、PDFメタデータ・セキュリティ情報、動画圧縮、動画→音声変換
 - **QRコード**: 汎用QR、XプロフィールQR
 - **開発・比較ツール**: コード整形、Diffチェッカー、curlビルダー、クリップボード検査、Pythonコード解析
@@ -62,6 +62,15 @@ npm run format
 
 # リンターチェック（Prettier + ESLint）
 npm run lint
+
+# テスト実行（watch モード）
+npm test
+
+# テスト実行（1回のみ、CI用）
+npm run test:run
+
+# テスト実行（UIモード）
+npm run test:ui
 ```
 
 ## 代表的なフォルダ構成
@@ -280,7 +289,7 @@ src/routes/tools/ctf-cipher/
 - **ローディング状態**: 外部API呼び出し時の`isLoading`状態とスピナー表示パターン
 - **LaTeX特殊文字エスケープ**: CSV→LaTeXツールで特殊文字（$, &, %, #, ^, \_, {, }, \, ~）を適切にエスケープ
 
-#### CTF暗号解読（新規ツール）
+#### 暗号解読
 
 - **Brute forceアプローチ**: Caesar cipher（26パターン）、XOR single-byte（255パターン）など、全パターンを試行して信頼度順にソート
 - **信頼度評価システム**: 印字可能文字の割合（30点）、英単語の出現（30点）、文字頻度分析（40点）で平文らしさを0-100で評価
@@ -429,3 +438,28 @@ src/routes/tools/ctf-cipher/
 2. **セキュリティチェック**: 生成されたコードにセキュリティ上の問題がありうる場合は、`/security-review`コマンドを使用して、セキュリティの脆弱性を確認します。セキュリティ上の問題が検出された場合は、修正を行います。
 3. **ドキュメントの更新**: 生成されたコードに関連するドキュメント（README.mdやCLAUDE.mdなど）を必要に応じて更新します。特に、新しいツールを追加した場合は、`src/lib/data/tools.ts`の更新と合わせて、ドキュメントも更新してください。
 4. **コミット**: レビューが完了したら、変更をGitにコミットします。git管理されていないリポジトリの場合は不要です。huskyを用いて、エラーが検出された場合は修正を行います。
+
+## CI/CD
+
+### GitHub Actions
+
+プロジェクトではGitHub Actionsを使用して、以下の自動チェックを実行しています：
+
+**`.github/workflows/ci.yml`** - メインのCIパイプライン:
+
+- **トリガー**: `main`ブランチへのpush、PRのopen/update
+- **実行内容**:
+  1. **Linter** (`npm run lint`): Prettier + ESLint
+  2. **Type Check** (`npm run check`): TypeScript型チェック
+  3. **Tests** (`npm run test:run`): Vitest による166個のユニットテスト
+
+**テストカバレッジ**:
+
+- 10ツール、166テスト（csv-to-latex, diff-checker, x-qrcode-generator, ctf-cipher, string-decoder, character-counter, markdown-to-notion, pcap-analyzer, whois-lookup, pdf-metadata）
+- コアロジックに絞った実用的なテスト戦略
+- 外部依存やブラウザAPIに依存する部分は除外
+
+**その他のワークフロー**:
+
+- **`gh-pages.yml`**: GitHub Pagesへのデプロイ
+- **`claude.yml`**: Claude Code統合（存在する場合）
