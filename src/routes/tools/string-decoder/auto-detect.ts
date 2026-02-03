@@ -171,7 +171,7 @@ export function autoDetect(text: string): DecodeResult[] {
 	}
 
 	// Punycode検出
-	if (/^xn--[a-z0-9]+$/i.test(text.trim())) {
+	if (/^xn--[a-z0-9-]+$/i.test(text.trim())) {
 		try {
 			const decoded = decodePunycode(text.trim());
 			if (decoded !== text.trim()) {

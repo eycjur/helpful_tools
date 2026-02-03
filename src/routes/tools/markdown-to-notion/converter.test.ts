@@ -29,4 +29,10 @@ describe('Markdown → Notion変換', () => {
 	it('空文字列を処理する', () => {
 		expect(markdownToNotion('')).toBe('');
 	});
+
+	it('入力にプレースホルダー文字列が含まれても壊れない', () => {
+		const input = 'Text __CODE_BLOCK__0__\n```\ncode\n```';
+		const expected = 'Text __CODE_BLOCK__0__\n\n```\ncode\n```';
+		expect(markdownToNotion(input)).toBe(expected);
+	});
 });

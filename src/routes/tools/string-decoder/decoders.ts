@@ -2,6 +2,8 @@
  * エンコード文字列デコーダ - デコーダー関数
  */
 
+import { toUnicode } from 'punycode/';
+
 export function decodeURL(text: string): string {
 	try {
 		return decodeURIComponent(text);
@@ -93,8 +95,7 @@ export function decodePunycode(text: string): string {
 		if (!text.startsWith('xn--')) {
 			throw new Error('Punycode形式ではありません');
 		}
-		const url = new URL(`http://${text}`);
-		return url.hostname;
+		return toUnicode(text);
 	} catch {
 		throw new Error('Punycodeデコードに失敗');
 	}

@@ -98,5 +98,13 @@ describe('文字数カウンタ - コアロジック', () => {
 		it('空文字列は0を返す', () => {
 			expect(countLines('')).toBe(0);
 		});
+
+		it('Windows改行(\\r\\n)を1改行としてカウントする', () => {
+			expect(countLines('line1\r\nline2')).toBe(2);
+		});
+
+		it('\\rのみの場合は1行として扱う', () => {
+			expect(countLines('line1\rline2')).toBe(1);
+		});
 	});
 });

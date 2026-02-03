@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { decryptCaesar, decryptXOR, decryptRailFence, decryptBase64Multi } from './cipher-tools';
+import {
+	decryptCaesar,
+	decryptXOR,
+	decryptRailFence,
+	decryptBase64Multi,
+	decryptROT47,
+	decryptAtbash,
+	decryptReverse
+} from './cipher-tools';
 
 describe('暗号解読 - コアロジック', () => {
 	describe('Caesar cipher', () => {
@@ -81,6 +89,14 @@ describe('暗号解読 - コアロジック', () => {
 				expect(result.detail).toMatch(/Rails: [2-5]/);
 			}
 		});
+
+		it('既知のレールフェンス暗号を復号できる', () => {
+			// "WEAREDISCOVEREDFLEEATONCE" を 3レールで暗号化した既知例
+			const encrypted = 'WECRLTEERDSOEEFEAOCAIVDEN';
+			const results = decryptRailFence(encrypted);
+			const decrypted = results.map((r) => r.result);
+			expect(decrypted).toContain('WEAREDISCOVEREDFLEEATONCE');
+		});
 	});
 
 	describe('Base64多段デコード', () => {
@@ -112,6 +128,29 @@ describe('暗号解読 - コアロジック', () => {
 
 			// 循環が検出されて停止するはず（"Hello World" はBase64フォーマットではない）
 			expect(results.length).toBeLessThanOrEqual(10);
+		});
+	});
+
+	describe('ROT47', () => {
+		it('ROT47は2回適用すると元に戻る', () => {
+			const input = 'Hello, World! 123';
+			const first = decryptROT47(input);
+			const second = decryptROT47(first.result);
+			expect(second.result).toBe(input);
+		});
+	});
+
+	describe('Atbash cipher', () => {
+		it('AtbashでA-Z/a-zを反転できる', () => {
+			const result = decryptAtbash('AbcXYZ');
+			expect(result.result).toBe('ZyxCBA');
+		});
+	});
+
+	describe('Reverse', () => {
+		it('文字列を逆順にできる', () => {
+			const result = decryptReverse('stressed');
+			expect(result.result).toBe('desserts');
 		});
 	});
 });

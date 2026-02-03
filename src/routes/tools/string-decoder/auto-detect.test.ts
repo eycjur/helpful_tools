@@ -69,4 +69,74 @@ describe('エンコード自動検出', () => {
 		// Base64が最も高い信頼度で検出されるはず
 		expect(results[0].format).toBe('Base64');
 	});
+
+	it('Unicodeコードポイントを検出できる', () => {
+		const encoded = '\\u{1F600}';
+		const results = autoDetect(encoded);
+		const hit = results.find((r) => r.format === 'Unicode (\\u{...})');
+		expect(hit?.result).toBe('😀');
+	});
+
+	it('CSS Unicodeを検出できる', () => {
+		const encoded = '\\0048\\0065\\006C\\006C\\006F';
+		const results = autoDetect(encoded);
+		const hit = results.find((r) => r.format === 'CSS Unicode');
+		expect(hit?.result).toBe('Hello');
+	});
+
+	it('8進数エスケープを検出できる', () => {
+		const encoded = '\\110\\145\\154\\154\\157';
+		const results = autoDetect(encoded);
+		const hit = results.find((r) => r.format === '8進数 (\\NNN)');
+		expect(hit?.result).toBe('Hello');
+	});
+
+	it('JSON文字列を検出できる', () => {
+		const encoded = '"Hello\\nWorld"';
+		const results = autoDetect(encoded);
+		const hit = results.find((r) => r.format === 'JSON文字列');
+		expect(hit?.result).toBe('Hello\nWorld');
+	});
+
+	it('Punycodeを検出できる', () => {
+		const encoded = 'xn--bcher-kva';
+		const results = autoDetect(encoded);
+		const hit = results.find((r) => r.format === 'Punycode');
+		expect(hit?.result).toBe('bücher');
+	});
+
+	it('2進数を検出できる', () => {
+		const encoded = '01001000 01101001';
+		const results = autoDetect(encoded);
+		const hit = results.find((r) => r.format === '2進数');
+		expect(hit?.result).toBe('Hi');
+	});
+
+	it('10進数を検出できる', () => {
+		const encoded = '72 101 108 108 111';
+		const results = autoDetect(encoded);
+		const hit = results.find((r) => r.format === '10進数');
+		expect(hit?.result).toBe('Hello');
+	});
+
+	it('16進数を検出できる', () => {
+		const encoded = '48 65 6c 6c 6f';
+		const results = autoDetect(encoded);
+		const hit = results.find((r) => r.format === '16進数');
+		expect(hit?.result).toBe('Hello');
+	});
+
+	it('Morse Codeを検出できる', () => {
+		const encoded = '.... . .-.. .-.. ---';
+		const results = autoDetect(encoded);
+		const hit = results.find((r) => r.format === 'Morse Code');
+		expect(hit?.result).toBe('HELLO');
+	});
+
+	it('Quoted-Printableを検出できる', () => {
+		const encoded = 'Hello=20World=21';
+		const results = autoDetect(encoded);
+		const hit = results.find((r) => r.format === 'Quoted-Printable');
+		expect(hit?.result).toBe('Hello World!');
+	});
 });

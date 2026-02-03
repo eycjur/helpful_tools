@@ -4,9 +4,21 @@ import {
 	decodeHTMLEntity,
 	decodeBase64,
 	decodeUnicodeJS,
+	decodeUnicodeCSS,
+	decodeUnicodeCodePoint,
 	decodeHexJS,
+	decodeOctalJS,
+	decodeJSONString,
+	decodePunycode,
+	decodeBase58,
 	decodeROT13,
-	decodeMorse
+	decodeBinary,
+	decodeOctalNum,
+	decodeDecimal,
+	decodeHexNum,
+	decodeMorse,
+	decodeQuotedPrintable,
+	decodeUUencode
 } from './decoders';
 
 describe('エンコード文字列デコーダ - コアロジック', () => {
@@ -61,9 +73,58 @@ describe('エンコード文字列デコーダ - コアロジック', () => {
 		});
 	});
 
+	describe('Unicode CSS decode', () => {
+		it('CSSのUnicodeエスケープをデコードできる', () => {
+			expect(decodeUnicodeCSS('\\0048\\0065\\006C\\006C\\006F')).toBe('Hello');
+		});
+	});
+
+	describe('Unicode CodePoint decode', () => {
+		it('\\u{...}形式をデコードできる', () => {
+			expect(decodeUnicodeCodePoint('\\u{1F600}')).toBe('😀');
+		});
+	});
+
 	describe('Hex JS-style decode', () => {
 		it('\\xXX形式のエスケープをデコードできる', () => {
 			expect(decodeHexJS('\\x48\\x65\\x6C\\x6C\\x6F')).toBe('Hello');
+		});
+	});
+
+	describe('Octal JS-style decode', () => {
+		it('\\NNN形式のエスケープをデコードできる', () => {
+			expect(decodeOctalJS('\\110\\145\\154\\154\\157')).toBe('Hello');
+		});
+	});
+
+	describe('JSON文字列 decode', () => {
+		it('JSON文字列をデコードできる', () => {
+			expect(decodeJSONString('"Hello\\nWorld"')).toBe('Hello\nWorld');
+		});
+
+		it('無効なJSONはエラーになる', () => {
+			expect(() => decodeJSONString('"unterminated')).toThrow();
+		});
+	});
+
+	describe('Punycode decode', () => {
+		it('Punycodeをデコードできる', () => {
+			expect(decodePunycode('xn--bcher-kva')).toBe('bücher');
+		});
+
+		it('Punycode形式でない場合はエラー', () => {
+			expect(() => decodePunycode('example.com')).toThrow();
+		});
+	});
+
+	describe('Base58 decode', () => {
+		it('Base58をデコードできる', () => {
+			expect(decodeBase58('1')).toBe('0x0');
+			expect(decodeBase58('2')).toBe('0x1');
+		});
+
+		it('無効な文字はエラー', () => {
+			expect(() => decodeBase58('0')).toThrow();
 		});
 	});
 
@@ -99,6 +160,49 @@ describe('エンコード文字列デコーダ - コアロジック', () => {
 
 		it('認識できないコードは?に変換される', () => {
 			expect(decodeMorse('.... . invalid')).toBe('HE?');
+		});
+	});
+
+	describe('Binary/Decimal/Hex/Octal num decode', () => {
+		it('8ビット2進数をデコードできる', () => {
+			expect(decodeBinary('0100100001101001')).toBe('Hi');
+		});
+
+		it('無効な2進数はエラー', () => {
+			expect(() => decodeBinary('101')).toThrow();
+		});
+
+		it('10進数をデコードできる', () => {
+			expect(decodeDecimal('72 101 108 108 111')).toBe('Hello');
+		});
+
+		it('16進数をデコードできる', () => {
+			expect(decodeHexNum('48 65 6c 6c 6f')).toBe('Hello');
+		});
+
+		it('8進数をデコードできる', () => {
+			expect(decodeOctalNum('141 142')).toBe('ab');
+		});
+	});
+
+	describe('Quoted-Printable decode', () => {
+		it('Quoted-Printableをデコードできる', () => {
+			expect(decodeQuotedPrintable('Hello=20World=21')).toBe('Hello World!');
+		});
+
+		it('soft line breakを除去できる', () => {
+			expect(decodeQuotedPrintable('Hello=\nWorld')).toBe('HelloWorld');
+		});
+	});
+
+	describe('UUencode decode', () => {
+		it('空のUUencodeをデコードできる', () => {
+			const input = 'begin 644 empty.txt\n`\nend';
+			expect(decodeUUencode(input)).toBe('');
+		});
+
+		it('UUencode形式でない場合はエラー', () => {
+			expect(() => decodeUUencode('not uuencode')).toThrow();
 		});
 	});
 });
