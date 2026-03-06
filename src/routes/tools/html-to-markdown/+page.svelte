@@ -7,6 +7,7 @@
 	let HTMLEditor: HTMLDivElement;
 	let markdownOutput = '';
 	let isNewLineAsParagraph = false;
+	let isPreserveLineBreaks = false;
 	let isIgnoreBoldInHeader = true;
 	let turndownService: TurndownService;
 
@@ -24,8 +25,8 @@
 		// TurndownServiceを使ってHTML→Markdown変換
 		let markdown = turndownService.turndown(htmlContent);
 
-		// 改行処理
-		if (!isNewLineAsParagraph) {
+		// 改行処理（元の改行を保持するオプションがオフの場合のみ畳む）
+		if (!isPreserveLineBreaks && !isNewLineAsParagraph) {
 			markdown = markdown.replace(/\n\n+/g, '\n');
 		}
 
@@ -34,8 +35,12 @@
 			markdown = markdown.replace(/^(#+) \*\*(.+?)\*\*$/gm, '$1 $2');
 		}
 
-		// 余分な空行を削除
-		markdown = markdown.replace(/\n{3,}/g, '\n\n').trim();
+		// 余分な空行を削除（元の改行を保持するオプションがオフの場合のみ）
+		if (!isPreserveLineBreaks) {
+			markdown = markdown.replace(/\n{3,}/g, '\n\n').trim();
+		} else {
+			markdown = markdown.trim();
+		}
 
 		markdownOutput = markdown;
 
@@ -181,12 +186,32 @@
 	<!-- オプション -->
 	<div class="flex flex-wrap gap-4 rounded-lg bg-gray-50 p-4">
 		<label class="flex items-center">
-			<input type="checkbox" bind:checked={isNewLineAsParagraph} class="mr-2" />
+			<input
+				type="checkbox"
+				bind:checked={isNewLineAsParagraph}
+				on:change={convertToMarkdown}
+				class="mr-2"
+			/>
 			<span class="text-sm text-gray-700">改行を段落区切りとして扱う</span>
 		</label>
 
 		<label class="flex items-center">
-			<input type="checkbox" bind:checked={isIgnoreBoldInHeader} class="mr-2" />
+			<input
+				type="checkbox"
+				bind:checked={isPreserveLineBreaks}
+				on:change={convertToMarkdown}
+				class="mr-2"
+			/>
+			<span class="text-sm text-gray-700">元の改行を保持する</span>
+		</label>
+
+		<label class="flex items-center">
+			<input
+				type="checkbox"
+				bind:checked={isIgnoreBoldInHeader}
+				on:change={convertToMarkdown}
+				class="mr-2"
+			/>
 			<span class="text-sm text-gray-700">見出し内の太字を無視する</span>
 		</label>
 	</div>
@@ -201,7 +226,7 @@
 			<li>• リッチテキスト（太字、斜体、リンク、見出しなど）の書式が保持されます</li>
 			<li>• 自動的にMarkdown形式に変換されて右側に表示されます</li>
 			<li>• 変換されたMarkdownは自動的にクリップボードにコピーされます</li>
-			<li>• オプションで改行や太字の処理方法を調整できます</li>
+			<li>• オプションで改行の保持・段落区切り・太字の処理方法を調整できます</li>
 			<li>• 「クリア」ボタンで入力エリアを空にできます</li>
 		</ul>
 	</div>

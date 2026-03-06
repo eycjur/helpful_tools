@@ -10,6 +10,7 @@
 	let quill: Quill | null = null;
 	let markdownOutput = '';
 	let isNewLineAsParagraph = false;
+	let isPreserveLineBreaks = false;
 	let isIgnoreBoldInHeader = true;
 	let turndownService: TurndownService;
 
@@ -27,8 +28,8 @@
 		// TurndownServiceを使ってHTML→Markdown変換
 		let textMarkdown = turndownService.turndown(textHtml);
 
-		// 改行処理
-		if (!isNewLineAsParagraph) {
+		// 改行処理（元の改行を保持するオプションがオフの場合のみ畳む）
+		if (!isPreserveLineBreaks && !isNewLineAsParagraph) {
 			textMarkdown = textMarkdown.replace(/\n\n/g, '\n');
 		}
 
@@ -198,6 +199,16 @@
 		<label class="flex items-center">
 			<input
 				type="checkbox"
+				bind:checked={isPreserveLineBreaks}
+				on:change={richtextToMarkdown}
+				class="mr-2"
+			/>
+			<span class="text-sm text-gray-700">元の改行を保持する</span>
+		</label>
+
+		<label class="flex items-center">
+			<input
+				type="checkbox"
 				bind:checked={isIgnoreBoldInHeader}
 				on:change={richtextToMarkdown}
 				class="mr-2"
@@ -214,7 +225,7 @@
 			<li>• ツールバーを使って見出し、太字、斜体、リスト、リンクなどの書式を設定できます</li>
 			<li>• リアルタイムでMarkdown形式に変換されて右側に表示されます</li>
 			<li>• 変換されたMarkdownは自動的にクリップボードにコピーされます</li>
-			<li>• オプションで改行や太字の処理方法を調整できます</li>
+			<li>• オプションで改行の保持・段落区切り・太字の処理方法を調整できます</li>
 			<li>• 「クリア」ボタンでエディターの内容を空にできます</li>
 		</ul>
 	</div>

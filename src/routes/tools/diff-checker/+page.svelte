@@ -1,8 +1,8 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { tools } from '$lib/data/tools';
 	import Icon from '@iconify/svelte';
-	import { diffLines, diffChars } from 'diff';
-	import { SvelteSet } from 'svelte/reactivity';
+	import diff_match_patch from 'diff-match-patch';
 	import { escapeHtml } from './html-escape';
 
 	const tool = tools.find((t) => t.name === 'diff-checker');
@@ -17,212 +17,62 @@
 	let viewMode: 'side-by-side' | 'unified' = 'side-by-side';
 	let showCharacterDiff = true;
 
-	// 文字レベル差分結果
-	interface CharacterDiff {
-		type: 'equal' | 'insert' | 'delete';
-		text: string;
-	}
-
 	// 差分結果
-	interface DiffLine {
-		type: 'equal' | 'insert' | 'delete' | 'replace';
-		leftLine?: string;
-		rightLine?: string;
-		leftLineNumber?: number;
-		rightLineNumber?: number;
-		leftCharacterDiff?: CharacterDiff[];
-		rightCharacterDiff?: CharacterDiff[];
-	}
-
-	let diffResult: DiffLine[] = [];
 	let stats = { added: 0, removed: 0, modified: 0, unchanged: 0 };
+	let hasDiff = false;
+	let selectionSide: 'left' | 'right' | null = null;
+	let leftSelectionContainer: HTMLDivElement | null = null;
+	let rightSelectionContainer: HTMLDivElement | null = null;
+	let lineDiffRows: Array<{
+		leftHtml: string;
+		rightHtml: string;
+		leftText: string | null;
+		rightText: string | null;
+	}> = [];
+	let lineDiffUnifiedHtml = '';
 
-	// 文字列の類似性を計算（0.0-1.0）
-	function calculateSimilarity(str1: string, str2: string): number {
-		if (!str1 || !str2) return 0;
-		if (str1 === str2) return 1;
+	const dmp = new diff_match_patch();
+	const DIFF_DELETE = diff_match_patch.DIFF_DELETE;
+	const DIFF_INSERT = diff_match_patch.DIFF_INSERT;
 
-		// レーベンシュタイン距離を使った類似性計算
-		const maxLength = Math.max(str1.length, str2.length);
-		if (maxLength === 0) return 1;
-
-		const distance = levenshteinDistance(str1, str2);
-		return 1 - distance / maxLength;
+	function formatDiffSegment(text: string, op: number): string {
+		const escaped = escapeHtml(text);
+		if (op === DIFF_INSERT || op === DIFF_DELETE) {
+			return escaped
+				.replace(/ /g, '<span class="opacity-60">·</span>')
+				.replace(/\t/g, '<span class="opacity-60">→</span>');
+		}
+		return escaped;
 	}
 
-	// レーベンシュタイン距離を計算
-	function levenshteinDistance(str1: string, str2: string): number {
-		const matrix: number[][] = [];
-
-		for (let i = 0; i <= str2.length; i++) {
-			matrix[i] = [i];
-		}
-
-		for (let j = 0; j <= str1.length; j++) {
-			matrix[0][j] = j;
-		}
-
-		for (let i = 1; i <= str2.length; i++) {
-			for (let j = 1; j <= str1.length; j++) {
-				if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
-					matrix[i][j] = matrix[i - 1][j - 1];
-				} else {
-					matrix[i][j] = Math.min(
-						matrix[i - 1][j - 1] + 1,
-						matrix[i][j - 1] + 1,
-						matrix[i - 1][j] + 1
-					);
-				}
-			}
-		}
-
-		return matrix[str2.length][str1.length];
+	function wrapDiffSpan(text: string, kind: 'insert' | 'delete'): string {
+		const classes = kind === 'insert' ? 'bg-green-300 text-green-900' : 'bg-red-300 text-red-900';
+		return `<span class="${classes}">${text}</span>`;
 	}
 
-	// 文字レベルの差分を計算（diffライブラリ使用）
-	function computeCharacterDiff(
-		leftStr: string,
-		rightStr: string
-	): { left: CharacterDiff[]; right: CharacterDiff[] } {
-		const charDiffs = diffChars(leftStr, rightStr);
+	function computeLineStatsFromRows(
+		rows: Array<{ leftText: string | null; rightText: string | null }>
+	) {
+		let added = 0;
+		let removed = 0;
+		let unchanged = 0;
+		let modified = 0;
 
-		const leftDiff: CharacterDiff[] = [];
-		const rightDiff: CharacterDiff[] = [];
+		for (const row of rows) {
+			const hasLeft = row.leftText !== null;
+			const hasRight = row.rightText !== null;
 
-		for (const part of charDiffs) {
-			if (part.added) {
-				// 右側に追加された文字
-				leftDiff.push({ type: 'insert', text: '' });
-				rightDiff.push({ type: 'insert', text: part.value });
-			} else if (part.removed) {
-				// 左側から削除された文字
-				leftDiff.push({ type: 'delete', text: part.value });
-				rightDiff.push({ type: 'delete', text: '' });
-			} else {
-				// 共通部分
-				leftDiff.push({ type: 'equal', text: part.value });
-				rightDiff.push({ type: 'equal', text: part.value });
+			if (hasLeft && hasRight) {
+				if (row.leftText === row.rightText) unchanged++;
+				else modified++;
+			} else if (hasLeft) {
+				removed++;
+			} else if (hasRight) {
+				added++;
 			}
 		}
 
-		return { left: leftDiff, right: rightDiff };
-	}
-
-	// diffライブラリを使った行レベル差分生成
-	function generateDiff(): DiffLine[] {
-		const leftLines = preprocessText(leftText);
-		const rightLines = preprocessText(rightText);
-
-		const leftStr = leftLines.join('\n');
-		const rightStr = rightLines.join('\n');
-
-		const lineDiffs = diffLines(leftStr, rightStr, {
-			ignoreWhitespace: ignoreWhitespace
-		});
-
-		const result: DiffLine[] = [];
-		let leftLineNumber = 1;
-		let rightLineNumber = 1;
-
-		for (const part of lineDiffs) {
-			const lines = part.value.split('\n');
-			// 最後の空行を除去（diffLinesの仕様）
-			if (lines[lines.length - 1] === '') {
-				lines.pop();
-			}
-
-			for (let i = 0; i < lines.length; i++) {
-				const line = lines[i];
-
-				if (part.added) {
-					// 追加された行
-					const diffLine: DiffLine = {
-						type: 'insert',
-						rightLine: line,
-						rightLineNumber
-					};
-					result.push(diffLine);
-					rightLineNumber++;
-				} else if (part.removed) {
-					// 削除された行
-					const diffLine: DiffLine = {
-						type: 'delete',
-						leftLine: line,
-						leftLineNumber
-					};
-					result.push(diffLine);
-					leftLineNumber++;
-				} else {
-					// 未変更の行
-					const diffLine: DiffLine = {
-						type: 'equal',
-						leftLine: line,
-						rightLine: line,
-						leftLineNumber,
-						rightLineNumber
-					};
-					result.push(diffLine);
-					leftLineNumber++;
-					rightLineNumber++;
-				}
-			}
-		}
-
-		// より高度な変更検知: 削除・挿入ペアを類似性に基づいてマッチング
-		const deleteLines: number[] = [];
-		const insertLines: number[] = [];
-
-		// 削除行と挿入行のインデックスを収集
-		for (let i = 0; i < result.length; i++) {
-			if (result[i].type === 'delete') deleteLines.push(i);
-			if (result[i].type === 'insert') insertLines.push(i);
-		}
-
-		// 削除・挿入ペアをマッチング
-		const used = new SvelteSet<number>();
-		for (const deleteIdx of deleteLines) {
-			if (used.has(deleteIdx)) continue;
-
-			const deleteLine = result[deleteIdx];
-			if (!deleteLine.leftLine) continue;
-
-			// 最も類似性の高い挿入行を見つける
-			let bestMatch = -1;
-			let bestSimilarity = 0;
-
-			for (const insertIdx of insertLines) {
-				if (used.has(insertIdx)) continue;
-
-				const insertLine = result[insertIdx];
-				if (!insertLine.rightLine) continue;
-
-				// 文字レベルの類似性を計算
-				const similarity = calculateSimilarity(deleteLine.leftLine, insertLine.rightLine);
-
-				// 隣接している場合は優遇（+0.1ボーナス）
-				const isAdjacent = Math.abs(deleteIdx - insertIdx) <= 1;
-				const finalSimilarity = similarity + (isAdjacent ? 0.1 : 0);
-
-				if (finalSimilarity > bestSimilarity && finalSimilarity > 0.3) {
-					// 30%以上の類似性
-					bestSimilarity = finalSimilarity;
-					bestMatch = insertIdx;
-				}
-			}
-
-			// マッチが見つかった場合、文字レベル差分を計算
-			if (bestMatch !== -1) {
-				const insertLine = result[bestMatch];
-				const charDiff = computeCharacterDiff(deleteLine.leftLine, insertLine.rightLine!);
-				deleteLine.leftCharacterDiff = charDiff.left;
-				insertLine.rightCharacterDiff = charDiff.right;
-
-				used.add(deleteIdx);
-				used.add(bestMatch);
-			}
-		}
-
-		return result;
+		return { added, removed, modified, unchanged };
 	}
 
 	function preprocessText(text: string): string[] {
@@ -244,30 +94,50 @@
 	}
 
 	function computeDiff() {
-		diffResult = generateDiff();
+		const leftStr = preprocessText(leftText).join('\n');
+		const rightStr = preprocessText(rightText).join('\n');
+		hasDiff = leftStr !== rightStr;
+		lineDiffRows = buildLineDiffRows(leftStr, rightStr);
+		stats = computeLineStatsFromRows(lineDiffRows);
+		lineDiffUnifiedHtml = buildUnifiedLineDiffHtml(lineDiffRows);
+	}
 
-		// 統計を計算（文字レベル差分がある削除・挿入ペアを変更として計算）
-		let modified = 0;
-		for (let i = 0; i < diffResult.length; i++) {
-			const line = diffResult[i];
-			if (
-				line.type === 'delete' &&
-				line.leftCharacterDiff &&
-				i + 1 < diffResult.length &&
-				diffResult[i + 1].type === 'insert' &&
-				diffResult[i + 1].rightCharacterDiff
-			) {
-				modified++;
-				i++; // 次の挿入行もスキップ
-			}
-		}
-
-		stats = {
-			added: diffResult.filter((d) => d.type === 'insert' && !d.rightCharacterDiff).length,
-			removed: diffResult.filter((d) => d.type === 'delete' && !d.leftCharacterDiff).length,
-			modified: modified,
-			unchanged: diffResult.filter((d) => d.type === 'equal').length
+	onMount(() => {
+		const handleMouseUp = () => {
+			selectionSide = null;
 		};
+		const handleSelectionChange = () => {
+			if (!selectionSide) return;
+			const selection = window.getSelection();
+			if (!selection || selection.rangeCount === 0) return;
+
+			const anchorNode = selection.anchorNode;
+			const focusNode = selection.focusNode;
+			if (!anchorNode || !focusNode) return;
+
+			const leftHasAnchor = isNodeIn(leftSelectionContainer, anchorNode);
+			const rightHasAnchor = isNodeIn(rightSelectionContainer, anchorNode);
+			const leftHasFocus = isNodeIn(leftSelectionContainer, focusNode);
+			const rightHasFocus = isNodeIn(rightSelectionContainer, focusNode);
+
+			if (selectionSide === 'left' && leftHasAnchor && rightHasFocus) {
+				selection.collapse(anchorNode, selection.anchorOffset);
+			} else if (selectionSide === 'right' && rightHasAnchor && leftHasFocus) {
+				selection.collapse(anchorNode, selection.anchorOffset);
+			}
+		};
+
+		window.addEventListener('mouseup', handleMouseUp);
+		document.addEventListener('selectionchange', handleSelectionChange);
+		return () => {
+			window.removeEventListener('mouseup', handleMouseUp);
+			document.removeEventListener('selectionchange', handleSelectionChange);
+		};
+	});
+
+	function isNodeIn(container: HTMLElement | null, node: Node | null): boolean {
+		if (!container || !node) return false;
+		return container.contains(node);
 	}
 
 	// リアルタイム更新（設定変更時も再計算）
@@ -293,35 +163,136 @@
 	// 統合diff形式で出力
 	function getUnifiedDiffText(): string {
 		let result = '--- Left Text\n+++ Right Text\n';
+		for (const row of lineDiffRows) {
+			const hasLeft = row.leftText !== null;
+			const hasRight = row.rightText !== null;
 
-		for (const line of diffResult) {
-			switch (line.type) {
-				case 'equal':
-					result += ` ${line.leftLine || ''}\n`;
-					break;
-				case 'delete':
-					result += `-${line.leftLine || ''}\n`;
-					break;
-				case 'insert':
-					result += `+${line.rightLine || ''}\n`;
-					break;
+			if (hasLeft && hasRight && row.leftText === row.rightText) {
+				result += ` ${row.leftText}\n`;
+				continue;
+			}
+			if (hasLeft) result += `-${row.leftText ?? ''}\n`;
+			if (hasRight) result += `+${row.rightText ?? ''}\n`;
+		}
+		return result;
+	}
+
+	function buildLineDiffRows(leftStr: string, rightStr: string) {
+		if (!leftStr && !rightStr) return [];
+
+		const diffs = dmp.diff_main(leftStr, rightStr, false);
+		dmp.diff_cleanupSemantic(diffs);
+
+		const rows: Array<{
+			leftHtml: string;
+			rightHtml: string;
+			leftText: string | null;
+			rightText: string | null;
+		}> = [];
+
+		let currentLeftText = '';
+		let currentRightText = '';
+		let currentLeftHtml = '';
+		let currentRightHtml = '';
+		let leftPresent = false;
+		let rightPresent = false;
+
+		const appendSegment = (op: number, segment: string) => {
+			const escaped = escapeHtml(segment);
+			const formatted = formatDiffSegment(segment, op);
+
+			if (op === DIFF_DELETE) {
+				leftPresent = true;
+				currentLeftText += segment;
+				currentLeftHtml += showCharacterDiff ? wrapDiffSpan(formatted, 'delete') : escaped;
+			} else if (op === DIFF_INSERT) {
+				rightPresent = true;
+				currentRightText += segment;
+				currentRightHtml += showCharacterDiff ? wrapDiffSpan(formatted, 'insert') : escaped;
+			} else {
+				leftPresent = true;
+				rightPresent = true;
+				currentLeftText += segment;
+				currentRightText += segment;
+				currentLeftHtml += escaped;
+				currentRightHtml += escaped;
+			}
+		};
+
+		const pushLine = () => {
+			if (!leftPresent && !rightPresent) return;
+			rows.push({
+				leftHtml: leftPresent ? currentLeftHtml : '',
+				rightHtml: rightPresent ? currentRightHtml : '',
+				leftText: leftPresent ? currentLeftText : null,
+				rightText: rightPresent ? currentRightText : null
+			});
+			currentLeftText = '';
+			currentRightText = '';
+			currentLeftHtml = '';
+			currentRightHtml = '';
+			leftPresent = false;
+			rightPresent = false;
+		};
+
+		for (const [op, value] of diffs) {
+			const parts = value.split('\n');
+			for (let i = 0; i < parts.length; i++) {
+				const segment = parts[i];
+				appendSegment(op, segment);
+				if (i < parts.length - 1) {
+					pushLine();
+				}
 			}
 		}
 
-		return result;
+		pushLine();
+		return rows;
+	}
+
+	function buildUnifiedLineDiffHtml(
+		rows: Array<{
+			leftHtml: string;
+			rightHtml: string;
+			leftText: string | null;
+			rightText: string | null;
+		}>
+	): string {
+		let html = '';
+		for (const row of rows) {
+			const hasLeft = row.leftText !== null;
+			const hasRight = row.rightText !== null;
+
+			if (hasLeft && hasRight && row.leftText === row.rightText) {
+				html += `<div><span class="mr-2 text-gray-500"> </span>${row.leftHtml}</div>`;
+				continue;
+			}
+
+			if (hasLeft) {
+				html += `<div class="bg-red-100"><span class="mr-2 text-red-700">-</span>${row.leftHtml}</div>`;
+			}
+			if (hasRight) {
+				html += `<div class="bg-green-100"><span class="mr-2 text-green-700">+</span>${row.rightHtml}</div>`;
+			}
+		}
+		return html;
 	}
 
 	// サンプルテキスト
 	const sampleTexts = {
-		left: `function hello() {
-  console.log("Hello World");
-  return true;
-}`,
-		right: `function hello(name) {
-  console.log("Hello " + name);
-  console.log("Welcome!");
-  return true;
-}`
+		left: `score: 0.5,
+formatScore: 0.5,
+absoluteQuality: 1.0,
+passReached: 0.15,
+reason: "品質（長さ・ルーブリック語彙・人間コメント整合）",
+notes: ["format mismatch", "needs review"],
+meta: { locale: "ja-JP", reviewer: "human" }`,
+		right: `score: 1.0
+passReached: 0.15
+reason: "品質（長さ・ルーブリック語彙・人間コメント整合）",
+notes: ["needs review"],
+meta: { locale: "ja-JP" },
+status: "experimental"`
 	};
 
 	function loadSample() {
@@ -332,33 +303,6 @@
 	function clear() {
 		leftText = '';
 		rightText = '';
-	}
-
-	// 文字レベル差分をHTMLで表示（スペース可視化付き）
-	function renderCharacterDiff(charDiff: CharacterDiff[]): string {
-		return charDiff
-			.map((chunk) => {
-				let processedText = escapeHtml(chunk.text);
-
-				// スペース文字を可視化（差分部分のみ）
-				if (chunk.type !== 'equal') {
-					processedText = processedText
-						.replace(/ /g, '<span class="opacity-60">·</span>') // スペースを中点で表示
-						.replace(/\t/g, '<span class="opacity-60">→</span>'); // タブを矢印で表示
-				}
-
-				switch (chunk.type) {
-					case 'equal':
-						return processedText;
-					case 'insert':
-						return `<span class="bg-green-300 text-green-900 whitespace-pre-wrap">${processedText}</span>`;
-					case 'delete':
-						return `<span class="bg-red-300 text-red-900 whitespace-pre-wrap">${processedText}</span>`;
-					default:
-						return processedText;
-				}
-			})
-			.join('');
 	}
 </script>
 
@@ -381,8 +325,16 @@
 				クリア
 			</button>
 			<button
+				on:click={() => copyToClipboard(leftText)}
+				disabled={!leftText}
+				class="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:opacity-50"
+			>
+				<Icon icon="mdi:content-copy" class="mr-2 inline h-4 w-4" />
+				左をコピー
+			</button>
+			<button
 				on:click={() => copyToClipboard(getUnifiedDiffText())}
-				disabled={diffResult.length === 0}
+				disabled={!hasDiff}
 				class="rounded bg-green-600 px-4 py-2 text-white hover:bg-green-700 disabled:opacity-50"
 			>
 				<Icon icon="mdi:content-copy" class="mr-2 inline h-4 w-4" />
@@ -432,7 +384,7 @@
 			</div>
 
 			<!-- 統計表示 -->
-			{#if diffResult.length > 0}
+			{#if hasDiff}
 				<div class="ml-auto flex items-center gap-4 text-sm">
 					<span class="flex items-center">
 						<div class="mr-1 h-3 w-3 rounded bg-green-500"></div>
@@ -487,145 +439,81 @@
 	</div>
 
 	<!-- 差分結果表示 -->
-	{#if diffResult.length > 0}
+	{#if hasDiff}
 		<div class="rounded-lg border border-gray-200 bg-white p-4">
 			<h3 class="mb-4 font-medium text-gray-900">差分結果</h3>
 
 			{#if viewMode === 'side-by-side'}
 				<div class="overflow-x-auto">
-					<div class="grid grid-cols-2 gap-4">
-						<!-- 左側（比較元） -->
-						<div>
-							<h4 class="mb-2 text-sm font-medium text-gray-600">左テキスト</h4>
-							<div class="rounded bg-gray-50 p-3 font-mono text-sm whitespace-pre-wrap">
-								{#each diffResult as line, i (i)}
-									<div
-										class="flex {line.type === 'delete'
-											? line.leftCharacterDiff
-												? 'bg-yellow-100'
+					<div
+						bind:this={leftSelectionContainer}
+						class="rounded bg-gray-50 p-3 font-mono text-sm break-all whitespace-pre-wrap"
+					>
+						<div class="mb-2 grid grid-cols-2 gap-4 text-sm font-medium text-gray-600">
+							<div>左テキスト</div>
+							<div>右テキスト</div>
+						</div>
+						{#each lineDiffRows as row, i (i)}
+							<div class="grid grid-cols-2 gap-4">
+								<div
+									on:mousedown={() => (selectionSide = 'left')}
+									role="presentation"
+									class="min-h-[1.25em] {selectionSide === 'right'
+										? 'select-none'
+										: 'select-text'} {row.leftText !== null
+										? row.rightText !== null && row.leftText !== row.rightText
+											? 'bg-yellow-100'
+											: row.leftText === row.rightText
+												? ''
 												: 'bg-red-100'
-											: line.type === 'equal'
-												? 'bg-white'
-												: 'hidden'}"
-									>
-										<span class="mr-3 w-8 text-right text-xs text-gray-500">
-											{line.leftLineNumber || ''}
+										: ''}"
+								>
+									{#if row.leftText !== null}
+										<span class="mr-2 text-red-700">
+											{row.leftText === row.rightText ? ' ' : '-'}
 										</span>
-										<span class="flex-1">
-											{#if line.type === 'delete'}
-												{#if line.leftCharacterDiff}
-													<span class="bg-yellow-200 text-yellow-800">~</span>
-												{:else}
-													<span class="bg-red-200 text-red-800">-</span>
-												{/if}
-											{:else}
-												<span class="text-gray-600"> </span>
-											{/if}
-											{#if line.type === 'delete' && showCharacterDiff && line.leftCharacterDiff}
-												<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-												{@html renderCharacterDiff(line.leftCharacterDiff)}
-											{:else}
-												{escapeHtml(line.leftLine || '')}
-											{/if}
-										</span>
-									</div>
-								{/each}
-							</div>
-						</div>
-
-						<!-- 右側（比較先） -->
-						<div>
-							<h4 class="mb-2 text-sm font-medium text-gray-600">右テキスト</h4>
-							<div class="rounded bg-gray-50 p-3 font-mono text-sm whitespace-pre-wrap">
-								{#each diffResult as line, i (i)}
-									<div
-										class="flex {line.type === 'insert'
-											? line.rightCharacterDiff
-												? 'bg-yellow-100'
+										<!-- eslint-disable-next-line svelte/no-at-html-tags -->
+										{@html row.leftHtml}
+									{:else}
+										<span>&nbsp;</span>
+									{/if}
+								</div>
+								<div
+									on:mousedown={() => (selectionSide = 'right')}
+									role="presentation"
+									class="min-h-[1.25em] {selectionSide === 'left'
+										? 'select-none'
+										: 'select-text'} {row.rightText !== null
+										? row.leftText !== null && row.leftText !== row.rightText
+											? 'bg-yellow-100'
+											: row.leftText === row.rightText
+												? ''
 												: 'bg-green-100'
-											: line.type === 'equal'
-												? 'bg-white'
-												: 'hidden'}"
-									>
-										<span class="mr-3 w-8 text-right text-xs text-gray-500">
-											{line.rightLineNumber || ''}
+										: ''}"
+								>
+									{#if row.rightText !== null}
+										<span class="mr-2 text-green-700">
+											{row.leftText === row.rightText ? ' ' : '+'}
 										</span>
-										<span class="flex-1">
-											{#if line.type === 'insert'}
-												{#if line.rightCharacterDiff}
-													<span class="bg-yellow-200 text-yellow-800">~</span>
-												{:else}
-													<span class="bg-green-200 text-green-800">+</span>
-												{/if}
-											{:else}
-												<span class="text-gray-600"> </span>
-											{/if}
-											{#if line.type === 'insert' && showCharacterDiff && line.rightCharacterDiff}
-												<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-												{@html renderCharacterDiff(line.rightCharacterDiff)}
-											{:else}
-												{escapeHtml(line.rightLine || '')}
-											{/if}
-										</span>
-									</div>
-								{/each}
+										<!-- eslint-disable-next-line svelte/no-at-html-tags -->
+										{@html row.rightHtml}
+									{:else}
+										<span>&nbsp;</span>
+									{/if}
+								</div>
 							</div>
-						</div>
+						{/each}
 					</div>
 				</div>
 			{:else}
 				<!-- 統合表示 -->
 				<div class="overflow-x-auto">
-					<div class="rounded bg-gray-50 p-3 font-mono text-sm whitespace-pre-wrap">
-						{#each diffResult as line, i (i)}
-							<div
-								class="flex {line.type === 'delete'
-									? line.leftCharacterDiff
-										? 'bg-yellow-100'
-										: 'bg-red-100'
-									: line.type === 'insert'
-										? line.rightCharacterDiff
-											? 'bg-yellow-100'
-											: 'bg-green-100'
-										: 'bg-white'}"
-							>
-								<span class="mr-3 w-16 text-right text-xs text-gray-500">
-									{line.leftLineNumber || ''},{line.rightLineNumber || ''}
-								</span>
-								<span class="flex-1">
-									{#if line.type === 'delete'}
-										{#if line.leftCharacterDiff}
-											<span class="bg-yellow-200 text-yellow-800">~</span>
-											{#if showCharacterDiff}
-												<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-												{@html renderCharacterDiff(line.leftCharacterDiff)}
-											{:else}
-												{escapeHtml(line.leftLine || '')}
-											{/if}
-										{:else}
-											<span class="bg-red-200 text-red-800">-</span>
-											{escapeHtml(line.leftLine || '')}
-										{/if}
-									{:else if line.type === 'insert'}
-										{#if line.rightCharacterDiff}
-											<span class="bg-yellow-200 text-yellow-800">~</span>
-											{#if showCharacterDiff}
-												<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-												{@html renderCharacterDiff(line.rightCharacterDiff)}
-											{:else}
-												{escapeHtml(line.rightLine || '')}
-											{/if}
-										{:else}
-											<span class="bg-green-200 text-green-800">+</span>
-											{escapeHtml(line.rightLine || '')}
-										{/if}
-									{:else}
-										<span class="text-gray-600"> </span>
-										{escapeHtml(line.leftLine || '')}
-									{/if}
-								</span>
-							</div>
-						{/each}
+					<div
+						bind:this={rightSelectionContainer}
+						class="rounded bg-gray-50 p-3 font-mono text-sm break-all whitespace-pre-wrap"
+					>
+						<!-- eslint-disable-next-line svelte/no-at-html-tags -->
+						{@html lineDiffUnifiedHtml}
 					</div>
 				</div>
 			{/if}

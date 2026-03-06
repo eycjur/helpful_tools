@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { tools } from '$lib/data/tools';
 	import Icon from '@iconify/svelte';
+	import { diffLines, diffChars } from 'diff';
 
 	const tool = tools.find((t) => t.name === 'code-formatter');
 
@@ -12,6 +13,12 @@
 		tabsConverted: 0,
 		totalSpacesRemoved: 0,
 		linesProcessed: 0
+	};
+	type DiffPreviewLine = { lineNumber: number; html: string };
+	let diffPreview: { added: DiffPreviewLine[]; removed: DiffPreviewLine[]; changed: number } = {
+		added: [],
+		removed: [],
+		changed: 0
 	};
 
 	// 設定オプション
@@ -124,44 +131,133 @@
 		formatCode();
 	}
 
-	function getDiffPreview(): { added: string[]; removed: string[]; changed: number } {
-		if (!inputCode || !outputCode) {
+	$: if (inputCode !== undefined || outputCode !== undefined) {
+		diffPreview = getDiffPreview();
+	}
+
+	function getDiffPreview(): {
+		added: DiffPreviewLine[];
+		removed: DiffPreviewLine[];
+		changed: number;
+	} {
+		if (!inputCode || !outputCode || inputCode === outputCode) {
 			return { added: [], removed: [], changed: 0 };
 		}
 
-		const inputLines = inputCode.split('\n');
-		const outputLines = outputCode.split('\n');
-		const removed: string[] = [];
-		const added: string[] = [];
+		const removed: DiffPreviewLine[] = [];
+		const added: DiffPreviewLine[] = [];
 		let changed = 0;
 
-		for (let i = 0; i < Math.max(inputLines.length, outputLines.length); i++) {
-			const inputLine = inputLines[i] || '';
-			const outputLine = outputLines[i] || '';
+		const lineDiffs = diffLines(inputCode, outputCode);
+		let leftLineNumber = 1;
+		let rightLineNumber = 1;
 
-			if (inputLine !== outputLine) {
-				changed++;
-				// 文字レベルの差分を表示
-				const diff = getCharDiff(inputLine, outputLine);
-				if (inputLine) removed.push(`${i + 1}: ${diff.removed}`);
-				if (outputLine) added.push(`${i + 1}: ${diff.added}`);
+		for (let index = 0; index < lineDiffs.length; index++) {
+			const part = lineDiffs[index];
+
+			if (part.removed) {
+				const next = lineDiffs[index + 1];
+				if (next?.added) {
+					const leftLines = splitDiffLines(part.value);
+					const rightLines = splitDiffLines(next.value);
+					const maxLength = Math.max(leftLines.length, rightLines.length);
+					changed += maxLength;
+
+					for (let i = 0; i < maxLength; i++) {
+						const hasLeft = i < leftLines.length;
+						const hasRight = i < rightLines.length;
+						const leftLine = hasLeft ? leftLines[i] : '';
+						const rightLine = hasRight ? rightLines[i] : '';
+
+						if (hasLeft) {
+							removed.push({
+								lineNumber: leftLineNumber,
+								html: renderLineDiff(leftLine, rightLine, 'removed')
+							});
+							leftLineNumber++;
+						}
+
+						if (hasRight) {
+							added.push({
+								lineNumber: rightLineNumber,
+								html: renderLineDiff(leftLine, rightLine, 'added')
+							});
+							rightLineNumber++;
+						}
+					}
+
+					index++;
+					continue;
+				}
 			}
+
+			const lines = splitDiffLines(part.value);
+			if (part.removed) {
+				changed += lines.length;
+				for (const line of lines) {
+					removed.push({
+						lineNumber: leftLineNumber,
+						html: renderLineDiff(line, '', 'removed')
+					});
+					leftLineNumber++;
+				}
+				continue;
+			}
+
+			if (part.added) {
+				changed += lines.length;
+				for (const line of lines) {
+					added.push({
+						lineNumber: rightLineNumber,
+						html: renderLineDiff('', line, 'added')
+					});
+					rightLineNumber++;
+				}
+				continue;
+			}
+
+			leftLineNumber += lines.length;
+			rightLineNumber += lines.length;
 		}
 
 		return { added, removed, changed };
 	}
 
-	// 文字レベルの差分を取得（空白を可視化）
-	function getCharDiff(oldLine: string, newLine: string): { removed: string; added: string } {
-		// 行末の空白を可視化
-		const visualizeSpaces = (str: string): string => {
-			return str.replace(/\t/g, '→').replace(/ /g, '·').replace(/\r/g, '⏎').replace(/\n/g, '↵');
-		};
+	function splitDiffLines(value: string): string[] {
+		const lines = value.split('\n');
+		if (lines[lines.length - 1] === '') lines.pop();
+		return lines;
+	}
 
-		return {
-			removed: visualizeSpaces(oldLine),
-			added: visualizeSpaces(newLine)
-		};
+	function renderLineDiff(oldLine: string, newLine: string, mode: 'removed' | 'added'): string {
+		const diffs = diffChars(oldLine, newLine);
+		return diffs
+			.map((part) => {
+				const text = escapeHtml(visualizeLine(part.value));
+				if (part.added) return mode === 'added' ? wrapHighlight(text, 'added') : '';
+				if (part.removed) return mode === 'removed' ? wrapHighlight(text, 'removed') : '';
+				return text;
+			})
+			.join('');
+	}
+
+	function wrapHighlight(text: string, mode: 'removed' | 'added'): string {
+		const classes = mode === 'removed' ? 'bg-red-200 text-red-900' : 'bg-green-200 text-green-900';
+		return `<span class="${classes}">${text}</span>`;
+	}
+
+	// 空白を可視化（差分プレビュー用）
+	function visualizeLine(line: string): string {
+		return line.replace(/\t/g, '→').replace(/ /g, '·').replace(/\r/g, '⏎').replace(/\n/g, '↵');
+	}
+
+	function escapeHtml(text: string): string {
+		return text
+			.replace(/&/g, '&amp;')
+			.replace(/</g, '&lt;')
+			.replace(/>/g, '&gt;')
+			.replace(/"/g, '&quot;')
+			.replace(/'/g, '&#39;');
 	}
 </script>
 
@@ -296,28 +392,35 @@
 
 	<!-- 変更差分プレビュー -->
 	{#if inputCode && outputCode && inputCode !== outputCode}
-		{@const diff = getDiffPreview()}
 		<div class="mt-4 rounded-lg border border-gray-200 bg-white p-4">
 			<h3 class="mb-3 font-medium text-gray-900">
-				変更概要 ({diff.changed} 行が変更されました)
+				変更概要 ({diffPreview.changed} 行が変更されました)
 			</h3>
 			<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-				{#if diff.removed.length > 0}
+				{#if diffPreview.removed.length > 0}
 					<div>
-						<h4 class="mb-2 text-sm font-medium text-red-600">削除された内容 (最初の5行)</h4>
+						<h4 class="mb-2 text-sm font-medium text-red-600">削除された内容</h4>
 						<div class="max-h-32 overflow-y-auto rounded bg-red-50 p-2 font-mono text-xs">
-							{#each diff.removed.slice(0, 5) as line, i (i)}
-								<div class="text-red-700">{line}</div>
+							{#each diffPreview.removed as line, i (i)}
+								<div class="text-red-700">
+									{line.lineNumber}:
+									<!-- eslint-disable-next-line svelte/no-at-html-tags -->
+									{@html line.html}
+								</div>
 							{/each}
 						</div>
 					</div>
 				{/if}
-				{#if diff.added.length > 0}
+				{#if diffPreview.added.length > 0}
 					<div>
-						<h4 class="mb-2 text-sm font-medium text-green-600">追加された内容 (最初の5行)</h4>
+						<h4 class="mb-2 text-sm font-medium text-green-600">追加された内容</h4>
 						<div class="max-h-32 overflow-y-auto rounded bg-green-50 p-2 font-mono text-xs">
-							{#each diff.added.slice(0, 5) as line, i (i)}
-								<div class="text-green-700">{line}</div>
+							{#each diffPreview.added as line, i (i)}
+								<div class="text-green-700">
+									{line.lineNumber}:
+									<!-- eslint-disable-next-line svelte/no-at-html-tags -->
+									{@html line.html}
+								</div>
 							{/each}
 						</div>
 					</div>

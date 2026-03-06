@@ -56,6 +56,13 @@ export const tools: Tool[] = [
 		icon: 'mdi:file-code-outline',
 		category: '文字・テキスト処理'
 	},
+	{
+		nameJa: '記号検索',
+		name: 'symbol-search',
+		description: '日本語名で記号を検索してコピーできます（イコール、矢印など）',
+		icon: 'mdi:symbol',
+		category: '文字・テキスト処理'
+	},
 
 	// ============================================================
 	// 3. データ変換
