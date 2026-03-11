@@ -496,12 +496,6 @@ function calculateStatistics(packets: ParsedPacket[]): PcapStatistics {
  * Pcapファイルを解析
  */
 export async function parsePcapFile(arrayBuffer: ArrayBuffer): Promise<PcapAnalysisResult> {
-	// ファイルサイズ制限（500MB）
-	const MAX_FILE_SIZE = 500 * 1024 * 1024;
-	if (arrayBuffer.byteLength > MAX_FILE_SIZE) {
-		throw new Error(`ファイルサイズが大きすぎます（最大${MAX_FILE_SIZE / 1024 / 1024}MB）`);
-	}
-
 	// グローバルヘッダーを解析
 	const globalHeader = parseGlobalHeader(arrayBuffer);
 

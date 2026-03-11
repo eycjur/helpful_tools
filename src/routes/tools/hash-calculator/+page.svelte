@@ -9,7 +9,6 @@
 	};
 
 	const tool = tools.find((t) => t.name === 'hash-calculator');
-	const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
 
 	let inputMode = $state<'file' | 'text'>('file');
 	let file = $state<File | null>(null);
@@ -40,13 +39,7 @@
 	function onFileInput(e: Event) {
 		const input = e.target as HTMLInputElement;
 		if (input.files && input.files.length) {
-			const selectedFile = input.files[0];
-			if (selectedFile.size > MAX_FILE_SIZE) {
-				alert(`ファイルサイズが大きすぎます（最大: ${formatFileSize(MAX_FILE_SIZE)}）`);
-				input.value = '';
-				return;
-			}
-			file = selectedFile;
+			file = input.files[0];
 			input.value = '';
 			calculateHashes();
 		}
@@ -63,12 +56,7 @@
 		e.preventDefault();
 		dragOver = false;
 		if (e.dataTransfer?.files?.length) {
-			const selectedFile = e.dataTransfer.files[0];
-			if (selectedFile.size > MAX_FILE_SIZE) {
-				alert(`ファイルサイズが大きすぎます（最大: ${formatFileSize(MAX_FILE_SIZE)}）`);
-				return;
-			}
-			file = selectedFile;
+			file = e.dataTransfer.files[0];
 			calculateHashes();
 		}
 	}

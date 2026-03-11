@@ -55,28 +55,6 @@
 		const f = arr.find((x) => x.type.startsWith('image/'));
 		if (!f) return;
 
-		// ファイルサイズ制限（100MB）
-		const FILE_SIZE_MAX_THRESHOLD = 100 * 1024 * 1024; // 100MB
-		const FILE_SIZE_WARNING_THRESHOLD = 50 * 1024 * 1024; // 50MB
-
-		if (f.size > FILE_SIZE_MAX_THRESHOLD) {
-			alert(
-				`ファイルサイズが大きすぎます（${(f.size / 1024 / 1024).toFixed(1)}MB）。${FILE_SIZE_MAX_THRESHOLD / 1024 / 1024}MB以下のファイルを選択してください。`
-			);
-			return;
-		}
-
-		if (f.size > FILE_SIZE_WARNING_THRESHOLD) {
-			const sizeMB = (f.size / 1024 / 1024).toFixed(1);
-			if (
-				!confirm(
-					`ファイルサイズが大きいため（${sizeMB}MB）、処理に時間がかかる場合があります。続行しますか？`
-				)
-			) {
-				return;
-			}
-		}
-
 		// 既存のアイテム／結果をクリア（URLも解放）
 		clearAll();
 

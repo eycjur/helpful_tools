@@ -6,12 +6,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 「困った時のツール集」は、日常的に使える便利ツール集のWebアプリケーションです。
 
-### 提供ツール（7カテゴリ、28ツール）
+### 提供ツール（8カテゴリ、32ツール）
 
 - **生成AI**: HTML/リッチテキスト → Markdown変換（AI活用）
-- **文字・テキスト処理**: 正規表現テスター、文字数カウンタ、HTML/URLエンコーダ
+- **文字・テキスト処理**: 正規表現テスター、文字数カウンタ、HTML/URLエンコーダ、エンコード文字列デコーダ、記号検索
 - **データ変換**: 構造化データビューアー、Base64⇄画像変換、Notion/LaTeX変換
 - **画像・メディア**: 画像形式変換、画像メタデータ表示、PDFメタデータ・セキュリティ情報、動画圧縮、動画→音声変換
+- **PDF操作**: PDF結合、PDFページ編集、PDF分割、PDF圧縮
 - **QRコード**: 汎用QR、XプロフィールQR
 - **開発・比較ツール**: コード整形、Diffチェッカー、curlビルダー、クリップボード検査、Pythonコード解析
 - **ネットワーク・情報**: 接続元情報、Whois/ドメイン調査、Pcap解析
@@ -162,7 +163,7 @@ helpful_tools/
 - **静的サイト生成** (@sveltejs/adapter-static)
 - **アイコンシステム**: @iconify/svelte + Material Design Icons (MDI)
 - **外部API**: QRServer API (https://api.qrserver.com/)
-- **ライブラリ**: Quill（リッチテキストエディター）, Turndown（HTML→Markdown変換）
+- **ライブラリ**: Quill（リッチテキストエディター）, Turndown（HTML→Markdown変換）, pdf-lib（PDF操作）
 
 ### コンポーネント分割とコードの整理
 
@@ -345,7 +346,6 @@ src/routes/tools/ctf-cipher/
 
 - **crypto-js使用**: MD5計算にcrypto-jsを使用（Web Crypto APIでMD5は未サポート）。Uint8Array経由でWordArrayに変換。
 - **Web Crypto API**: SHA系のハッシュ計算に使用。HTTPS環境でのみ利用可能なため、利用可能性チェック実施。
-- **ファイルサイズ制限**: 100MBまで。大きすぎるファイルはメモリ不足でブラウザクラッシュを防ぐため拒否。
 - **デバウンス処理**: テキスト入力モードで300msのデバウンス処理により、パフォーマンス改善。
 - **リアクティビティ**: Svelte 5の`$state`を使用して、オブジェクトのプロパティ変更を適切に検知。
 
@@ -395,9 +395,17 @@ src/routes/tools/ctf-cipher/
 - **非同期処理**: `parsePDFNonRender()`は`async`関数で、pdfjs-distの非同期API（`getDocument()`, `getMetadata()`, `getAttachments()`など）を適切に処理。
 - **型安全性**: `PDFReport`インターフェースで構造化されたレポート形式を定義。`Finding`型で検出結果の重要度とコードを管理。
 - **後方互換性**: 既存の`parsePDF()`関数と`PDFInfo`型を維持し、レガシーコードとの互換性を確保。
-- **ファイルサイズ警告**: 100MB以上のファイルは警告を表示。大きなPDFファイルでのメモリ不足を防ぐ。
 - **型アサーション**: pdf.jsの内部プロパティ（`_pdfInfo`、`openAction`、`additionalActions`など）へのアクセスには型アサーション（`as unknown as`）を使用。
 - **CDN経由Worker**: pdf.jsのWebWorkerはunpkg CDNから動的読み込み（`pdf.worker.min.mjs`）。バージョンは`pdfjsLib.version`で自動取得。
+
+#### PDF操作（新規ツール）
+
+- **pdf-lib使用**: ブラウザ上でPDFの結合・分割・ページ編集・圧縮を実行。`PDFDocument.load()`/`copyPages()`/`addPage()`/`removePage()`を使用。
+- **結合**: 複数PDFを順に`copyPages`でコピーして1つのPDFにまとめる。
+- **ページ編集**: ページ順序の指定（カンマ区切り）で並び替え・削除。指定しないページは削除される。
+- **分割**: 範囲指定（例: 1-3, 4-5）で複数PDFに分割。1ページずつ分割も対応。
+- **圧縮**: 新規ドキュメントに全ページをコピーし`useObjectStreams: true`で保存。未使用オブジェクト削除で軽量化（画像の再圧縮は行わない）。
+- **メモリ使用量**: 結合・分割・編集・圧縮とも大きなファイルはメモリ使用量に注意。
 
 #### Pcap解析（新規ツール）
 
@@ -407,7 +415,7 @@ src/routes/tools/ctf-cipher/
 - **パケットビューア機能**: タブ切り替えで統計表示とパケット一覧を切り替え。プロトコル・IP・ポート・ペイロード検索の柔軟なフィルタリング。
 - **インタラクティブ詳細表示**: パケットクリックでEthernet→IPv4→TCP/UDPの階層構造を展開表示。TCPフラグ（SYN/ACK/FIN等）を人間が読める形式で表示。
 - **16進ダンプ最適化**: 最大512バイトまで表示してDOM描画負荷を軽減。`xxd`コマンドと同じフォーマット（オフセット8桁、16進数、ASCII）で表示。
-- **パフォーマンス最適化**: パケット一覧は最大1000パケットまで表示制限。大きなpcapファイル（100MB以上）は警告表示。
+- **パフォーマンス最適化**: パケット一覧は最大1000パケットまで表示制限。
 - **正規表現フォールバック**: ペイロード検索で正規表現エラー時は自動的に文字列検索にフォールバック。
 - **A11y対応**: フィルター入力欄の`label`に`for`/`id`属性を追加してアクセシビリティ確保。
 

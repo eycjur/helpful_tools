@@ -14,9 +14,6 @@
 
 	const tool = tools.find((t) => t.name === 'pcap-analyzer');
 
-	// ファイルサイズ警告しきい値（100MB以上で警告）
-	const FILE_SIZE_WARNING_THRESHOLD = 100 * 1024 * 1024;
-
 	let result: PcapAnalysisResult | null = null;
 	let isLoading = false;
 	let dragOver = false;
@@ -79,18 +76,6 @@
 		result = null;
 		warnings = [];
 		fileName = file.name;
-
-		// ファイルサイズの警告チェック
-		if (file.size > FILE_SIZE_WARNING_THRESHOLD) {
-			const sizeMB = Math.round(file.size / 1024 / 1024);
-			warnings = [
-				...warnings,
-				{
-					message: `ファイルサイズが大きいため（${sizeMB}MB）、処理に時間がかかる場合があります。`,
-					type: 'warning'
-				}
-			];
-		}
 
 		try {
 			const arrayBuffer = await file.arrayBuffer();

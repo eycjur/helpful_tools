@@ -114,13 +114,6 @@ export const tools: Tool[] = [
 		category: '画像・メディア'
 	},
 	{
-		nameJa: 'PDFメタデータ・セキュリティ情報',
-		name: 'pdf-metadata',
-		description: 'PDFのメタデータ、JavaScript、セキュリティ設定を表示します',
-		icon: 'mdi:file-pdf-box',
-		category: '画像・メディア'
-	},
-	{
 		nameJa: '動画圧縮',
 		name: 'video-compressor',
 		description: '動画ファイルのサイズを圧縮してファイルサイズを削減します',
@@ -136,7 +129,46 @@ export const tools: Tool[] = [
 	},
 
 	// ============================================================
-	// 5. QRコード
+	// 5. PDF操作
+	// ============================================================
+	{
+		nameJa: 'PDF結合',
+		name: 'pdf-merge',
+		description: '複数のPDFを1つに結合します',
+		icon: 'mdi:merge',
+		category: 'PDF操作'
+	},
+	{
+		nameJa: 'PDFページ編集',
+		name: 'pdf-edit',
+		description: 'PDFのページ順序の変更や削除ができます',
+		icon: 'mdi:order-numeric-ascending',
+		category: 'PDF操作'
+	},
+	{
+		nameJa: 'PDF分割',
+		name: 'pdf-split',
+		description: 'PDFを指定範囲で分割します',
+		icon: 'mdi:call-split',
+		category: 'PDF操作'
+	},
+	{
+		nameJa: 'PDF圧縮',
+		name: 'pdf-compress',
+		description: 'PDFのファイルサイズを軽量化します',
+		icon: 'mdi:package-variant',
+		category: 'PDF操作'
+	},
+	{
+		nameJa: 'PDFメタデータ・セキュリティ情報',
+		name: 'pdf-metadata',
+		description: 'PDFのメタデータ、JavaScript、セキュリティ設定を表示します',
+		icon: 'mdi:file-pdf-box',
+		category: 'PDF操作'
+	},
+
+	// ============================================================
+	// 6. QRコード
 	// ============================================================
 	{
 		nameJa: 'QRコードジェネレーター',
@@ -154,7 +186,7 @@ export const tools: Tool[] = [
 	},
 
 	// ============================================================
-	// 6. 開発・比較ツール
+	// 7. 開発・比較ツール
 	// ============================================================
 	{
 		nameJa: 'コード整形',
@@ -221,7 +253,7 @@ export const tools: Tool[] = [
 	},
 
 	// ============================================================
-	// 7. ネットワーク・情報
+	// 8. ネットワーク・情報
 	// ============================================================
 	{
 		nameJa: '接続元情報表示',
