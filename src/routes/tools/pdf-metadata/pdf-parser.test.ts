@@ -62,7 +62,7 @@ describe('PDFメタデータ - ユーティリティ', () => {
 		};
 		getDocument.mockReturnValue({ promise: Promise.resolve(pdfMock) });
 
-		const buffer = new TextEncoder().encode('%PDF-1.7').buffer;
+		const buffer = new TextEncoder().encode('%PDF-1.7').buffer as ArrayBuffer;
 		const report = await parsePDFNonRender(buffer, 'sample.pdf', (r) => r.findings);
 
 		expect(report.file.path).toBe('sample.pdf');

@@ -194,6 +194,8 @@
 
 	<div class="space-y-4">
 		<div
+			role="region"
+			aria-label="PDFファイルをドロップするエリア"
 			class="rounded-lg border-2 border-dashed p-8 text-center transition-colors {splitDragOver
 				? 'border-blue-400 bg-blue-50'
 				: 'border-gray-300'}"
@@ -267,6 +269,12 @@
 									ondrop={(e) => handleDividerDrop(e, i)}
 									ondragend={handleDividerDragEnd}
 									onclick={() => toggleDivider(i)}
+									onkeydown={(e) => {
+										if (e.key === 'Enter' || e.key === ' ') {
+											e.preventDefault();
+											toggleDivider(i);
+										}
+									}}
 								>
 									{#if dividers[i]}
 										<Icon icon="mdi:content-cut" class="h-5 w-5 text-white" />

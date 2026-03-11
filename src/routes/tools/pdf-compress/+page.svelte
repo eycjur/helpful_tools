@@ -91,6 +91,8 @@
 
 	<div class="space-y-4">
 		<div
+			role="region"
+			aria-label="PDFファイルをドロップするエリア"
 			class="rounded-lg border-2 border-dashed p-8 text-center transition-colors {compressDragOver
 				? 'border-blue-400 bg-blue-50'
 				: 'border-gray-300'}"

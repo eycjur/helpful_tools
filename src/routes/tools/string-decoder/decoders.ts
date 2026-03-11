@@ -2,7 +2,7 @@
  * エンコード文字列デコーダ - デコーダー関数
  */
 
-import { toUnicode } from 'punycode/';
+import { toUnicode } from 'punycode';
 
 export function decodeURL(text: string): string {
 	try {
