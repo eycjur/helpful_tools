@@ -127,6 +127,13 @@ export const tools: Tool[] = [
 		icon: 'mdi:waveform',
 		category: '画像・メディア'
 	},
+	{
+		nameJa: '動画逆再生',
+		name: 'video-reverse',
+		description: '時間軸を反転し、最後から先へ再生できるMP4に変換します',
+		icon: 'mdi:backup-restore',
+		category: '画像・メディア'
+	},
 
 	// ============================================================
 	// 5. PDF操作

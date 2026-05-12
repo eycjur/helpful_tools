@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { tools } from '$lib/data/tools';
 	import Icon from '@iconify/svelte';
+	import { fly } from 'svelte/transition';
 	import { symbols } from './symbols';
 
 	const tool = tools.find((t) => t.name === 'symbol-search');
@@ -44,6 +45,22 @@
 	}
 </script>
 
+{#if copiedSymbol}
+	<div
+		class="fixed top-16 right-4 z-50 flex max-w-[min(calc(100vw-2rem),20rem)] items-center gap-2 rounded-lg border border-green-200 bg-white px-4 py-3 shadow-lg lg:top-4"
+		role="status"
+		aria-live="polite"
+		in:fly={{ y: -10, duration: 200 }}
+		out:fly={{ y: -8, duration: 150 }}
+	>
+		<Icon icon="mdi:check-circle" class="h-5 w-5 shrink-0 text-green-600" aria-hidden="true" />
+		<p class="text-sm text-gray-800">
+			<span class="mr-1 font-mono text-lg leading-none">{copiedSymbol}</span>
+			<span class="text-gray-600">をコピーしました</span>
+		</p>
+	</div>
+{/if}
+
 <div class="mx-auto max-w-4xl">
 	<div class="mb-6 flex items-center">
 		{#if tool?.icon}<Icon icon={tool.icon} class="mr-4 h-10 w-10" />{/if}
@@ -81,12 +98,6 @@
 						<span class="line-clamp-2 text-center text-xs text-gray-600">
 							{entry.name}
 						</span>
-						{#if copiedSymbol === entry.symbol}
-							<span class="mt-1 text-xs font-medium text-green-600">
-								<Icon icon="mdi:check" class="inline h-4 w-4" />
-								コピーしました
-							</span>
-						{/if}
 					</button>
 				{/each}
 			</div>
