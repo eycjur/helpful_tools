@@ -248,4 +248,6 @@
 			{/if}
 		</div>
 	{/if}
+
+	<p class="mt-8 text-xs text-gray-500">QRコードは(株)デンソーウェーブの登録商標です。</p>
 </div>

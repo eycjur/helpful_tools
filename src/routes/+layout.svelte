@@ -54,9 +54,14 @@
 		</main>
 
 		<footer class="border-t border-gray-200 bg-white p-4">
-			<div class="flex items-center justify-center">
+			<div class="flex flex-col items-center justify-center gap-1 sm:flex-row sm:gap-3">
 				<span class="text-sm text-gray-600"
 					>&copy; {new Date().getFullYear()} 困った時のツール集</span
+				>
+				<a
+					href="{base}/terms"
+					class="text-sm text-gray-500 underline-offset-2 hover:text-gray-700 hover:underline"
+					>利用規約</a
 				>
 			</div>
 		</footer>
