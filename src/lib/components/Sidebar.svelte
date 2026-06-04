@@ -10,17 +10,48 @@
 
 	type SidebarSize = 'compact' | 'normal' | 'spacious';
 	let sidebarSize = $state<SidebarSize>('spacious');
+	let searchQuery = $state('');
+	let searchInput: HTMLInputElement | undefined;
 
 	const currentPath = $derived($page.url.pathname);
 
-	// カテゴリごとにツールをグループ化
-	const groupedTools = groupByCategory(tools);
+	const filteredTools = $derived(
+		tools.filter(
+			(tool) =>
+				tool.nameJa.toLowerCase().includes(searchQuery.toLowerCase()) ||
+				tool.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+				tool.name.toLowerCase().includes(searchQuery.toLowerCase())
+		)
+	);
+
+	// カテゴリごとにツールをグループ化（検索時は一致ツールのみ）
+	const groupedTools = $derived(
+		searchQuery.trim() ? groupByCategory(filteredTools) : groupByCategory(tools)
+	);
+
+	const isSearchActive = $derived(searchQuery.trim().length > 0);
 
 	onMount(() => {
 		const saved = localStorage.getItem('helpful_tools_sidebar_size');
 		if (saved === 'compact' || saved === 'normal' || saved === 'spacious') {
 			sidebarSize = saved;
 		}
+
+		function handleKeydown(event: KeyboardEvent) {
+			const target = event.target;
+			if (!(target instanceof HTMLElement)) return;
+			if (
+				event.key === '/' &&
+				!['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) &&
+				!target.isContentEditable
+			) {
+				event.preventDefault();
+				searchInput?.focus();
+			}
+		}
+
+		window.addEventListener('keydown', handleKeydown);
+		return () => window.removeEventListener('keydown', handleKeydown);
 	});
 
 	$effect(() => {
@@ -112,6 +143,56 @@
 					<Icon icon="mdi:close" class="h-6 w-6" />
 				</button>
 			</div>
+
+			<!-- ツール検索 -->
+			<div
+				class={sidebarSize === 'compact' ? 'mt-2' : sidebarSize === 'normal' ? 'mt-3' : 'mt-4'}
+			>
+				<div class="relative">
+					<div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2">
+						<Icon
+							icon="mdi:magnify"
+							class="{sidebarSize === 'compact'
+								? 'h-3.5 w-3.5'
+								: 'h-4 w-4'} text-gray-400"
+						/>
+					</div>
+					<input
+						type="search"
+						bind:this={searchInput}
+						bind:value={searchQuery}
+						placeholder={sidebarSize === 'compact' ? '検索...' : 'ツールを検索... (/ でフォーカス)'}
+						aria-label="ツールを検索"
+						class="w-full rounded-lg border border-gray-300 bg-white text-gray-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none {sidebarSize ===
+						'compact'
+							? 'py-1 pr-7 pl-7 text-xs'
+							: sidebarSize === 'normal'
+								? 'py-1.5 pr-8 pl-8 text-xs'
+								: 'py-2 pr-9 pl-9 text-sm'}"
+					/>
+					{#if searchQuery}
+						<button
+							type="button"
+							onclick={() => (searchQuery = '')}
+							class="absolute inset-y-0 right-0 flex items-center text-gray-400 hover:text-gray-600 {sidebarSize ===
+							'compact'
+								? 'pr-1.5'
+								: 'pr-2'}"
+							aria-label="検索をクリア"
+						>
+							<Icon
+								icon="mdi:close"
+								class={sidebarSize === 'compact' ? 'h-3.5 w-3.5' : 'h-4 w-4'}
+							/>
+						</button>
+					{/if}
+				</div>
+				{#if isSearchActive}
+					<p class="mt-1 text-[10px] text-gray-500">
+						{filteredTools.length}件
+					</p>
+				{/if}
+			</div>
 		</div>
 
 		<!-- Navigation -->
@@ -153,7 +234,7 @@
 					</span>
 				</a>
 
-				<!-- ツール（カテゴリ別） -->
+				<!-- ツール（カテゴリ別 / 検索時は一致分のみ） -->
 				<div
 					class={sidebarSize === 'compact'
 						? 'mt-3 space-y-1.5'
@@ -161,6 +242,11 @@
 							? 'mt-4 space-y-2'
 							: 'mt-5 space-y-3'}
 				>
+					{#if isSearchActive && filteredTools.length === 0}
+						<p class="px-1 text-xs text-gray-500">
+							「{searchQuery}」に一致するツールがありません
+						</p>
+					{/if}
 					{#each [...groupedTools.entries()] as [category, categoryTools] (category)}
 						<div>
 							<div

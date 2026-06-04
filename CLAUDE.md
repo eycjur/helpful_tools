@@ -6,11 +6,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 「困った時のツール集」は、日常的に使える便利ツール集のWebアプリケーションです。
 
-### 提供ツール（8カテゴリ、32ツール）
+### 提供ツール（8カテゴリ、33ツール）
 
 - **生成AI**: HTML/リッチテキスト → Markdown変換（AI活用）
 - **文字・テキスト処理**: 正規表現テスター、文字数カウンタ、HTML/URLエンコーダ、エンコード文字列デコーダ、記号検索
-- **データ変換**: 構造化データビューアー、Base64⇄画像変換、Notion/LaTeX変換
+- **データ変換**: 構造化データビューアー、Base64⇄画像変換、Notion/Slack/LaTeX変換
 - **画像・メディア**: 画像形式変換、画像メタデータ表示、PDFメタデータ・セキュリティ情報、動画圧縮、動画→音声変換
 - **PDF操作**: PDF結合、PDFページ編集、PDF分割、PDF圧縮
 - **QRコード**: 汎用QR、XプロフィールQR
@@ -289,6 +289,12 @@ src/routes/tools/ctf-cipher/
 - **自動コピー機能**: 変換ツールで結果を自動的にクリップボードにコピー（エラーハンドリング付き）
 - **ローディング状態**: 外部API呼び出し時の`isLoading`状態とスピナー表示パターン
 - **LaTeX特殊文字エスケープ**: CSV→LaTeXツールで特殊文字（$, &, %, #, ^, \_, {, }, \, ~）を適切にエスケープ
+
+#### Markdown → Slack（新規ツール）
+
+- **@slackfmt/core使用**: MarkdownをSlack内部のQuill Delta JSON（`slack/texty`）に変換。GFM相当の記法（太字・リスト・リンク・コードブロック等）に対応
+- **クリップボード書き込み**: 非同期Clipboard APIはカスタムMIME非対応のため、`document.execCommand('copy')`と`clipboardData.setData('slack/texty', delta)`で書き込み。入力のデバウンス（300ms）後に自動コピー
+- **プレビュー**: `quillDeltaToMarkdown`でSlack向けプレーンテキストを表示。実際の貼り付けはリッチテキスト形式
 
 #### 暗号解読
 

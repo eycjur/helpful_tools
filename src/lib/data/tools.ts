@@ -89,6 +89,13 @@ export const tools: Tool[] = [
 		category: 'データ変換'
 	},
 	{
+		nameJa: 'Markdown → Slack',
+		name: 'markdown-to-slack',
+		description: 'MarkdownをSlackに貼り付け可能なリッチテキストに変換してコピーします',
+		icon: 'mdi:slack',
+		category: 'データ変換'
+	},
+	{
 		nameJa: 'CSV/Excel → LaTeX表',
 		name: 'csv-to-latex',
 		description: 'CSV/ExcelデータをLaTeX表形式に変換します',
