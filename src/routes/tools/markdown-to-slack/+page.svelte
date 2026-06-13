@@ -80,8 +80,7 @@
 				</div>
 			</div>
 			<pre
-				class="min-h-96 flex-1 overflow-auto rounded-lg border border-gray-300 bg-gray-50 p-3 text-sm whitespace-pre-wrap"
-			>{previewMarkdown}</pre>
+				class="min-h-96 flex-1 overflow-auto rounded-lg border border-gray-300 bg-gray-50 p-3 text-sm whitespace-pre-wrap">{previewMarkdown}</pre>
 		</div>
 	</div>
 

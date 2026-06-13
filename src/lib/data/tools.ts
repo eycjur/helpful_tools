@@ -102,6 +102,13 @@ export const tools: Tool[] = [
 		icon: 'mdi:table-arrow-right',
 		category: 'データ変換'
 	},
+	{
+		nameJa: '表の転置',
+		name: 'clipboard-table-transpose',
+		description: 'クリップボードの表（Excel等）の行と列を入れ替えてコピーします',
+		icon: 'mdi:table-pivot',
+		category: 'データ変換'
+	},
 
 	// ============================================================
 	// 4. 画像・メディア
@@ -114,9 +121,9 @@ export const tools: Tool[] = [
 		category: '画像・メディア'
 	},
 	{
-		nameJa: '画像メタデータ表示',
+		nameJa: '画像メタデータ表示・削除',
 		name: 'image-metadata',
-		description: '画像ファイルのEXIF情報やメタデータを詳細表示します',
+		description: 'EXIF・C2PAメタデータを表示し、AI生成メタデータを検出・削除します',
 		icon: 'mdi:image-search',
 		category: '画像・メディア'
 	},

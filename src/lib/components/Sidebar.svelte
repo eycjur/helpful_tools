@@ -145,16 +145,12 @@
 			</div>
 
 			<!-- ツール検索 -->
-			<div
-				class={sidebarSize === 'compact' ? 'mt-2' : sidebarSize === 'normal' ? 'mt-3' : 'mt-4'}
-			>
+			<div class={sidebarSize === 'compact' ? 'mt-2' : sidebarSize === 'normal' ? 'mt-3' : 'mt-4'}>
 				<div class="relative">
 					<div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2">
 						<Icon
 							icon="mdi:magnify"
-							class="{sidebarSize === 'compact'
-								? 'h-3.5 w-3.5'
-								: 'h-4 w-4'} text-gray-400"
+							class="{sidebarSize === 'compact' ? 'h-3.5 w-3.5' : 'h-4 w-4'} text-gray-400"
 						/>
 					</div>
 					<input
