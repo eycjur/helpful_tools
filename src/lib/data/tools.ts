@@ -272,6 +272,27 @@ export const tools: Tool[] = [
 		icon: 'mdi:shield-key',
 		category: '開発・比較ツール'
 	},
+	{
+		nameJa: 'ULIDタイムスタンプ抽出',
+		name: 'ulid-timestamp',
+		description: 'ULIDに埋め込まれたタイムスタンプをUTC/JSTで表示します',
+		icon: 'mdi:identifier',
+		category: '開発・比較ツール'
+	},
+	{
+		nameJa: 'Unixtime変換',
+		name: 'unixtime-converter',
+		description: 'UnixtimeとUTC/JSTなど各タイムゾーンの日時を相互変換します',
+		icon: 'mdi:clock-time-eight-outline',
+		category: '開発・比較ツール'
+	},
+	{
+		nameJa: 'JWTデコーダ',
+		name: 'jwt-decoder',
+		description: 'JWTのHeader/Payloadをデコードして表示します（署名検証はしません）',
+		icon: 'mdi:key-chain',
+		category: '開発・比較ツール'
+	},
 
 	// ============================================================
 	// 8. ネットワーク・情報

@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 「困った時のツール集」は、日常的に使える便利ツール集のWebアプリケーションです。
 
-### 提供ツール（8カテゴリ、34ツール）
+### 提供ツール（8カテゴリ、37ツール）
 
 - **生成AI**: HTML/リッチテキスト → Markdown変換（AI活用）
 - **文字・テキスト処理**: 正規表現テスター、文字数カウンタ、HTML/URLエンコーダ、エンコード文字列デコーダ、記号検索
@@ -14,7 +14,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **画像・メディア**: 画像形式変換、画像メタデータ表示、PDFメタデータ・セキュリティ情報、動画圧縮、動画→音声変換
 - **PDF操作**: PDF結合、PDFページ編集、PDF分割、PDF圧縮
 - **QRコード**: 汎用QR、XプロフィールQR
-- **開発・比較ツール**: コード整形、Diffチェッカー、curlビルダー、クリップボード検査、Pythonコード解析
+- **開発・比較ツール**: コード整形、Diffチェッカー、curlビルダー、クリップボード検査、Pythonコード解析、ULIDタイムスタンプ抽出、Unixtime変換、JWTデコーダ
 - **ネットワーク・情報**: 接続元情報、Whois/ドメイン調査、Pcap解析
 
 ### 主な特徴
@@ -312,6 +312,23 @@ src/routes/tools/ctf-cipher/
 - **文字頻度分析**: 英語の文字頻度（ETAOIN...）と比較して上位5文字の一致度を計算。英単語（the, be, to...）の出現も評価
 - **パフォーマンス**: XOR brute forceで255パターン、Caesar cipherで26パターンを試行するため、入力サイズは1MBに制限
 
+#### ULIDタイムスタンプ抽出
+
+- **自前デコード**: ULID仕様（Crockford's Base32）のデコードを自前実装。外部ライブラリは未使用。
+- **タイムスタンプ抽出**: 先頭10文字（48bit、ミリ秒精度Unixtime）のみをデコード対象とし、残り16文字（ランダム性部分）は文字セット検証のみ行う。
+
+#### Unixtime変換
+
+- **双方向変換**: Unixtime→日時、日時→Unixtimeを独立したセクションとして提供（相互バインディングによる無限ループを回避するため、双方向の自動同期はしない）。
+- **タイムゾーン表示**: `Intl.DateTimeFormat`の`timeZone`オプションでUTC/JST等を表示。`datetime-local`入力はブラウザのローカルタイムゾーンとして解釈される点に注意。
+
+#### JWTデコーダ
+
+- **自前デコード**: Base64URLデコード（`-`/`_`→`+`/`/`変換、パディング補完）とJSON.parseによる自前実装。外部ライブラリ（jwt-decode等）は未使用。
+- **署名検証なし**: デコードのみでHeader/Payloadの署名検証は行わない旨をUI上に明記。
+- **UTF-8対応**: `TextDecoder('utf-8', { fatal: true })`でマルチバイト文字を含むペイロードも正しくデコードし、不正なバイト列は例外として検出。
+- **日時クレーム表示**: `exp`/`iat`/`nbf`クレームを検出した場合、Unixtime（秒）からUTC日時に変換して併記。
+
 ### レスポンシブサイドバー
 
 プロジェクトには高機能なレスポンシブサイドバーを実装：
@@ -471,11 +488,11 @@ src/routes/tools/ctf-cipher/
 - **実行内容**:
   1. **Linter** (`npm run lint`): Prettier + ESLint
   2. **Type Check** (`npm run check`): TypeScript型チェック
-  3. **Tests** (`npm run test:run`): Vitest による166個のユニットテスト
+  3. **Tests** (`npm run test:run`): Vitest による259個のユニットテスト
 
 **テストカバレッジ**:
 
-- 10ツール、166テスト（csv-to-latex, diff-checker, x-qrcode-generator, ctf-cipher, string-decoder, character-counter, markdown-to-notion, pcap-analyzer, whois-lookup, pdf-metadata）
+- 15ツール、259テスト（csv-to-latex, diff-checker, x-qrcode-generator, ctf-cipher, string-decoder, character-counter, markdown-to-notion, markdown-to-slack, clipboard-table-transpose, pcap-analyzer, whois-lookup, pdf-metadata, ulid-timestamp, unixtime-converter, jwt-decoder）
 - コアロジックに絞った実用的なテスト戦略
 - 外部依存やブラウザAPIに依存する部分は除外
 

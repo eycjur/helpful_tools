@@ -12,8 +12,7 @@ let sdkPromise: Promise<C2paSdk> | null = null;
 
 function getSdk(): Promise<C2paSdk> {
 	if (!sdkPromise) {
-		const wasmSrc =
-			'https://unpkg.com/@contentauth/c2pa-web@0.9.0/dist/resources/c2pa_bg.wasm';
+		const wasmSrc = 'https://unpkg.com/@contentauth/c2pa-web@0.9.0/dist/resources/c2pa_bg.wasm';
 		console.debug('[C2PA] SDK初期化開始 wasmSrc=', wasmSrc);
 		sdkPromise = import('@contentauth/c2pa-web')
 			.then(({ createC2pa }) => createC2pa({ wasmSrc }))
