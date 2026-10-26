@@ -77,7 +77,7 @@ export const tools: Tool[] = [
 	{
 		nameJa: 'Base64⇄画像変換',
 		name: 'base64-converter',
-		description: '画像とBase64文字列を相互に変換します',
+		description: '画像ファイルやクリップボードの画像とBase64文字列を相互に変換します',
 		icon: 'mdi:swap-vertical',
 		category: 'データ変換'
 	},

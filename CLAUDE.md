@@ -312,6 +312,10 @@ src/routes/tools/ctf-cipher/
 - **文字頻度分析**: 英語の文字頻度（ETAOIN...）と比較して上位5文字の一致度を計算。英単語（the, be, to...）の出現も評価
 - **パフォーマンス**: XOR brute forceで255パターン、Caesar cipherで26パターンを試行するため、入力サイズは1MBに制限
 
+#### Base64⇄画像変換
+
+- **クリップボード入力**: 「クリップボードから画像を読み込む」ボタンは`navigator.clipboard.read()`で`image/*`を取得（権限必須）。加えて`<svelte:window on:paste>`でCtrl+V貼り付けにも対応（「画像 → Base64」タブ選択時かつ画像ファイルを含む場合のみ`preventDefault`し、テキスト貼り付けは妨げない）
+
 #### ULIDタイムスタンプ抽出
 
 - **自前デコード**: ULID仕様（Crockford's Base32）のデコードを自前実装。外部ライブラリは未使用。

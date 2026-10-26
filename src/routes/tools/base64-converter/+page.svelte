@@ -45,6 +45,46 @@
 		}
 	}
 
+	function imageFileFromBlob(blob: Blob): File {
+		const ext = blob.type.split('/')[1]?.split('+')[0] || 'png';
+		return new File([blob], `clipboard-image.${ext}`, { type: blob.type });
+	}
+
+	async function readClipboardImage() {
+		if (!navigator.clipboard?.read) {
+			alert(
+				'このブラウザはクリップボードの読み取りに対応していません。Ctrl+V（⌘+V）で貼り付けてください'
+			);
+			return;
+		}
+		try {
+			const items = await navigator.clipboard.read();
+			for (const item of items) {
+				const imageType = item.types.find((type) => type.startsWith('image/'));
+				if (imageType) {
+					processFile(imageFileFromBlob(await item.getType(imageType)));
+					return;
+				}
+			}
+			alert('クリップボードに画像がありません');
+		} catch (err) {
+			console.error('クリップボードの読み取りに失敗:', err);
+			alert(
+				'クリップボードの読み取りに失敗しました。ブラウザの権限を確認するか、Ctrl+V（⌘+V）で貼り付けてください'
+			);
+		}
+	}
+
+	function handlePaste(e: ClipboardEvent) {
+		if (activeTab !== 'to-base64') return;
+		const items = Array.from(e.clipboardData?.items ?? []);
+		const imageItem = items.find((item) => item.kind === 'file' && item.type.startsWith('image/'));
+		const blob = imageItem?.getAsFile();
+		if (!blob) return;
+		e.preventDefault();
+		processFile(blob.name ? blob : imageFileFromBlob(blob));
+	}
+
 	function processFile(file: File) {
 		if (!file.type.startsWith('image/')) {
 			alert('画像ファイルを選択してください');
@@ -203,6 +243,8 @@
 	}
 </script>
 
+<svelte:window on:paste={handlePaste} />
+
 <div class="mx-auto max-w-4xl">
 	<div class="mb-6 flex items-center">
 		{#if tool?.icon}<Icon icon={tool.icon} class="mr-4 h-10 w-10" />{/if}
@@ -266,7 +308,10 @@
 			>
 				<Icon icon="mdi:cloud-upload" class="mb-2 h-12 w-12 text-gray-400" />
 				<p class="mb-2 text-gray-700">画像ファイルをドラッグ＆ドロップ</p>
-				<p class="mb-3 text-xs text-gray-500">PNG / JPEG / WebP / GIF</p>
+				<p class="mb-1 text-xs text-gray-500">PNG / JPEG / WebP / GIF</p>
+				<p class="mb-3 text-xs text-gray-500">
+					Ctrl+V（⌘+V）でクリップボードの画像も貼り付けできます
+				</p>
 				<input
 					id="file-input"
 					type="file"
@@ -274,6 +319,16 @@
 					on:change={handleFileSelect}
 					class="block"
 				/>
+			</div>
+
+			<div class="flex justify-center">
+				<button
+					on:click={readClipboardImage}
+					class="flex items-center rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+				>
+					<Icon icon="mdi:clipboard-arrow-down" class="mr-2 h-5 w-5" />
+					クリップボードから画像を読み込む
+				</button>
 			</div>
 
 			<!-- プレビューと結果 -->
