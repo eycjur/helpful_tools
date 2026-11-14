@@ -1,9 +1,10 @@
 /**
  * PDF操作ユーティリティ（pdf-lib使用）
- * 結合・分割・ページ編集・圧縮
+ * ページ組み立て（結合・分割・ページ編集）・圧縮
  */
 import {
 	PDFDocument,
+	PDFPage,
 	PDFRawStream,
 	PDFName,
 	PDFNumber,
@@ -20,93 +21,39 @@ if (typeof window !== 'undefined') {
 
 const SAVE_OPTIONS = { useObjectStreams: true };
 
-/** 複数PDFを1つに結合 */
-export async function mergePdfs(files: File[]): Promise<Uint8Array> {
-	const mergedPdf = await PDFDocument.create();
-
-	for (const file of files) {
-		const bytes = new Uint8Array(await file.arrayBuffer());
-		const srcDoc = await PDFDocument.load(bytes);
-		const pageCount = srcDoc.getPageCount();
-		if (pageCount === 0) continue;
-
-		const indices = Array.from({ length: pageCount }, (_, i) => i);
-		const copiedPages = await mergedPdf.copyPages(srcDoc, indices);
-		for (const page of copiedPages) {
-			mergedPdf.addPage(page);
-		}
-	}
-
-	return mergedPdf.save(SAVE_OPTIONS);
-}
-
-/** ページの順序変更・削除 */
-export async function reorderOrRemovePages(
-	file: File,
-	pageOrder: number[] // 1-based、0は削除対象
+/**
+ * 複数PDFのページを指定順に並べて1つのPDFを作成（結合・分割・ページ編集の共通処理）
+ * pages の srcId は sources のキー、pageIndex は0-based
+ */
+export async function assemblePdf(
+	sources: ReadonlyMap<number, File>,
+	pages: { srcId: number; pageIndex: number }[]
 ): Promise<Uint8Array> {
-	const bytes = new Uint8Array(await file.arrayBuffer());
-	const pdfDoc = await PDFDocument.load(bytes);
-	const pageCount = pdfDoc.getPageCount();
-
-	// 1-based → 0-based、有効なページのみ
-	const validIndices = pageOrder.filter((p) => p >= 1 && p <= pageCount).map((p) => p - 1);
-
-	if (validIndices.length === 0) {
-		throw new Error('有効なページが1つもありません');
+	// copyPages は呼び出し単位で共有リソース（フォント等）をコピーするため、元ファイルごとに1回にまとめる
+	const indicesBySrc = new Map<number, number[]>();
+	for (const { srcId, pageIndex } of pages) {
+		const list = indicesBySrc.get(srcId) ?? [];
+		list.push(pageIndex);
+		indicesBySrc.set(srcId, list);
 	}
 
-	// 新しいドキュメントにコピー
 	const newDoc = await PDFDocument.create();
-	const copiedPages = await newDoc.copyPages(pdfDoc, validIndices);
-	for (const page of copiedPages) {
-		newDoc.addPage(page);
+	const copied = new Map<number, PDFPage[]>();
+	for (const [srcId, indices] of indicesBySrc) {
+		const file = sources.get(srcId);
+		if (!file) throw new Error('元のPDFファイルが見つかりません');
+		const srcDoc = await PDFDocument.load(new Uint8Array(await file.arrayBuffer()));
+		copied.set(srcId, await newDoc.copyPages(srcDoc, indices));
+	}
+
+	const cursor = new Map<number, number>();
+	for (const { srcId } of pages) {
+		const i = cursor.get(srcId) ?? 0;
+		newDoc.addPage(copied.get(srcId)![i]);
+		cursor.set(srcId, i + 1);
 	}
 
 	return newDoc.save(SAVE_OPTIONS);
-}
-
-/** PDFをページ範囲で分割（各範囲を別PDFに） */
-export async function splitPdf(
-	file: File,
-	ranges: { start: number; end: number }[] // 1-based、両端含む
-): Promise<Uint8Array[]> {
-	const bytes = new Uint8Array(await file.arrayBuffer());
-	const srcDoc = await PDFDocument.load(bytes);
-	const pageCount = srcDoc.getPageCount();
-	const results: Uint8Array[] = [];
-
-	for (const range of ranges) {
-		const start = Math.max(1, Math.min(range.start, pageCount));
-		const end = Math.max(start, Math.min(range.end, pageCount));
-		const indices = Array.from({ length: end - start + 1 }, (_, i) => start - 1 + i);
-
-		const newDoc = await PDFDocument.create();
-		const copiedPages = await newDoc.copyPages(srcDoc, indices);
-		for (const page of copiedPages) {
-			newDoc.addPage(page);
-		}
-		results.push(await newDoc.save(SAVE_OPTIONS));
-	}
-
-	return results;
-}
-
-/** PDFを1ページずつ分割 */
-export async function splitPdfByPage(file: File): Promise<Uint8Array[]> {
-	const bytes = new Uint8Array(await file.arrayBuffer());
-	const srcDoc = await PDFDocument.load(bytes);
-	const pageCount = srcDoc.getPageCount();
-	const results: Uint8Array[] = [];
-
-	for (let i = 0; i < pageCount; i++) {
-		const newDoc = await PDFDocument.create();
-		const [page] = await newDoc.copyPages(srcDoc, [i]);
-		newDoc.addPage(page);
-		results.push(await newDoc.save(SAVE_OPTIONS));
-	}
-
-	return results;
 }
 
 /** PDFを最適化して軽量化（未使用オブジェクト削除・オブジェクトストリーム化） */

@@ -6,13 +6,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 「困った時のツール集」は、日常的に使える便利ツール集のWebアプリケーションです。
 
-### 提供ツール（8カテゴリ、37ツール）
+### 提供ツール（8カテゴリ、39ツール）
 
 - **生成AI**: HTML/リッチテキスト → Markdown変換（AI活用）
 - **文字・テキスト処理**: 正規表現テスター、文字数カウンタ、HTML/URLエンコーダ、エンコード文字列デコーダ、記号検索
 - **データ変換**: 構造化データビューアー、Base64⇄画像変換、表の転置、Notion/Slack/LaTeX変換
 - **画像・メディア**: 画像形式変換、画像メタデータ表示、PDFメタデータ・セキュリティ情報、動画圧縮、動画→音声変換
-- **PDF操作**: PDF結合、PDFページ編集、PDF分割、PDF圧縮
+- **PDF操作**: PDF編集（結合・分割・ページ操作）、PDF圧縮
 - **QRコード**: 汎用QR、XプロフィールQR
 - **開発・比較ツール**: コード整形、Diffチェッカー、curlビルダー、クリップボード検査、Pythonコード解析、ULIDタイムスタンプ抽出、Unixtime変換、JWTデコーダ
 - **ネットワーク・情報**: 接続元情報、Whois/ドメイン調査、Pcap解析
@@ -433,10 +433,10 @@ src/routes/tools/ctf-cipher/
 
 #### PDF操作（新規ツール）
 
-- **pdf-lib使用**: ブラウザ上でPDFの結合・分割・ページ編集・圧縮を実行。`PDFDocument.load()`/`copyPages()`/`addPage()`/`removePage()`を使用。
-- **結合**: 複数PDFを順に`copyPages`でコピーして1つのPDFにまとめる。
-- **ページ編集**: ページ順序の指定（カンマ区切り）で並び替え・削除。指定しないページは削除される。
-- **分割**: 範囲指定（例: 1-3, 4-5）で複数PDFに分割。1ページずつ分割も対応。
+- **pdf-lib使用**: ブラウザ上でPDFの結合・分割・ページ編集・圧縮を実行。`PDFDocument.load()`/`copyPages()`/`addPage()`を使用。
+- **PDF編集（pdf-edit）**: 結合・分割・ページ編集を1画面に統合。ページは元ファイルへの参照`{srcId, pageIndex}`として保持し、移動・削除・分割・結合は`organizer.ts`の純粋関数で配列操作のみ行う。PDFの組み立ては書き出し時の`assemblePdf()`1回だけ。
+- **copyPagesのまとめ呼び出し**: `copyPages`は呼び出し単位で共有リソース（フォント等）をコピーするため、`assemblePdf()`では元ファイルごとに1回だけ呼び、出力サイズの肥大化を防ぐ。
+- **ドラッグの種別判定**: ページ・ファイル並び替えのドラッグ中は`drag`状態を持ち、OSからのファイルドロップと区別する。
 - **圧縮**: 新規ドキュメントに全ページをコピーし`useObjectStreams: true`で保存。未使用オブジェクト削除で軽量化（画像の再圧縮は行わない）。
 - **メモリ使用量**: 結合・分割・編集・圧縮とも大きなファイルはメモリ使用量に注意。
 
@@ -492,11 +492,11 @@ src/routes/tools/ctf-cipher/
 - **実行内容**:
   1. **Linter** (`npm run lint`): Prettier + ESLint
   2. **Type Check** (`npm run check`): TypeScript型チェック
-  3. **Tests** (`npm run test:run`): Vitest による259個のユニットテスト
+  3. **Tests** (`npm run test:run`): Vitest による273個のユニットテスト
 
 **テストカバレッジ**:
 
-- 15ツール、259テスト（csv-to-latex, diff-checker, x-qrcode-generator, ctf-cipher, string-decoder, character-counter, markdown-to-notion, markdown-to-slack, clipboard-table-transpose, pcap-analyzer, whois-lookup, pdf-metadata, ulid-timestamp, unixtime-converter, jwt-decoder）
+- 16ツール、テスト（pdf-edit, csv-to-latex, diff-checker, x-qrcode-generator, ctf-cipher, string-decoder, character-counter, markdown-to-notion, markdown-to-slack, clipboard-table-transpose, pcap-analyzer, whois-lookup, pdf-metadata, ulid-timestamp, unixtime-converter, jwt-decoder）
 - コアロジックに絞った実用的なテスト戦略
 - 外部依存やブラウザAPIに依存する部分は除外
 

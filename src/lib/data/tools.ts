@@ -153,24 +153,10 @@ export const tools: Tool[] = [
 	// 5. PDF操作
 	// ============================================================
 	{
-		nameJa: 'PDF結合',
-		name: 'pdf-merge',
-		description: '複数のPDFを1つに結合します',
-		icon: 'mdi:merge',
-		category: 'PDF操作'
-	},
-	{
-		nameJa: 'PDFページ編集',
+		nameJa: 'PDF編集（結合・分割・ページ操作）',
 		name: 'pdf-edit',
-		description: 'PDFのページ順序の変更や削除ができます',
-		icon: 'mdi:order-numeric-ascending',
-		category: 'PDF操作'
-	},
-	{
-		nameJa: 'PDF分割',
-		name: 'pdf-split',
-		description: 'PDFを指定範囲で分割します',
-		icon: 'mdi:call-split',
+		description: '複数PDFの結合・分割、ページの並び替え・削除をまとめて行えます',
+		icon: 'mdi:file-document-edit-outline',
 		category: 'PDF操作'
 	},
 	{
