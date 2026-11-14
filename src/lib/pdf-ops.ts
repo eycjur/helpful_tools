@@ -13,7 +13,7 @@ import {
 	decodePDFRawStream
 } from 'pdf-lib';
 import * as pdfjsLib from 'pdfjs-dist';
-import { renderPageToJpegBytes } from './pdf-first-page-image';
+import { PDFJS_CMAP_OPTIONS, renderPageToJpegBytes } from './pdf-first-page-image';
 
 if (typeof window !== 'undefined') {
 	pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
@@ -342,7 +342,7 @@ export async function compressPdfWithImageRecompression(
 ): Promise<Uint8Array> {
 	const { scale = 1.5, quality = 0.85 } = options;
 	const arrayBuffer = await file.arrayBuffer();
-	const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+	const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer, ...PDFJS_CMAP_OPTIONS });
 	const pdf = await loadingTask.promise;
 	const pageCount = pdf.numPages;
 

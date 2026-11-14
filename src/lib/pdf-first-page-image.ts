@@ -9,6 +9,12 @@ if (typeof window !== 'undefined') {
 	pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
 }
 
+/** 日本語など非埋め込みCIDフォントの描画に必要なCMap（未指定だと文字が空白になる） */
+export const PDFJS_CMAP_OPTIONS = {
+	cMapUrl: `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/cmaps/`,
+	cMapPacked: true
+};
+
 async function renderPageToImageUrl(pdf: PDFDocumentProxy, pageNum: number): Promise<string> {
 	const page = await pdf.getPage(pageNum);
 	const viewport = page.getViewport({ scale: 2 });
@@ -78,7 +84,7 @@ export async function createPdfPageRenderer(file: File): Promise<{
 	destroy: () => Promise<void>;
 }> {
 	const arrayBuffer = await file.arrayBuffer();
-	const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+	const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer, ...PDFJS_CMAP_OPTIONS });
 	const pdf = await loadingTask.promise;
 
 	return {
