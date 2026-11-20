@@ -164,6 +164,14 @@ function drawScaled(source: CanvasImageSource, width: number, height: number) {
 	return result;
 }
 
+/** Canvas の画素バッファをすぐ解放する（数百枚を続けて処理すると、GC を待つ間にメモリが急増するため） */
+function release(...canvases: OffscreenCanvas[]) {
+	for (const c of canvases) {
+		c.width = 0;
+		c.height = 0;
+	}
+}
+
 async function canvasToJpeg(canvas: OffscreenCanvas, quality: number): Promise<Uint8Array> {
 	const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality });
 	return new Uint8Array(await blob.arrayBuffer());
@@ -265,12 +273,16 @@ async function recompressImage(
 		});
 		const { canvas } = drawScaled(bitmap, target.width, target.height);
 		bitmap.close();
-		return {
-			contents: await canvasToJpeg(canvas, options.quality),
-			filter: 'DCTDecode',
-			...target,
-			colorSpace: components === 3 ? 'keep' : 'DeviceRGB'
-		};
+		try {
+			return {
+				contents: await canvasToJpeg(canvas, options.quality),
+				filter: 'DCTDecode',
+				...target,
+				colorSpace: components === 3 ? 'keep' : 'DeviceRGB'
+			};
+		} finally {
+			release(canvas);
+		}
 	}
 
 	if (filters[0] !== 'FlateDecode') return null;
@@ -289,21 +301,25 @@ async function recompressImage(
 		? drawScaled(src.canvas, target.width, target.height)
 		: { canvas: src.canvas, ctx: src.ctx };
 
-	if (lossless) {
-		const scaled = ctx.getImageData(0, 0, target.width, target.height).data;
+	try {
+		if (lossless) {
+			const scaled = ctx.getImageData(0, 0, target.width, target.height).data;
+			return {
+				contents: zlibSync(fromRgba(scaled, components), { level: 9 }),
+				filter: 'FlateDecode',
+				...target,
+				colorSpace: 'keep'
+			};
+		}
 		return {
-			contents: zlibSync(fromRgba(scaled, components), { level: 9 }),
-			filter: 'FlateDecode',
+			contents: await canvasToJpeg(canvas, options.quality),
+			filter: 'DCTDecode',
 			...target,
-			colorSpace: 'keep'
+			colorSpace: components === 3 ? 'keep' : 'DeviceRGB'
 		};
+	} finally {
+		release(src.canvas, canvas);
 	}
-	return {
-		contents: await canvasToJpeg(canvas, options.quality),
-		filter: 'DCTDecode',
-		...target,
-		colorSpace: components === 3 ? 'keep' : 'DeviceRGB'
-	};
 }
 
 function mergePlacement(a: Placement | undefined, b: Placement): Placement {

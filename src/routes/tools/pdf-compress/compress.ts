@@ -12,8 +12,9 @@ import {
 } from './pdf-optimizer';
 import { recompressImages } from './image-recompress';
 import type { CompressSettings } from './levels';
-import { hasSubsettableFonts, subsetFonts } from './font-subset';
+import { hasOptimizableFonts, optimizeFontPrograms, subsetFonts } from './font-subset';
 import { createSubsetter } from './hb-subset';
+import { roundCoordinates } from './content-precision';
 import { loadSubsetWasm } from './hb-wasm';
 
 export type CompressResult = {
@@ -26,6 +27,7 @@ export type CompressResult = {
 		recompressed: number;
 		images: number;
 		fonts: number;
+		paths: number;
 	};
 };
 
@@ -34,6 +36,7 @@ export type CompressStage =
 	| 'load'
 	| 'optimize'
 	| 'fonts'
+	| 'paths'
 	| 'images'
 	| 'streams'
 	| 'save'
@@ -55,9 +58,17 @@ export async function compressPdfFile(
 	const deduped = dedupeStreams(doc);
 	const removed = removeUnreachable(doc);
 	let fonts = 0;
-	if (options.subsetFonts && hasSubsettableFonts(doc)) {
+	if (options.subsetFonts && hasOptimizableFonts(doc)) {
 		onProgress({ stage: 'fonts' });
-		fonts = subsetFonts(doc, await createSubsetter(await loadWasm()));
+		const subsetter = await createSubsetter(await loadWasm());
+		const fontOptions = { noHinting: options.removeHinting };
+		const subsetted = subsetFonts(doc, subsetter, fontOptions);
+		fonts = subsetted.size + optimizeFontPrograms(doc, subsetter, fontOptions, subsetted);
+	}
+	let paths = 0;
+	if (options.roundTolerancePt !== null) {
+		onProgress({ stage: 'paths' });
+		paths = roundCoordinates(doc, options.roundTolerancePt);
 	}
 	const images = options.images
 		? await recompressImages(doc, options.images, (done, total) =>
@@ -74,6 +85,6 @@ export async function compressPdfFile(
 	return {
 		bytes: keptOriginal ? original : saved,
 		keptOriginal,
-		stats: { deduped, removed, recompressed, images, fonts }
+		stats: { deduped, removed, recompressed, images, fonts, paths }
 	};
 }

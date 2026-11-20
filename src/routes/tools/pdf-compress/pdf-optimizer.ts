@@ -64,8 +64,12 @@ export type OptimizeOptions = {
 	removeMetadata?: boolean;
 	removePieceInfo?: boolean;
 	removeAttachments?: boolean;
-	/** まるごと埋め込まれたフォントを使用字形だけに減らす（font-subset.ts） */
+	/** フォントを最適化する：まるごと埋め込まれたものは使用字形だけに減らし、CIDFontType2 は使わない表を削る（font-subset.ts） */
 	subsetFonts?: boolean;
+	/** フォントのヒンティング（小さな文字の画面表示用の調整命令）も削る */
+	removeHinting?: boolean;
+	/** パスの座標を、紙面上の誤差がこの値（pt）以内になるよう丸める。null なら丸めない（content-precision.ts、非可逆） */
+	roundTolerancePt?: number | null;
 };
 
 const N = (name: string) => PDFName.of(name);

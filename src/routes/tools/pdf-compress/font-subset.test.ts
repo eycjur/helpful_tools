@@ -10,7 +10,9 @@ import {
 	PDFRef,
 	decodePDFRawStream
 } from 'pdf-lib';
-import { addGlyphs, subsetFonts, type Subsetter } from './font-subset';
+import { addGlyphs, optimizeFontPrograms, subsetFonts, type Subsetter } from './font-subset';
+
+const OPTS = { noHinting: false };
 import { createSubsetter } from './hb-subset';
 
 const N = (s: string) => PDFName.of(s);
@@ -106,7 +108,7 @@ describe('subsetFonts', () => {
 	it('使われた字形だけを残し、字形番号は保ち、名前にサブセットの接頭辞を付ける', async () => {
 		// GID 0x24, 0x25 を Tj、0x30 を TJ で描く
 		const { doc, font } = await setup('BT /F1 12 Tf <00240025> Tj [<0030> -100] TJ ET');
-		expect(subsetFonts(doc, subsetter)).toBe(1);
+		expect(subsetFonts(doc, subsetter, OPTS).size).toBe(1);
 		const { type0, descriptor, bytes } = fontFileOf(doc, font);
 		expect(bytes.length).toBeLessThan(FONT.length / 4);
 		const lengths = glyphLengths(bytes);
@@ -132,7 +134,7 @@ describe('subsetFonts', () => {
 			doc.context.flateStream('<0040> Tj', { Subtype: 'Form', BBox: [0, 0, 10, 10] })
 		);
 		page.node.setXObject(N('Fm0'), form);
-		expect(subsetFonts(doc, subsetter)).toBe(1);
+		expect(subsetFonts(doc, subsetter, OPTS).size).toBe(1);
 		const lengths = glyphLengths(fontFileOf(doc, font).bytes);
 		expect(lengths[0x40]).toBeGreaterThan(0);
 	});
@@ -140,7 +142,7 @@ describe('subsetFonts', () => {
 	it('フォーム入力欄の既定リソース（/DR）から参照されるフォントは対象外', async () => {
 		const { doc, font } = await setup('BT /F1 12 Tf <0024> Tj ET');
 		doc.catalog.set(N('AcroForm'), doc.context.obj({ Fields: [], DR: { Font: { Helv: font } } }));
-		expect(subsetFonts(doc, subsetter)).toBe(0);
+		expect(subsetFonts(doc, subsetter, OPTS).size).toBe(0);
 	});
 
 	it('ExtGState の /Font 配列で選ばれるフォントは対象外にし、例外にもしない', async () => {
@@ -152,7 +154,7 @@ describe('subsetFonts', () => {
 				ExtGState: { GS0: { Type: 'ExtGState', Font: [font, 12] } }
 			})
 		);
-		expect(subsetFonts(doc, subsetter)).toBe(0);
+		expect(subsetFonts(doc, subsetter, OPTS).size).toBe(0);
 	});
 
 	it('候補外のフォント（CMap名のエンコーディング）と同じフォントファイルを共有していたら対象外', async () => {
@@ -174,7 +176,7 @@ describe('subsetFonts', () => {
 				DescendantFonts: [{ Type: 'Font', Subtype: 'CIDFontType2', FontDescriptor: other }]
 			})
 		);
-		expect(subsetFonts(doc, subsetter)).toBe(0);
+		expect(subsetFonts(doc, subsetter, OPTS).size).toBe(0);
 	});
 
 	it('描画命令を復号できないページがあればサブセット化しない', async () => {
@@ -183,17 +185,69 @@ describe('subsetFonts', () => {
 			PDFRawStream.of(doc.context.obj({ Filter: 'FlateDecode' }), new Uint8Array([1, 2, 3, 4]))
 		);
 		page.node.set(N('Contents'), doc.context.obj([page.node.get(N('Contents')), broken]));
-		expect(subsetFonts(doc, subsetter)).toBe(0);
+		expect(subsetFonts(doc, subsetter, OPTS).size).toBe(0);
 	});
 
 	it('名前の #xx エスケープを復号してフォントを解決する', async () => {
 		const { doc, font } = await setup('BT /F#31 12 Tf <0024> Tj ET');
-		expect(subsetFonts(doc, subsetter)).toBe(1);
+		expect(subsetFonts(doc, subsetter, OPTS).size).toBe(1);
 		expect(glyphLengths(fontFileOf(doc, font).bytes)[0x24]).toBeGreaterThan(0);
 	});
 
 	it('すでにサブセット（接頭辞付き）のフォントは対象外', async () => {
 		const { doc } = await setup('BT /F1 12 Tf <0024> Tj ET', 'ABCDEF+LiberationSans');
-		expect(subsetFonts(doc, subsetter)).toBe(0);
+		expect(subsetFonts(doc, subsetter, OPTS).size).toBe(0);
+	});
+});
+
+/** フォントに含まれる表の名前 */
+function tableTags(font: Uint8Array): string[] {
+	const view = new DataView(font.buffer, font.byteOffset, font.byteLength);
+	return Array.from({ length: view.getUint16(4) }, (_, i) =>
+		String.fromCharCode(...font.subarray(12 + i * 16, 16 + i * 16))
+	);
+}
+
+describe('optimizeFontPrograms', () => {
+	it('サブセット済みの CIDFontType2 から使わない表を削り、字形はすべて残す', async () => {
+		const { doc, font } = await setup('BT /F1 12 Tf <0024> Tj ET', 'ABCDEF+LiberationSans');
+		expect(tableTags(FONT)).toContain('cmap');
+		expect(optimizeFontPrograms(doc, subsetter, OPTS, new Set())).toBe(1);
+		const bytes = fontFileOf(doc, font).bytes;
+		expect(bytes.length).toBeLessThan(FONT.length);
+		const tags = tableTags(bytes);
+		for (const t of ['cmap', 'GSUB', 'GPOS', 'post']) expect(tags).not.toContain(t);
+		for (const t of ['glyf', 'loca', 'head', 'hmtx', 'maxp', 'OS/2', 'name'])
+			expect(tags).toContain(t);
+		const lengths = glyphLengths(bytes);
+		const original = glyphLengths(FONT);
+		expect(lengths.length).toBe(original.length);
+		expect(lengths[0x26]).toBeGreaterThan(0);
+	});
+
+	it('ヒンティングの削除を指定すると fpgm・prep を削る', async () => {
+		const { doc, font } = await setup('BT /F1 12 Tf <0024> Tj ET', 'ABCDEF+LiberationSans');
+		const hinted = tableTags(FONT).filter((t) => t === 'fpgm' || t === 'prep');
+		expect(hinted.length).toBeGreaterThan(0);
+		optimizeFontPrograms(doc, subsetter, { noHinting: true }, new Set());
+		const tags = tableTags(fontFileOf(doc, font).bytes);
+		expect(tags).not.toContain('fpgm');
+		expect(tags).not.toContain('prep');
+	});
+
+	it('単純な TrueType フォントと共有するフォントファイルは cmap が必要なため触らない', async () => {
+		const { doc, font } = await setup('', 'ABCDEF+LiberationSans');
+		const t0 = doc.context.lookup(font) as PDFDict;
+		const cid = (t0.lookup(N('DescendantFonts')) as PDFArray).lookup(0) as PDFDict;
+		const descriptor = cid.lookup(N('FontDescriptor')) as PDFDict;
+		doc.context.register(
+			// /Type を省略した単純な TrueType フォント（省略しても有効）
+			doc.context.obj({
+				Subtype: 'TrueType',
+				BaseFont: 'Simple',
+				FontDescriptor: { Type: 'FontDescriptor', FontFile2: descriptor.get(N('FontFile2')) }
+			})
+		);
+		expect(optimizeFontPrograms(doc, subsetter, OPTS, new Set())).toBe(0);
 	});
 });

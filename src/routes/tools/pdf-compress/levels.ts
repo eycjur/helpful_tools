@@ -19,7 +19,9 @@ const BASE_EXTRAS = {
 	removePieceInfo: true,
 	removeMetadata: false,
 	removeAttachments: false,
-	subsetFonts: true
+	subsetFonts: true,
+	removeHinting: false,
+	roundTolerancePt: null
 };
 
 export const LEVELS: Record<LevelKey, Level> = {
@@ -46,20 +48,24 @@ export const LEVELS: Record<LevelKey, Level> = {
 	},
 	high: {
 		label: '強',
-		note: '72 ppi・品質0.4。図やスクリーンショットもJPEG化し、XMPメタデータも削除。画質より容量を優先',
+		note: '72 ppi・品質0.4。図やスクリーンショットもJPEG化し、フォントのヒンティングとXMPメタデータを削除、図形の座標を0.1ptで丸める。画質より容量を優先',
 		settings: {
 			...BASE_EXTRAS,
 			removeMetadata: true,
+			removeHinting: true,
+			roundTolerancePt: 0.1,
 			images: { maxPpi: 72, quality: 0.4, jpegGray: true, jpegFewColors: true }
 		}
 	},
 	max: {
 		label: '最大',
-		note: '50 ppi・品質0.3。とにかく小さくしたい場合。画像は粗くなり、添付ファイルとXMPメタデータも削除',
+		note: '50 ppi・品質0.3。とにかく小さくしたい場合。画像は粗くなり、図形の座標を0.25ptで丸め、添付ファイルも削除',
 		settings: {
 			...BASE_EXTRAS,
 			removeMetadata: true,
 			removeAttachments: true,
+			removeHinting: true,
+			roundTolerancePt: 0.25,
 			images: { maxPpi: 50, quality: 0.3, jpegGray: true, jpegFewColors: true }
 		}
 	}
@@ -93,8 +99,10 @@ export function resolveSettings(
 	custom: CustomSettings
 ): CompressSettings {
 	if (level !== 'custom') return LEVELS[level].settings;
+	const tolerance = custom.extras.roundTolerancePt;
 	return {
 		...custom.extras,
+		roundTolerancePt: tolerance === null ? null : Number(tolerance),
 		// <select> の値は文字列になりうるため数値に揃える
 		images: custom.recompressImages
 			? {

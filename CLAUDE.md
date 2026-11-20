@@ -443,8 +443,10 @@ src/routes/tools/ctf-cipher/
 - **容量の内訳**: `analyzeSpace()`でストリームを画像・フォント・描画命令・Form XObject・添付・XMP・サムネイルに分類。画像の実効ppiは最も大きく描かれた箇所での値（配置不明なら「—」）。
 - **画像再圧縮**: DeviceRGB/DeviceGray・成分数3/1のICCBased、8bpc、単一フィルタ（DCT/Flate）または`[/FlateDecode /DCTDecode]`のみ対象。`/ImageMask`・`/Mask`・`/Decode`付き、Canvasの面積上限（`MAX_CANVAS_PIXELS`）超えは除外。実効ppiが上限を超える画像を、どちらの軸も上限を下回らない範囲で縮小する（配置不明の画像はページの長辺いっぱいに描かれるものとみなす）。CanvasのJPEG出力は常に3成分のため、JPEG化はRGB系を基本とし、Grayは`jpegGray`有効時のDeviceGrayのみ（`/ColorSpace`を`DeviceRGB`に書き換え。ICC付きGrayは階調が変わるため常に除外）。SMaskは1成分である必要があるため常に可逆（Flate）で、親画像の配置に合わせて縮小し、`/Matte`付きは親・マスクとも対象外。色数256以下のFlate画像（スクリーンショット・図）は`jpegFewColors`無効時はJPEGにせず、縮小時のみFlateで再符号化。JPEGの復号は`createImageBitmap`に`imageOrientation: 'none'`・`colorSpaceConversion: 'none'`を指定（PDFビューアはEXIFの向き・ICCを使わないため）。
 - **フォントのサブセット化**: `font-subset.ts`がまるごと埋め込まれた Type0（`/Identity-H`・`/Identity-V`）+ CIDFontType2（`/FontFile2`）を、使用字形だけに減らす。字形番号を保つ（HarfBuzz の`RETAIN_GIDS`）ため描画命令は書き換えない。使用字形はページ・Form・注釈の全外観・タイリングパターン・Type3の描画命令の`Tf`と`Tj`/`TJ`/`'`/`"`から集め、Formにはテキスト状態（現在のフォント）を引き継ぐ。走査しなかったリソース辞書（`/DR`など）から参照されるフォントは対象外。サブセット後は名前に6文字の接頭辞を付け、`/CIDSet`を削除する。`hb-subset.ts`は`harfbuzz-subset.wasm`のC APIを直接呼ぶ。WASM（約680KB）は対象フォントがある場合だけ`hb-wasm.ts`で取得する。
+- **フォントの最適化**: `optimizeFontPrograms()`が CIDFontType2 だけが使う TrueType（`/FontFile2`）から、描画に使わない表（`CID_UNUSED_TABLES`：GSUB・GPOS・cmap・post など。OS/2・name は一部の印刷系が参照しうるため残す）を全字形を残したまま削る。PDF仕様で TrueType に必要なのは head hhea loca maxp cvt prep glyf hmtx fpgm で、cmap は単純な TrueType でのみ使うため、単純な TrueType と共有するファイル（`/Type` の有無によらず、CIDFontType2 以外のディスクリプタから参照されるもの）は対象外。`removeHinting`（強・最大）ではヒンティング（`NO_HINTING`）も削る。サブセット化（`subsetFonts()`）でも同じ表を削る。
+- **座標の丸め**: `content-precision.ts`がパス構築の演算子（`m` `l` `c` `v` `y` `re`）のオペランドだけを、紙面上の誤差が`roundTolerancePt`以内になる桁数に丸める（`cm`・色・文字位置は触らない。強0.1pt・最大0.25pt）。桁数はその時点の変換行列の拡大率から決め、Form XObjectは`collectPlacements()`で集めた全配置の最大拡大率を基準にする。拡大率を追えないForm（パターン・Type3・ExtGStateのソフトマスク内、深さ超過は`Infinity`）・複数箇所で共有されるページのContents・走査量超過の文書は対象外。Contentsが演算子の途中で分割されていたら（`scanContent()`の戻り値が残ったオペランド数）、そのページの以降のストリームは触らない。字句解析が返すオペランドの位置（spans）で元データを部分的に書き換える。
 - **圧縮レベル**: `levels.ts`の`LEVELS`（画質を維持・弱・中・強・最大。最大のみ添付ファイルも削除）で付加データの削除と画像設定を一式で定義する。カスタムは`customFrom()`で直前のレベルを初期値にし、`resolveSettings()`で処理用の設定に変換する（`<select>`の値は数値に揃える）。UIは`CompressOptions.svelte`（レベル・カスタム設定）と`SpaceBreakdown.svelte`（圧縮前後の内訳）に分割。
-- **Web Worker**: 解析・圧縮は`compress.worker.ts`で実行し、`worker-client.ts`がジョブごとにWorkerを作って完了・失敗・キャンセル（`terminate()`）で破棄する。`compressPdfFile()`は進捗コールバックで段階（読み込み・整理・画像・ストリーム・保存・解析）と件数を通知する。Workerには`document`がないため、画像の再圧縮は`OffscreenCanvas`（`convertToBlob`）を使う。設定は`$state.snapshot()`でProxyを外してから送る（Proxyは構造化クローンできない）。
+- **Web Worker**: 解析・圧縮は`compress.worker.ts`で実行し、`worker-client.ts`がジョブごとにWorkerを作って完了・失敗・キャンセル（`terminate()`）で破棄する。`compressPdfFile()`は進捗コールバックで段階（読み込み・整理・フォント・座標・画像・ストリーム・保存・解析）と件数を通知し、UIは1本の進捗バーで、各段階に均等な区間（1/8ずつ）を割り当て、その中を段階内の件数で埋める。画像の再圧縮では使い終えた`OffscreenCanvas`の幅・高さを0にして画素バッファをすぐ解放する。Workerには`document`がないため、画像の再圧縮は`OffscreenCanvas`（`convertToBlob`）を使う。設定は`$state.snapshot()`でProxyを外してから送る（Proxyは構造化クローンできない）。
 - **メモリ使用量**: 結合・分割・編集・圧縮とも大きなファイルはメモリ使用量に注意。
 
 #### Pcap解析（新規ツール）
@@ -499,7 +501,7 @@ src/routes/tools/ctf-cipher/
 - **実行内容**:
   1. **Linter** (`npm run lint`): Prettier + ESLint
   2. **Type Check** (`npm run check`): TypeScript型チェック
-  3. **Tests** (`npm run test:run`): Vitest による324個のユニットテスト
+  3. **Tests** (`npm run test:run`): Vitest による337個のユニットテスト
 
 **テストカバレッジ**:
 

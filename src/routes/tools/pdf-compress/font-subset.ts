@@ -21,12 +21,17 @@ import {
 	decodePDFRawStream
 } from 'pdf-lib';
 import { scanContent } from './image-placement';
+import { CID_UNUSED_TABLES } from './hb-subset';
 
 const N = (name: string) => PDFName.of(name);
 const SUBSET_TAG = /^[A-Z]{6}\+/;
 
 /** HarfBuzz のサブセット化（WASM）の最小インターフェース */
-export type Subsetter = (font: Uint8Array, glyphIds: Iterable<number>) => Uint8Array | null;
+export type Subsetter = (
+	font: Uint8Array,
+	glyphIds: Iterable<number> | 'all',
+	options?: { dropTables?: string[]; noHinting?: boolean }
+) => Uint8Array | null;
 
 /** サブセット化の候補（同じフォントファイルを共有する Type0 フォントはまとめる） */
 type Candidate = {
@@ -113,16 +118,98 @@ function withTag(dict: PDFDict, key: string, tag: string) {
 		dict.set(N(key), N(`${tag}+${name.decodeText()}`));
 }
 
-/** サブセット化できるフォントがあるか（WASM を読み込むかの判定用） */
-export function hasSubsettableFonts(doc: PDFDocument): boolean {
-	for (const [, obj] of doc.context.enumerateIndirectObjects()) {
-		if (obj instanceof PDFDict && asCandidate(doc, obj)) return true;
-	}
-	return false;
+export type FontOptions = { noHinting: boolean };
+
+/** 文書内のすべての辞書（直接オブジェクトを含む）をたどる */
+function forEachDict(doc: PDFDocument, visit: (dict: PDFDict) => void) {
+	const walk = (obj: PDFObject) => {
+		const dict = obj instanceof PDFStream ? obj.dict : obj;
+		if (dict instanceof PDFDict) {
+			visit(dict);
+			for (const [, v] of dict.entries()) if (!(v instanceof PDFRef)) walk(v);
+		} else if (dict instanceof PDFArray) {
+			for (const v of dict.asArray()) if (!(v instanceof PDFRef)) walk(v);
+		}
+	};
+	for (const [, obj] of doc.context.enumerateIndirectObjects()) walk(obj);
 }
 
-/** 使用字形を集めてサブセット化し、置き換えたフォント数を返す */
-export function subsetFonts(doc: PDFDocument, subset: Subsetter): number {
+/**
+ * CIDFontType2 だけが使う TrueType のフォントファイル（単純な TrueType フォントと共有するものは除く。
+ * 単純な TrueType は cmap で文字を引くため表を削れない）
+ */
+function cidOnlyFontFiles(doc: PDFDocument): Set<PDFRef> {
+	// CIDFontType2 のディスクリプタを先に集める（/Type の有無には依存しない）
+	const cidDescriptors = new Set<PDFDict>();
+	forEachDict(doc, (dict) => {
+		if (dict.lookup(N('Subtype')) !== N('CIDFontType2')) return;
+		const descriptor = dictOf(dict, 'FontDescriptor');
+		if (descriptor) cidDescriptors.add(descriptor);
+	});
+	// /FontFile2 を持つ辞書のうち、CIDFontType2 のディスクリプタ以外から参照されるファイルは除く
+	const cid = new Set<PDFRef>();
+	const other = new Set<PDFRef>();
+	forEachDict(doc, (dict) => {
+		const ref = dict.get(N('FontFile2'));
+		if (ref instanceof PDFRef) (cidDescriptors.has(dict) ? cid : other).add(ref);
+	});
+	for (const ref of other) cid.delete(ref);
+	return cid;
+}
+
+/** フォント処理（WASM）が必要か：CIDFontType2 の TrueType フォントがあるか */
+export function hasOptimizableFonts(doc: PDFDocument): boolean {
+	return cidOnlyFontFiles(doc).size > 0;
+}
+
+function replaceFontFile(doc: PDFDocument, ref: PDFRef, stream: PDFRawStream, font: Uint8Array) {
+	const dict = stream.dict.clone(doc.context);
+	dict.delete(N('Filter'));
+	dict.delete(N('DecodeParms'));
+	dict.set(N('Length'), PDFNumber.of(font.length));
+	dict.set(N('Length1'), PDFNumber.of(font.length));
+	// 圧縮は後段の recompressStreams で行う
+	doc.context.assign(ref, PDFRawStream.of(dict, font));
+}
+
+/**
+ * CIDFontType2 のフォントファイルから、描画に使わない表（とヒンティング）を削る。字形はすべて残す
+ * skip のファイル（subsetFonts で処理済み）は除く。置き換えた数を返す
+ */
+export function optimizeFontPrograms(
+	doc: PDFDocument,
+	subset: Subsetter,
+	options: FontOptions,
+	skip: Set<PDFRef>
+): number {
+	let count = 0;
+	for (const ref of cidOnlyFontFiles(doc)) {
+		if (skip.has(ref)) continue;
+		const stream = doc.context.lookup(ref);
+		if (!(stream instanceof PDFRawStream)) continue;
+		let original: Uint8Array;
+		try {
+			original = decode(stream);
+		} catch {
+			continue;
+		}
+		const optimized = subset(original, 'all', {
+			dropTables: CID_UNUSED_TABLES,
+			noHinting: options.noHinting
+		});
+		if (!optimized || optimized.length >= original.length) continue;
+		replaceFontFile(doc, ref, stream, optimized);
+		count++;
+	}
+	return count;
+}
+
+/** 使用字形を集めてサブセット化し、置き換えたフォントファイルの参照を返す */
+export function subsetFonts(
+	doc: PDFDocument,
+	subset: Subsetter,
+	options: FontOptions
+): Set<PDFRef> {
 	const { context } = doc;
 	const candidates = new Map<PDFRef, Candidate>(); // FontFile2 の参照ごと
 	const byType0 = new Map<PDFDict, Candidate>();
@@ -141,7 +228,7 @@ export function subsetFonts(doc: PDFDocument, subset: Subsetter): number {
 		byType0.set(obj, c);
 		candidateDescriptors.add(info.descriptor);
 	}
-	if (candidates.size === 0) return 0;
+	if (candidates.size === 0) return new Set();
 	// 候補外のフォント（CMap 名のエンコーディング、単純な TrueType など）と共有しているフォントファイルは、
 	// その文字を集めていないため対象外（重複排除で別々のフォントが同じファイルを指すことがある）
 	// ディスクリプタは直接オブジェクトのこともあるため、辞書・配列の中までたどる
@@ -289,7 +376,7 @@ export function subsetFonts(doc: PDFDocument, subset: Subsetter): number {
 		}
 	}
 
-	if (incomplete) return 0;
+	if (incomplete) return new Set();
 
 	// 走査していないリソース辞書から参照されるフォントは対象外
 	const exclude = (font: PDFObject | undefined) => {
@@ -325,7 +412,8 @@ export function subsetFonts(doc: PDFDocument, subset: Subsetter): number {
 		else findFonts(obj, false);
 	}
 
-	let count = 0;
+	const done = new Set<PDFRef>();
+	const cidOnly = cidOnlyFontFiles(doc);
 	for (const c of candidates.values()) {
 		if (excluded.has(c)) continue;
 		const stream = context.lookup(c.fontFileRef) as PDFRawStream;
@@ -335,16 +423,12 @@ export function subsetFonts(doc: PDFDocument, subset: Subsetter): number {
 		} catch {
 			continue;
 		}
-		const subsetted = subset(original, [0, ...c.glyphs]);
+		const subsetted = subset(original, [0, ...c.glyphs], {
+			dropTables: cidOnly.has(c.fontFileRef) ? CID_UNUSED_TABLES : [],
+			noHinting: options.noHinting
+		});
 		if (!subsetted || subsetted.length >= original.length) continue;
-
-		const dict = stream.dict.clone(context);
-		dict.delete(N('Filter'));
-		dict.delete(N('DecodeParms'));
-		dict.set(N('Length'), PDFNumber.of(subsetted.length));
-		dict.set(N('Length1'), PDFNumber.of(subsetted.length));
-		// 圧縮は後段の recompressStreams で行う
-		context.assign(c.fontFileRef, PDFRawStream.of(dict, subsetted));
+		replaceFontFile(doc, c.fontFileRef, stream, subsetted);
 
 		// サブセットであることを示す接頭辞を付け、収録字形の一覧（/CIDSet）は実態と合わなくなるため削除する
 		const tag = subsetTag(subsetted);
@@ -352,7 +436,7 @@ export function subsetFonts(doc: PDFDocument, subset: Subsetter): number {
 		withTag(c.cidFont, 'BaseFont', tag);
 		for (const t0 of c.type0Fonts) withTag(t0, 'BaseFont', tag);
 		c.descriptor.delete(N('CIDSet'));
-		count++;
+		done.add(c.fontFileRef);
 	}
-	return count;
+	return done;
 }

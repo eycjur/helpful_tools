@@ -35,15 +35,28 @@
 		'load',
 		'optimize',
 		'fonts',
+		'paths',
 		'images',
 		'streams',
 		'save',
 		'analyze'
 	];
+	/**
+	 * 全体の進捗（0〜1）。各段階に均等な区間（8段階なら1/8ずつ）を割り当て、
+	 * 今の段階の区間を、その段階内の件数の進み具合で埋めていく
+	 */
+	const overall = $derived.by(() => {
+		if (!progress) return 0;
+		const index = STAGES.indexOf(progress.stage);
+		const fraction = progress.total ? (progress.done ?? 0) / progress.total : 0;
+		return (index + fraction) / STAGES.length;
+	});
+
 	const STAGE_LABELS: Record<CompressStage, string> = {
 		load: 'PDFを読み込み中',
 		optimize: '重複・不要データを整理中',
-		fonts: 'フォントを使用文字だけに削減中',
+		fonts: 'フォントを最適化中',
+		paths: '図形の座標を丸め中',
 		images: '画像を再圧縮中',
 		streams: 'データを再圧縮中',
 		save: '保存中',
@@ -233,26 +246,29 @@
 				</div>
 
 				{#if isCompressing}
-					{@const step = progress ? STAGES.indexOf(progress.stage) + 1 : 0}
 					<div class="mt-4" role="status" aria-live="polite">
-						<p class="mb-1 text-sm text-gray-700">
-							{#if progress}
-								{step}/{STAGES.length}
-								{STAGE_LABELS[progress.stage]}
-								{#if progress.total}（{progress.done} / {progress.total}）{/if}
-							{:else}
-								準備中...
-							{/if}
-						</p>
-						<div class="h-2 overflow-hidden rounded bg-gray-200">
-							{#if progress?.total}
-								<div
-									class="h-2 rounded bg-blue-500 transition-[width]"
-									style="width: {((progress.done ?? 0) / progress.total) * 100}%"
-								></div>
-							{:else}
-								<div class="h-2 w-1/3 animate-pulse rounded bg-blue-300"></div>
-							{/if}
+						<div class="mb-1 flex justify-between text-sm text-gray-700">
+							<span>
+								{#if progress}
+									{STAGE_LABELS[progress.stage]}
+									{#if progress.total}（{progress.done} / {progress.total}）{/if}
+								{:else}
+									準備中...
+								{/if}
+							</span>
+							<span class="font-mono">{Math.round(overall * 100)}%</span>
+						</div>
+						<div
+							class="h-2 overflow-hidden rounded bg-gray-200"
+							role="progressbar"
+							aria-valuemin="0"
+							aria-valuemax="100"
+							aria-valuenow={Math.round(overall * 100)}
+						>
+							<div
+								class="h-2 rounded bg-blue-500 transition-[width] duration-300"
+								style="width: {overall * 100}%"
+							></div>
 						</div>
 					</div>
 				{/if}
@@ -285,8 +301,9 @@
 								（{((1 - result.bytes.length / file.size) * 100).toFixed(1)}%削減）
 							</p>
 							<p class="text-xs text-gray-600">
-								画像の再圧縮 {result.stats.images}件・フォントの削減 {result.stats
-									.fonts}件・重複の統合
+								画像の再圧縮 {result.stats.images}件・フォントの最適化 {result.stats
+									.fonts}件・座標の丸め
+								{result.stats.paths}件・重複の統合
 								{result.stats.deduped}件・不要データの削除
 								{result.stats.removed}件・データの再圧縮 {result.stats.recompressed}件
 							</p>

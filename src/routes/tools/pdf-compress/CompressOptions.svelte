@@ -21,6 +21,12 @@
 		{ value: 72, label: '72 ppi' },
 		{ value: 50, label: '50 ppi（最大圧縮）' }
 	];
+	const ROUND_OPTIONS: { value: number | null; label: string }[] = [
+		{ value: null, label: '丸めない' },
+		{ value: 0.01, label: '0.01pt（約0.0035mm）' },
+		{ value: 0.1, label: '0.1pt（約0.035mm）' },
+		{ value: 0.25, label: '0.25pt（約0.09mm）' }
+	];
 	const QUALITY_OPTIONS = [
 		{ value: 0.3, label: '0.3（最大圧縮）' },
 		{ value: 0.4, label: '0.4' },
@@ -108,8 +114,52 @@
 			{/if}
 		</fieldset>
 
+		<fieldset class="space-y-2">
+			<legend class="text-sm font-medium">フォント・図形</legend>
+			<label class="flex items-start gap-2 text-sm">
+				<input type="checkbox" bind:checked={custom.extras.subsetFonts} class="mt-1" />
+				<span>
+					フォントを最適化する<br />
+					<span class="text-xs text-gray-600"
+						>まるごと埋め込まれたフォントを使用文字だけにし、描画に使わない表を削ります（見た目は変わりません）</span
+					>
+				</span>
+			</label>
+			<label class="flex items-start gap-2 pl-6 text-sm">
+				<input
+					type="checkbox"
+					bind:checked={custom.extras.removeHinting}
+					disabled={!custom.extras.subsetFonts}
+					class="mt-1"
+				/>
+				<span>
+					ヒンティングも削除する<br />
+					<span class="text-xs text-gray-600"
+						>小さな文字を画面表示するための調整命令。一部の環境で小さな文字がわずかに荒く見えることがあります</span
+					>
+				</span>
+			</label>
+			<div>
+				<label for="round-tolerance" class="mb-1 block text-xs text-gray-600"
+					>図形の座標の丸め（紙面上の誤差）</label
+				>
+				<select
+					id="round-tolerance"
+					bind:value={custom.extras.roundTolerancePt}
+					class="rounded border border-gray-300 bg-white px-2 py-1 text-sm"
+				>
+					{#each ROUND_OPTIONS as o (o.value)}
+						<option value={o.value}>{o.label}</option>
+					{/each}
+				</select>
+				<p class="mt-1 text-xs text-gray-600">
+					図の多いPDFで効果があります。大きく拡大すると差が見える場合があります。
+				</p>
+			</div>
+		</fieldset>
+
 		<fieldset class="space-y-1">
-			<legend class="text-sm font-medium">フォント・付加データ（見た目は変わりません）</legend>
+			<legend class="text-sm font-medium">削除する付加データ（見た目は変わりません）</legend>
 			<label class="flex items-center gap-2 text-sm">
 				<input type="checkbox" bind:checked={custom.extras.removeThumbnails} />ページのサムネイル
 			</label>
@@ -124,12 +174,6 @@
 					type="checkbox"
 					bind:checked={custom.extras.removeMetadata}
 				/>XMPメタデータ（作成者・作成ツール等の詳細情報）
-			</label>
-			<label class="flex items-center gap-2 text-sm">
-				<input
-					type="checkbox"
-					bind:checked={custom.extras.subsetFonts}
-				/>フォントを使用文字だけにする（まるごと埋め込まれたフォント）
 			</label>
 			<label class="flex items-center gap-2 text-sm">
 				<input

@@ -97,10 +97,16 @@ const NUMBER_RE = /^[+-]?(\d+\.?\d*|\.\d+)$/;
  */
 export function scanContent(
 	bytes: Uint8Array,
-	onOp: (op: string, operands: Operand[]) => void
-): void {
+	onOp: (op: string, operands: Operand[], spans: [number, number][]) => void
+): number {
 	let i = 0;
 	let operands: Operand[] = [];
+	/** 各オペランドの元データ上の位置 [開始, 終了)（座標の丸めで書き換えるため） */
+	let spans: [number, number][] = [];
+	const push = (operand: Operand, start: number, end: number) => {
+		operands.push(operand);
+		spans.push([start, end]);
+	};
 	const len = bytes.length;
 	const readRegular = () => {
 		const start = i;
@@ -123,14 +129,14 @@ export function scanContent(
 				else if (bytes[i] === 0x28) depth++;
 				else if (bytes[i] === 0x29 && --depth === 0) break;
 			}
-			operands.push({ bytes: decodeLiteral(bytes.subarray(start, Math.min(i, len))) });
+			push({ bytes: decodeLiteral(bytes.subarray(start, Math.min(i, len))) }, start - 1, i + 1);
 			i++;
 		} else if (b === 0x3c /* < */) {
 			if (bytes[i + 1] === 0x3c) i += 2;
 			else {
 				const start = i + 1;
 				while (i < len && bytes[i] !== 0x3e) i++;
-				operands.push({ bytes: decodeHex(bytes.subarray(start, i)) });
+				push({ bytes: decodeHex(bytes.subarray(start, i)) }, start - 1, i + 1);
 				i++;
 			}
 		} else if (b === 0x3e /* > */ || b === 0x5b || b === 0x5d || b === 0x7b || b === 0x7d) {
@@ -138,15 +144,17 @@ export function scanContent(
 		} else if (b === 0x2f /* / */) {
 			i++;
 			// 名前の #xx エスケープは、照合時の PDFName.of が復号するため生のまま返す
-			operands.push({ name: readRegular() });
+			const start = i - 1;
+			push({ name: readRegular() }, start, i);
 		} else {
+			const start = i;
 			const token = readRegular();
 			if (token === '') {
 				i++; // 想定外の区切り文字
 			} else if (NUMBER_RE.test(token)) {
-				operands.push(Number(token));
+				push(Number(token), start, i);
 			} else if (token === 'true' || token === 'false' || token === 'null') {
-				operands.push(null);
+				push(null, start, i);
 			} else if (token === 'ID') {
 				// インライン画像のデータ: 空白 + "EI" + 空白（または末尾）まで読み飛ばす
 				i++;
@@ -162,12 +170,16 @@ export function scanContent(
 					i++;
 				i += 2;
 				operands = [];
+				spans = [];
 			} else {
-				onOp(token, operands);
+				onOp(token, operands, spans);
 				operands = [];
+				spans = [];
 			}
 		}
 	}
+	// 演算子に使われずに残ったオペランドの数（Contents が演算子の途中で分割されているかの判定用）
+	return operands.length;
 }
 
 function decodeStream(stream: PDFRawStream): Uint8Array {
@@ -228,7 +240,25 @@ function numbers(arr: PDFObject | undefined, count: number): number[] | null {
  * 走査量が上限を超えた場合は null（呼び出し側は配置不明として扱う）
  */
 export function collectImagePlacements(doc: PDFDocument): Map<PDFRef, Placement> | null {
+	return collectPlacements(doc)?.images ?? null;
+}
+
+/** 変換行列の拡大率（2つの軸のうち大きいほう） */
+export function scaleOf(m: Matrix): number {
+	return Math.max(Math.hypot(m[0], m[1]), Math.hypot(m[2], m[3]));
+}
+
+/**
+ * 画像の描画サイズに加え、Form XObject ごとの最大の拡大率（ページの基準座標に対する倍率）も集める
+ * 拡大率を追えない Form（パターン・Type3 内、入れ子の深さ超過）は Infinity
+ */
+export function collectPlacements(
+	doc: PDFDocument
+): { images: Map<PDFRef, Placement>; forms: Map<PDFRef, number> } | null {
 	const placements = new Map<PDFRef, Placement>();
+	const forms = new Map<PDFRef, number>();
+	const recordForm = (ref: PDFRef, scale: number) =>
+		forms.set(ref, Math.max(forms.get(ref) ?? 0, scale));
 	const formCache = new Map<PDFRef, Uint8Array | null>();
 	let doCount = 0;
 
@@ -263,11 +293,17 @@ export function collectImagePlacements(doc: PDFDocument): Map<PDFRef, Placement>
 		inherited: PDFDict | undefined,
 		formStack: PDFRef[]
 	) => {
-		if (formStack.length >= MAX_FORM_DEPTH || formStack.includes(ref)) return;
+		if (formStack.includes(ref)) return;
+		if (formStack.length >= MAX_FORM_DEPTH) {
+			recordForm(ref, Infinity);
+			return;
+		}
+		const formCtm = multiply(readMatrix(form.dict), ctm);
+		recordForm(ref, scaleOf(formCtm));
 		const contents = formContents(ref, form);
 		if (!contents) return;
 		const resources = form.dict.lookupMaybe(N('Resources'), PDFDict) ?? inherited;
-		run(contents, resources, multiply(readMatrix(form.dict), ctm), [...formStack, ref]);
+		run(contents, resources, formCtm, [...formStack, ref]);
 	};
 
 	const run = (
@@ -317,8 +353,10 @@ export function collectImagePlacements(doc: PDFDocument): Map<PDFRef, Placement>
 			if (!(xobj instanceof PDFRawStream)) continue;
 			const subtype = xobj.dict.lookup(N('Subtype'));
 			if (subtype === N('Image')) recordImage(ref, xobj, UNBOUNDED);
-			else if (subtype === N('Form'))
+			else if (subtype === N('Form')) {
+				recordForm(ref, Infinity);
 				markUnbounded(xobj.dict.lookupMaybe(N('Resources'), PDFDict), visited);
+			}
 		}
 	};
 
@@ -378,14 +416,33 @@ export function collectImagePlacements(doc: PDFDocument): Map<PDFRef, Placement>
 		throw e;
 	}
 
+	// 直接オブジェクトの中（ページのリソースに埋め込まれた Type3 フォントなど）までたどる
 	const visited = new Set<PDFRef>();
-	for (const [, obj] of doc.context.enumerateIndirectObjects()) {
+	const scanUnbounded = (obj: PDFObject) => {
 		const dict = obj instanceof PDFRawStream ? obj.dict : obj;
-		if (!(dict instanceof PDFDict)) continue;
-		const isTilingPattern = dict.lookupMaybe(N('PatternType'), PDFNumber)?.asNumber() === 1;
-		const isType3 = dict.lookup(N('Subtype')) === N('Type3');
-		if (isTilingPattern || isType3)
-			markUnbounded(dict.lookupMaybe(N('Resources'), PDFDict), visited);
-	}
-	return placements;
+		if (dict instanceof PDFDict) {
+			const patternType = dict.lookup(N('PatternType'));
+			const isTilingPattern = patternType instanceof PDFNumber && patternType.asNumber() === 1;
+			const isType3 = dict.lookup(N('Subtype')) === N('Type3');
+			if (isTilingPattern || isType3) {
+				const resources = dict.lookup(N('Resources'));
+				if (resources instanceof PDFDict) markUnbounded(resources, visited);
+			}
+			// ExtGState のソフトマスク（/SMask の /G）は gs で使われ、描画サイズを追っていない
+			const smask = dict.lookup(N('SMask'));
+			const group = smask instanceof PDFDict ? smask.get(N('G')) : undefined;
+			if (group instanceof PDFRef) {
+				recordForm(group, Infinity);
+				const form = doc.context.lookup(group);
+				const resources =
+					form instanceof PDFRawStream ? form.dict.lookup(N('Resources')) : undefined;
+				if (resources instanceof PDFDict) markUnbounded(resources, visited);
+			}
+			for (const [, v] of dict.entries()) if (!(v instanceof PDFRef)) scanUnbounded(v);
+		} else if (dict instanceof PDFArray) {
+			for (const v of dict.asArray()) if (!(v instanceof PDFRef)) scanUnbounded(v);
+		}
+	};
+	for (const [, obj] of doc.context.enumerateIndirectObjects()) scanUnbounded(obj);
+	return { images: placements, forms };
 }
