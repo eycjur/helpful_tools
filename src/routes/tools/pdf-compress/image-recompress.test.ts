@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { PDFDocument, PDFRawStream } from 'pdf-lib';
 import {
 	readPredictor,
+	componentsOf,
 	computeTargetSize,
 	countColorsUpTo,
 	fromRgba,
@@ -10,14 +11,33 @@ import {
 } from './image-recompress';
 
 describe('computeTargetSize', () => {
-	// A4縦の長辺 842pt ≒ 11.69インチ。150ppiなら長辺の上限は1754px
-	it('上限を超える画像を縦横比を保って縮小する', () => {
-		expect(computeTargetSize(3508, 2480, 842, 150)).toEqual({ width: 1754, height: 1240 });
+	it('どちらの軸も上限を下回らない範囲で、縦横比を保って縮小する', () => {
+		// 3000×2000pxを幅10インチ×高さ5インチに描く → 横300ppi・縦400ppi。横を150ppiにすると縦は200ppi
+		expect(computeTargetSize(3000, 2000, { widthIn: 10, heightIn: 5 }, 150)).toEqual({
+			width: 1500,
+			height: 1000
+		});
 	});
 
 	it('上限以下・上限なしの場合は縮小しない', () => {
-		expect(computeTargetSize(1000, 800, 842, 150)).toBeNull();
-		expect(computeTargetSize(9000, 9000, 842, null)).toBeNull();
+		expect(computeTargetSize(1000, 800, { widthIn: 8, heightIn: 6.4 }, 150)).toBeNull();
+		expect(computeTargetSize(9000, 9000, { widthIn: 1, heightIn: 1 }, null)).toBeNull();
+	});
+});
+
+describe('componentsOf', () => {
+	it('DeviceRGB/DeviceGrayと成分数3/1のICCBasedを対象にし、CMYKは対象外', async () => {
+		const doc = await PDFDocument.create();
+		const icc = (n: number) =>
+			doc.context.register(PDFRawStream.of(doc.context.obj({ N: n }), new Uint8Array()));
+		const cs = (colorSpace: Parameters<typeof doc.context.obj>[0]) =>
+			componentsOf(doc.context.obj({ ColorSpace: colorSpace }));
+		expect(cs('DeviceRGB')).toBe(3);
+		expect(cs('DeviceGray')).toBe(1);
+		expect(cs(['ICCBased', icc(3)])).toBe(3);
+		expect(cs(['ICCBased', icc(1)])).toBe(1);
+		expect(cs(['ICCBased', icc(4)])).toBeNull();
+		expect(cs('DeviceCMYK')).toBeNull();
 	});
 });
 

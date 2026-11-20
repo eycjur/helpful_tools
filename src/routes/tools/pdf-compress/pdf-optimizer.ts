@@ -1,7 +1,7 @@
 /**
  * PDFの構造最適化と容量内訳の解析（pdf-lib使用、ブラウザAPI非依存）
  * - 内訳: ストリームを画像・フォント・ページ描画命令などに分類して容量を集計
- * - 最適化: 付加データ削除・同一ストリームの重複排除・到達不能オブジェクト削除・非圧縮ストリームのFlate化
+ * - 最適化: 付加データ削除・同一ストリームの重複排除・到達不能オブジェクト削除・ストリームの最高レベルFlate再圧縮
  */
 import {
 	PDFArray,
@@ -12,8 +12,12 @@ import {
 	PDFObject,
 	PDFRawStream,
 	PDFRef,
-	PDFStream
+	PDFStream,
+	PDFNull,
+	decodePDFRawStream
 } from 'pdf-lib';
+import { zlibSync } from 'fflate';
+import { collectImagePlacements } from './image-placement';
 
 export type SpaceCategory =
 	| 'image'
@@ -42,8 +46,8 @@ export type ImageInfo = {
 	filter: string;
 	colorSpace: string;
 	bytes: number;
-	/** ページの長辺に対する最大の実効解像度（ppi）。画像が全面に配置された場合の値で、実際の配置が小さいほど高くなる */
-	ppiAtPageSize: number;
+	/** 最も大きく描かれた箇所での実効解像度（ppi）。ページの描画命令から配置を特定できなければnull */
+	effectivePpi: number | null;
 };
 
 export type SpaceReport = {
@@ -203,28 +207,87 @@ export function removeExtras(doc: PDFDocument, options: OptimizeOptions): void {
 	}
 }
 
-/** Filterなしのストリームをdeflate圧縮（CompressionStreamの'deflate'はFlateDecodeと同じzlib形式） */
-export async function deflateUncompressedStreams(doc: PDFDocument): Promise<number> {
+/** 復号して再符号化できる汎用フィルタ（画像専用のDCT/JPX/JBIG2/CCITTは除く） */
+const GENERIC_FILTERS = new Set([
+	'FlateDecode',
+	'LZWDecode',
+	'ASCIIHexDecode',
+	'ASCII85Decode',
+	'RunLengthDecode'
+]);
+
+function hasDecodeParms(dict: PDFDict): boolean {
+	const parms = dict.lookup(N('DecodeParms'));
+	if (parms === undefined || parms === PDFNull) return false;
+	if (parms instanceof PDFArray)
+		return parms.asArray().some((p) => dict.context.lookup(p) !== PDFNull);
+	return true;
+}
+
+/**
+ * 描画命令・フォント・図などのストリームを最高レベル（9）のFlateで圧縮し直し、小さくなったものだけ置き換える
+ * - Filterなし、または汎用フィルタのみ（予測子なし）: 完全に復号してFlate 1段にする
+ * - 予測子付きの単一FlateDecode: pdf-libは予測子を戻さないため、予測済みのデータを圧縮し直してDecodeParmsを保つ
+ * - JPEG（単一DCTDecode）: 可逆のFlateを重ねる
+ */
+export function recompressStreams(doc: PDFDocument): number {
 	let count = 0;
 	for (const [ref, obj] of doc.context.enumerateIndirectObjects()) {
-		if (!(obj instanceof PDFRawStream) || obj.dict.has(N('Filter'))) continue;
+		if (!(obj instanceof PDFRawStream)) continue;
 		// XMPは非圧縮が推奨（PDF/Aでは必須）のため対象外
 		if (nameOf(obj.dict.get(N('Type'))) === 'Metadata') continue;
-		const contents = obj.getContents();
-		if (contents.length < 64) continue;
-		const compressed = new Uint8Array(
-			await new Response(
-				new Blob([contents]).stream().pipeThrough(new CompressionStream('deflate'))
-			).arrayBuffer()
-		);
-		if (compressed.length >= contents.length) continue;
+		const filters = filterNames(obj.dict);
+		if (filters.length === 1 && filters[0] === 'DCTDecode') {
+			if (wrapJpegWithFlate(doc, ref, obj)) count++;
+			continue;
+		}
+		if (!filters.every((f) => GENERIC_FILTERS.has(f))) continue;
+		const keepParms = hasDecodeParms(obj.dict);
+		if (keepParms && !(filters.length === 1 && filters[0] === 'FlateDecode')) continue;
+
+		const original = obj.getContents();
+		if (original.length < 64) continue;
+		let compressed: Uint8Array;
+		try {
+			const decoded =
+				filters.length === 0
+					? original
+					: (decodePDFRawStream(obj) as { decode(): Uint8Array }).decode();
+			compressed = zlibSync(decoded, { level: 9 });
+		} catch {
+			continue; // 壊れたストリームは元のまま
+		}
+		if (compressed.length >= original.length) continue;
+
 		const dict = obj.dict.clone(doc.context);
 		dict.set(N('Filter'), N('FlateDecode'));
+		if (keepParms) {
+			// 単一フィルタなので DecodeParms も1要素に正規化する
+			const parms = dict.lookup(N('DecodeParms'));
+			if (parms instanceof PDFArray) dict.set(N('DecodeParms'), parms.get(0));
+		} else dict.delete(N('DecodeParms'));
 		dict.set(N('Length'), PDFNumber.of(compressed.length));
 		doc.context.assign(ref, PDFRawStream.of(dict, compressed));
 		count++;
 	}
 	return count;
+}
+
+/**
+ * JPEGの上に可逆のFlateを重ねる（[/FlateDecode /DCTDecode]）。JPEGのヘッダーや量子化後の係数に偏りがあると数％小さくなる
+ * 小さくならない場合とDCTのDecodeParms付きは何もしない
+ */
+function wrapJpegWithFlate(doc: PDFDocument, ref: PDFRef, obj: PDFRawStream): boolean {
+	if (hasDecodeParms(obj.dict)) return false;
+	const original = obj.getContents();
+	const compressed = zlibSync(original, { level: 9 });
+	if (compressed.length >= original.length) return false;
+	const dict = obj.dict.clone(doc.context);
+	dict.set(N('Filter'), doc.context.obj(['FlateDecode', 'DCTDecode']));
+	dict.delete(N('DecodeParms'));
+	dict.set(N('Length'), PDFNumber.of(compressed.length));
+	doc.context.assign(ref, PDFRawStream.of(dict, compressed));
+	return true;
 }
 
 /** 電子署名（/ByteRange を持つ署名辞書）を含むか */
@@ -243,6 +306,17 @@ export function maxPageSidePt(doc: PDFDocument): number {
 		max = Math.max(max, width, height);
 	}
 	return max;
+}
+
+function effectivePpi(
+	width: number,
+	height: number,
+	placement: { widthIn: number; heightIn: number } | undefined
+): number | null {
+	if (!placement || !(placement.widthIn > 0) || !(placement.heightIn > 0)) return null;
+	// 縮小対象外（パターン内など）の画像は大きさを追えないため表示しない
+	if (!Number.isFinite(placement.widthIn) || !Number.isFinite(placement.heightIn)) return null;
+	return Math.round(Math.min(width / placement.widthIn, height / placement.heightIn));
 }
 
 function isFontFile(dict: PDFDict): boolean {
@@ -266,7 +340,7 @@ export function analyzeSpace(doc: PDFDocument, fileSize: number): SpaceReport {
 		if (thumb instanceof PDFRef) thumbRefs.add(thumb);
 	}
 
-	const pageSideInch = maxPageSidePt(doc) / 72;
+	const placements = collectImagePlacements(doc) ?? new Map();
 	const totals = new Map<SpaceCategory, number>();
 	const add = (c: SpaceCategory, n: number) => totals.set(c, (totals.get(c) ?? 0) + n);
 	const images: ImageInfo[] = [];
@@ -295,7 +369,7 @@ export function analyzeSpace(doc: PDFDocument, fileSize: number): SpaceReport {
 								? nameOf(cs.lookup(0))
 								: '',
 					bytes,
-					ppiAtPageSize: pageSideInch > 0 ? Math.round(Math.max(width, height) / pageSideInch) : 0
+					effectivePpi: effectivePpi(width, height, placements.get(ref))
 				});
 			} else if (type === 'EmbeddedFile') add('attachment', bytes);
 			else if (type === 'Metadata') add('metadata', bytes);

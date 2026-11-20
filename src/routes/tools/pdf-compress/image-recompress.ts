@@ -2,7 +2,9 @@
  * PDF内の画像の再圧縮（Canvas使用のためブラウザ専用、純粋関数部分はテスト可能）
  * - 写真（色数が多い画像）: JPEGで再符号化
  * - スクリーンショット・図（色数が少ない画像）: JPEGにせず可逆（Flate）のまま。縮小時のみ再符号化
- * - 解像度上限: 画像の長辺がページの長辺×上限ppiを超える場合に縮小
+ * - 解像度上限: 紙面に描かれた大きさでの実効解像度が上限を超える場合に縮小
+ *   （配置を特定できない画像は、ページの長辺いっぱいに描かれるものとみなす）
+ * - 透明度マスク（SMask）: 親画像の配置に合わせて可逆のまま縮小する
  */
 import {
 	PDFDocument,
@@ -15,54 +17,37 @@ import {
 	decodePDFRawStream,
 	PDFDict
 } from 'pdf-lib';
+import { unzlibSync, zlibSync } from 'fflate';
 import { filterNames, maxPageSidePt } from './pdf-optimizer';
+import { collectImagePlacements, type Placement } from './image-placement';
 
 export type ImageRecompressOptions = {
 	quality: number; // JPEG品質 0-1
-	maxPpi: number | null; // ページ全面に配置した場合の解像度上限。nullなら縮小しない
+	maxPpi: number | null; // 紙面での実効解像度の上限。nullなら縮小しない
+	/** DeviceGray の画像もJPEGにする（カラーのJPEGになるため色空間はDeviceRGBに変わる） */
+	jpegGray: boolean;
+	/** 色数の少ない画像（スクリーンショット・図）もJPEGにする（文字や線がにじむことがある） */
+	jpegFewColors: boolean;
 };
 
-/** 画像の圧縮レベル（解像度は縦横両方に効くため主に段階づけ、品質は補助） */
-export const IMAGE_PRESETS = {
-	low: {
-		label: '弱（高画質）',
-		note: '300 ppi・品質0.92。印刷する資料向け',
-		maxPpi: 300,
-		quality: 0.92
-	},
-	medium: {
-		label: '中（推奨）',
-		note: '150 ppi・品質0.85。画面で見る資料・メール添付向け',
-		maxPpi: 150,
-		quality: 0.85
-	},
-	high: {
-		label: '強（高圧縮）',
-		note: '96 ppi・品質0.6。容量制限が厳しい場合向け',
-		maxPpi: 96,
-		quality: 0.6
-	}
-} as const satisfies Record<string, ImageRecompressOptions & { label: string; note: string }>;
-
-export type ImagePresetKey = keyof typeof IMAGE_PRESETS;
+/** Canvasで扱える面積の上限（iOS Safari等。超えると描画が無音で失敗し、黒や透明の画像になる） */
+export const MAX_CANVAS_PIXELS = 16_777_216;
 
 /** この色数以下ならスクリーンショット・図とみなし、JPEGにしない */
 export const FEW_COLORS_THRESHOLD = 256;
 
 const N = (name: string) => PDFName.of(name);
 
-/** 解像度上限に合わせた縮小後のサイズ（縮小不要ならnull） */
+/** 実効解像度の上限に合わせた縮小後のサイズ（縮小不要ならnull）。最も大きく描かれた軸に合わせて縦横比を保つ */
 export function computeTargetSize(
 	width: number,
 	height: number,
-	pageSidePt: number,
+	drawn: Placement,
 	maxPpi: number | null
 ): { width: number; height: number } | null {
-	if (maxPpi === null || pageSidePt <= 0) return null;
-	const limit = Math.round((pageSidePt / 72) * maxPpi);
-	const long = Math.max(width, height);
-	if (long <= limit) return null;
-	const ratio = limit / long;
+	if (maxPpi === null) return null;
+	const ratio = Math.max((drawn.widthIn * maxPpi) / width, (drawn.heightIn * maxPpi) / height);
+	if (!(ratio > 0) || ratio >= 1) return null;
 	return {
 		width: Math.max(1, Math.round(width * ratio)),
 		height: Math.max(1, Math.round(height * ratio))
@@ -144,12 +129,22 @@ export function fromRgba(rgba: Uint8ClampedArray, components: 1 | 3): Uint8Array
 	return out;
 }
 
-/** 再圧縮の対象にできる色空間の成分数（DeviceRGB/DeviceGrayのみ） */
-function componentsOf(dict: PDFDict): 1 | 3 | null {
+/** 再圧縮の対象にできる色空間の成分数（DeviceRGB/DeviceGray、成分数3/1のICCBased） */
+export function componentsOf(dict: PDFDict): 1 | 3 | null {
 	const cs = dict.lookup(N('ColorSpace'));
-	if (!(cs instanceof PDFName)) return null;
-	if (cs.decodeText() === 'DeviceRGB') return 3;
-	if (cs.decodeText() === 'DeviceGray') return 1;
+	if (cs instanceof PDFName) {
+		if (cs.decodeText() === 'DeviceRGB') return 3;
+		if (cs.decodeText() === 'DeviceGray') return 1;
+		return null;
+	}
+	if (cs instanceof PDFArray && cs.size() === 2 && cs.lookup(0) === N('ICCBased')) {
+		const profile = cs.lookup(1);
+		const n =
+			profile instanceof PDFRawStream
+				? profile.dict.lookupMaybe(N('N'), PDFNumber)?.asNumber()
+				: undefined;
+		if (n === 3 || n === 1) return n;
+	}
 	return null;
 }
 
@@ -178,12 +173,6 @@ async function canvasToJpeg(canvas: HTMLCanvasElement, quality: number): Promise
 	return new Uint8Array(await blob.arrayBuffer());
 }
 
-async function deflate(bytes: Uint8Array): Promise<Uint8Array> {
-	const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate'));
-	return new Uint8Array(await new Response(stream).arrayBuffer());
-}
-
-/** FlateDecode画像を生画素に復号（8bpc、PNG予測子対応）。対応外ならnull */
 /**
  * DecodeParms から予測子を読む（単一要素の配列にも対応）。対応外の指定なら null
  * PNG予測子は Colors・Columns が画像辞書と一致する場合のみ扱う
@@ -208,6 +197,7 @@ export function readPredictor(
 	return predictor;
 }
 
+/** FlateDecode画像を生画素に復号（8bpc、PNG予測子対応）。対応外ならnull */
 function decodeFlatePixels(
 	stream: PDFRawStream,
 	width: number,
@@ -227,13 +217,15 @@ type Replacement = {
 	filter: 'DCTDecode' | 'FlateDecode';
 	width: number;
 	height: number;
-	colorSpace: 'DeviceRGB' | 'DeviceGray';
+	/** keep: 元の色空間（ICCBased含む）を保つ。DeviceRGB: CanvasのJPEG出力が3成分のため書き換える */
+	colorSpace: 'keep' | 'DeviceRGB';
 };
 
 async function recompressImage(
 	stream: PDFRawStream,
-	pageSidePt: number,
-	options: ImageRecompressOptions
+	drawn: Placement,
+	options: ImageRecompressOptions,
+	isMask: boolean
 ): Promise<Replacement | null> {
 	const dict = stream.dict;
 	const filters = filterNames(dict);
@@ -241,35 +233,47 @@ async function recompressImage(
 	const width = dict.lookupMaybe(N('Width'), PDFNumber)?.asNumber() ?? 0;
 	const height = dict.lookupMaybe(N('Height'), PDFNumber)?.asNumber() ?? 0;
 	const components = componentsOf(dict);
+	// JPEGに可逆のFlateを重ねたもの（[/FlateDecode /DCTDecode]）はJPEGとして扱う
+	const isJpeg =
+		(filters.length === 1 && filters[0] === 'DCTDecode') ||
+		(filters.length === 2 && filters[0] === 'FlateDecode' && filters[1] === 'DCTDecode');
 	// マスク画像・カラーキーマスク・Decode配列付きは非可逆化で見た目が変わるため対象外
 	if (
-		filters.length !== 1 ||
+		(!isJpeg && filters.length !== 1) ||
 		bpc !== 8 ||
 		!components ||
 		width < 1 ||
 		height < 1 ||
+		width * height > MAX_CANVAS_PIXELS ||
 		dict.has(N('ImageMask')) ||
 		dict.has(N('Mask')) ||
 		dict.has(N('Decode'))
 	)
 		return null;
 
-	const target = computeTargetSize(width, height, pageSidePt, options.maxPpi) ?? { width, height };
+	const target = computeTargetSize(width, height, drawn, options.maxPpi) ?? { width, height };
+	const resized = target.width !== width || target.height !== height;
+	// CanvasのJPEG出力はカラー（3成分）のみ。Grayは、ICCプロファイルのない DeviceGray を許可した場合だけJPEGにする
+	// （ICC付きGrayは階調が、印刷ではK版のみの黒がRGBの黒に変わるため）。透明度マスクは1成分である必要があるため常に可逆
+	const jpegAllowed =
+		!isMask &&
+		(components === 3 || (options.jpegGray && dict.lookup(N('ColorSpace')) === N('DeviceGray')));
 
-	if (filters[0] === 'DCTDecode') {
+	if (isJpeg) {
+		if (!jpegAllowed) return null;
+		const jpeg = filters.length === 2 ? unzlibSync(stream.getContents()) : stream.getContents();
 		// PDFビューアはEXIFの向きやICCを使わないため、ブラウザ側の回転・色変換も無効にする
-		const bitmap = await createImageBitmap(
-			new Blob([stream.getContents()], { type: 'image/jpeg' }),
-			{ imageOrientation: 'none', colorSpaceConversion: 'none' }
-		);
+		const bitmap = await createImageBitmap(new Blob([jpeg], { type: 'image/jpeg' }), {
+			imageOrientation: 'none',
+			colorSpaceConversion: 'none'
+		});
 		const { canvas } = drawScaled(bitmap, target.width, target.height);
 		bitmap.close();
-		// CanvasのJPEG出力は常にカラー（3成分）なので色空間もRGBにする
 		return {
 			contents: await canvasToJpeg(canvas, options.quality),
 			filter: 'DCTDecode',
 			...target,
-			colorSpace: 'DeviceRGB'
+			colorSpace: components === 3 ? 'keep' : 'DeviceRGB'
 		};
 	}
 
@@ -278,9 +282,10 @@ async function recompressImage(
 	if (!pixels) return null;
 
 	const rgba = toRgba(pixels, components, width * height);
-	const fewColors = countColorsUpTo(rgba, FEW_COLORS_THRESHOLD) <= FEW_COLORS_THRESHOLD;
-	const resized = target.width !== width || target.height !== height;
-	if (fewColors && !resized) return null;
+	const lossless =
+		!jpegAllowed ||
+		(!options.jpegFewColors && countColorsUpTo(rgba, FEW_COLORS_THRESHOLD) <= FEW_COLORS_THRESHOLD);
+	if (lossless && !resized) return null;
 
 	const src = createCanvas(width, height);
 	src.ctx.putImageData(new ImageData(rgba, width, height), 0, 0);
@@ -288,21 +293,27 @@ async function recompressImage(
 		? drawScaled(src.canvas, target.width, target.height)
 		: { canvas: src.canvas, ctx: src.ctx };
 
-	if (fewColors) {
+	if (lossless) {
 		const scaled = ctx.getImageData(0, 0, target.width, target.height).data;
 		return {
-			contents: await deflate(fromRgba(scaled, components)),
+			contents: zlibSync(fromRgba(scaled, components), { level: 9 }),
 			filter: 'FlateDecode',
 			...target,
-			colorSpace: components === 3 ? 'DeviceRGB' : 'DeviceGray'
+			colorSpace: 'keep'
 		};
 	}
 	return {
 		contents: await canvasToJpeg(canvas, options.quality),
 		filter: 'DCTDecode',
 		...target,
-		colorSpace: 'DeviceRGB'
+		colorSpace: components === 3 ? 'keep' : 'DeviceRGB'
 	};
+}
+
+function mergePlacement(a: Placement | undefined, b: Placement): Placement {
+	return a
+		? { widthIn: Math.max(a.widthIn, b.widthIn), heightIn: Math.max(a.heightIn, b.heightIn) }
+		: b;
 }
 
 /** 文書内の画像を再圧縮し、小さくなったものだけ置き換える。置き換え数を返す */
@@ -310,22 +321,42 @@ export async function recompressImages(
 	doc: PDFDocument,
 	options: ImageRecompressOptions
 ): Promise<number> {
-	const pageSidePt = maxPageSidePt(doc);
-	// 透明度マスク（SMask）はGrayのまま使う必要があるため対象外
-	const smaskRefs = new Set<PDFRef>();
-	for (const [, obj] of doc.context.enumerateIndirectObjects()) {
-		const smask = obj instanceof PDFRawStream ? obj.dict.get(N('SMask')) : undefined;
-		if (smask instanceof PDFRef) smaskRefs.add(smask);
+	// 走査量が上限を超えた場合も含め、配置を特定できない画像は、ページの長辺いっぱいに描かれるものとみなす
+	const placements = collectImagePlacements(doc) ?? new Map<PDFRef, Placement>();
+	const pageSideIn = maxPageSidePt(doc) / 72;
+	const fallback: Placement = { widthIn: pageSideIn, heightIn: pageSideIn };
+	const placementOf = (ref: PDFRef) => placements.get(ref) ?? fallback;
+
+	// 透明度マスク（SMask）は親画像と同じ位置に描かれる。/Matte 付きは親と同じ画素数が必要なため両方とも対象外
+	const maskPlacements = new Map<PDFRef, Placement>();
+	const skip = new Set<PDFRef>();
+	for (const [ref, obj] of doc.context.enumerateIndirectObjects()) {
+		if (!(obj instanceof PDFRawStream)) continue;
+		const smask = obj.dict.get(N('SMask'));
+		if (!(smask instanceof PDFRef)) continue;
+		const mask = doc.context.lookup(smask);
+		if (mask instanceof PDFRawStream && mask.dict.has(N('Matte'))) {
+			skip.add(ref);
+			skip.add(smask);
+		} else {
+			maskPlacements.set(smask, mergePlacement(maskPlacements.get(smask), placementOf(ref)));
+		}
 	}
+
 	let count = 0;
 	for (const [ref, obj] of doc.context.enumerateIndirectObjects()) {
-		if (!(obj instanceof PDFRawStream) || smaskRefs.has(ref)) continue;
-		const subtype = obj.dict.lookup(N('Subtype'));
-		if (!(subtype instanceof PDFName) || subtype.decodeText() !== 'Image') continue;
+		if (!(obj instanceof PDFRawStream) || skip.has(ref)) continue;
+		if (obj.dict.lookup(N('Subtype')) !== N('Image')) continue;
 
+		const maskPlacement = maskPlacements.get(ref);
 		let rep: Replacement | null;
 		try {
-			rep = await recompressImage(obj, pageSidePt, options);
+			rep = await recompressImage(
+				obj,
+				maskPlacement ?? placementOf(ref),
+				options,
+				maskPlacement !== undefined
+			);
 		} catch {
 			continue; // 復号できない画像は元のまま
 		}
@@ -336,7 +367,7 @@ export async function recompressImages(
 		dict.delete(N('DecodeParms'));
 		dict.set(N('Width'), PDFNumber.of(rep.width));
 		dict.set(N('Height'), PDFNumber.of(rep.height));
-		dict.set(N('ColorSpace'), N(rep.colorSpace));
+		if (rep.colorSpace === 'DeviceRGB') dict.set(N('ColorSpace'), N('DeviceRGB'));
 		dict.set(N('Length'), PDFNumber.of(rep.contents.length));
 		doc.context.assign(ref, PDFRawStream.of(dict, rep.contents));
 		count++;

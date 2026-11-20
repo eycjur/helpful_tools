@@ -163,7 +163,7 @@ helpful_tools/
 - **静的サイト生成** (@sveltejs/adapter-static)
 - **アイコンシステム**: @iconify/svelte + Material Design Icons (MDI)
 - **外部API**: QRServer API (https://api.qrserver.com/)
-- **ライブラリ**: Quill（リッチテキストエディター）, Turndown（HTML→Markdown変換）, pdf-lib（PDF操作）
+- **ライブラリ**: Quill（リッチテキストエディター）, Turndown（HTML→Markdown変換）, pdf-lib（PDF操作）, fflate（PDF圧縮での圧縮レベル指定付きFlate）
 
 ### コンポーネント分割とコードの整理
 
@@ -437,9 +437,12 @@ src/routes/tools/ctf-cipher/
 - **PDF編集（pdf-edit）**: 結合・分割・ページ編集を1画面に統合。ページは元ファイルへの参照`{srcId, pageIndex}`として保持し、移動・削除・分割・結合は`organizer.ts`の純粋関数で配列操作のみ行う。PDFの組み立ては書き出し時の`assemblePdf()`1回だけ。
 - **copyPagesのまとめ呼び出し**: `copyPages`は呼び出し単位で共有リソース（フォント等）をコピーするため、`assemblePdf()`では元ファイルごとに1回だけ呼び、出力サイズの肥大化を防ぐ。
 - **ドラッグの種別判定**: ページ・ファイル並び替えのドラッグ中は`drag`状態を持ち、OSからのファイルドロップと区別する。
-- **圧縮（pdf-compress）**: `copyPages`で新規文書に移さず、元の文書を直接最適化する（しおり・フォーム等を保つため）。処理順は `compress.ts` の `compressPdfFile()` を参照: 付加データ削除（サムネイル・PieceInfo・XMP・添付）→ Root/Infoから到達不能なオブジェクトの削除 →（任意）画像再圧縮 → 辞書と中身が一致するストリームの重複排除 → 再度GC → Filterなしストリームの`CompressionStream('deflate')`によるFlate化 → `useObjectStreams: true`で保存。結果が元以上なら元ファイルを返す。
-- **容量の内訳**: `analyzeSpace()`でストリームを画像・フォント・描画命令・Form XObject・添付・XMP・サムネイルに分類。画像の解像度は配置を解析せず「ページ長辺に全面配置した場合のppi」で示す（解像度上限による縮小も同じ基準で、小さく配置された画像は上限より高い解像度で残る）。
-- **画像再圧縮**: DeviceRGB/DeviceGray・8bpc・単一フィルタ（DCT/Flate）のみ対象。SMaskとして参照される画像、`/ImageMask`・`/Mask`・`/Decode`付きは非可逆化で見た目が変わるため除外。CanvasのJPEG出力は常に3成分なので`/ColorSpace`を`DeviceRGB`に書き換える。色数256以下のFlate画像（スクリーンショット・図）はJPEGにせず、縮小時のみFlateで再符号化。JPEGの復号は`createImageBitmap`に`imageOrientation: 'none'`・`colorSpaceConversion: 'none'`を指定（PDFビューアはEXIFの向き・ICCを使わないため）。XMPメタデータストリームは非圧縮推奨のためFlate化しない。圧縮レベル（弱・中・強）の解像度上限と品質は`IMAGE_PRESETS`で定義し、「カスタム」選択時のみ個別に指定させる。
+- **圧縮（pdf-compress）**: `copyPages`で新規文書に移さず、元の文書を直接最適化する（しおり・フォーム等を保つため）。処理順は `compress.ts` の `compressPdfFile()` を参照: 付加データ削除（サムネイル・PieceInfo・XMP・添付）→ 辞書と中身が一致するストリームの重複排除 → Root/Infoから到達不能なオブジェクトの削除 →（任意）画像再圧縮 → ストリームの再圧縮 → `useObjectStreams: true`で保存。結果が元以上なら元ファイルを返す。
+- **ストリームの再圧縮**: `recompressStreams()`で描画命令・フォント・図などを`fflate`の`zlibSync`（level 9）で圧縮し直す（`CompressionStream`は圧縮レベルを指定できないため）。Filterなし・汎用フィルタ（Flate/LZW/ASCIIHex/ASCII85/RunLength）のみのストリームは完全に復号してFlate 1段にする。単一DCTDecodeのJPEGには、小さくなる場合だけ可逆のFlateを重ねる（`[/FlateDecode /DCTDecode]`）。予測子付きの単一FlateDecodeは、pdf-libが予測子を戻さないことを利用して予測済みのデータを圧縮し直し、`DecodeParms`を保つ。XMPメタデータは非圧縮推奨のため対象外。
+- **画像の配置解析**: `image-placement.ts`の`collectImagePlacements()`がページの描画命令を字句解析し、`q`/`Q`/`cm`で変換行列を追って、`Do`で描かれる画像の紙面上の大きさ（インチ、軸ごとの最大値）を求める。Form XObjectは`/Matrix`を掛けて再帰（循環・深さ制限あり、復号結果はキャッシュ）、注釈の外観（`/AP /N`）は`/BBox`を`/Rect`に合わせて配置、`/UserUnit`も反映する。インライン画像のバイナリは読み飛ばす。画像の`/SMask`にも親と同じ配置を記録する。タイリングパターン・Type3フォント内の画像は大きさを追えないため無限大（縮小しない）として記録する。`Do`の総数が`MAX_DO_OPERATIONS`を超えたら`null`を返し、呼び出し側はページの長辺基準で扱う。
+- **容量の内訳**: `analyzeSpace()`でストリームを画像・フォント・描画命令・Form XObject・添付・XMP・サムネイルに分類。画像の実効ppiは最も大きく描かれた箇所での値（配置不明なら「—」）。
+- **画像再圧縮**: DeviceRGB/DeviceGray・成分数3/1のICCBased、8bpc、単一フィルタ（DCT/Flate）または`[/FlateDecode /DCTDecode]`のみ対象。`/ImageMask`・`/Mask`・`/Decode`付き、Canvasの面積上限（`MAX_CANVAS_PIXELS`）超えは除外。実効ppiが上限を超える画像を、どちらの軸も上限を下回らない範囲で縮小する（配置不明の画像はページの長辺いっぱいに描かれるものとみなす）。CanvasのJPEG出力は常に3成分のため、JPEG化はRGB系を基本とし、Grayは`jpegGray`有効時のDeviceGrayのみ（`/ColorSpace`を`DeviceRGB`に書き換え。ICC付きGrayは階調が変わるため常に除外）。SMaskは1成分である必要があるため常に可逆（Flate）で、親画像の配置に合わせて縮小し、`/Matte`付きは親・マスクとも対象外。色数256以下のFlate画像（スクリーンショット・図）は`jpegFewColors`無効時はJPEGにせず、縮小時のみFlateで再符号化。JPEGの復号は`createImageBitmap`に`imageOrientation: 'none'`・`colorSpaceConversion: 'none'`を指定（PDFビューアはEXIFの向き・ICCを使わないため）。
+- **圧縮レベル**: `levels.ts`の`LEVELS`（画質を維持・弱・中・強・最大）で付加データの削除と画像設定を一式で定義する。カスタムは`customFrom()`で直前のレベルを初期値にし、`resolveSettings()`で処理用の設定に変換する（`<select>`の値は数値に揃える）。UIは`CompressOptions.svelte`（レベル・カスタム設定）と`SpaceBreakdown.svelte`（圧縮前後の内訳）に分割。
 - **メモリ使用量**: 結合・分割・編集・圧縮とも大きなファイルはメモリ使用量に注意。
 
 #### Pcap解析（新規ツール）
@@ -494,7 +497,7 @@ src/routes/tools/ctf-cipher/
 - **実行内容**:
   1. **Linter** (`npm run lint`): Prettier + ESLint
   2. **Type Check** (`npm run check`): TypeScript型チェック
-  3. **Tests** (`npm run test:run`): Vitest による291個のユニットテスト
+  3. **Tests** (`npm run test:run`): Vitest による313個のユニットテスト
 
 **テストカバレッジ**:
 

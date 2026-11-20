@@ -1,0 +1,109 @@
+/**
+ * 圧縮レベルの定義。各レベルは「付加データの削除」と「画像の再圧縮」の設定一式で、
+ * カスタムでは選んでいたレベルの設定を初期値として項目ごとに変更できる
+ */
+import type { OptimizeOptions } from './pdf-optimizer';
+import type { ImageRecompressOptions } from './image-recompress';
+
+export type CompressSettings = Required<OptimizeOptions> & {
+	/** null なら画像は再圧縮しない（画質を変えない） */
+	images: ImageRecompressOptions | null;
+};
+
+export type LevelKey = 'lossless' | 'low' | 'medium' | 'high' | 'max';
+
+type Level = { label: string; note: string; settings: CompressSettings };
+
+const BASE_EXTRAS = {
+	removeThumbnails: true,
+	removePieceInfo: true,
+	removeMetadata: false,
+	removeAttachments: false
+};
+
+export const LEVELS: Record<LevelKey, Level> = {
+	lossless: {
+		label: '画質を維持',
+		note: '画像はそのまま。重複・不要データの削除とデータの再圧縮のみ',
+		settings: { ...BASE_EXTRAS, images: null }
+	},
+	low: {
+		label: '弱',
+		note: '300 ppi・品質0.85。印刷する資料向け',
+		settings: {
+			...BASE_EXTRAS,
+			images: { maxPpi: 300, quality: 0.85, jpegGray: false, jpegFewColors: false }
+		}
+	},
+	medium: {
+		label: '中（推奨）',
+		note: '150 ppi・品質0.75。画面で見る資料・メール添付向け',
+		settings: {
+			...BASE_EXTRAS,
+			images: { maxPpi: 150, quality: 0.75, jpegGray: false, jpegFewColors: false }
+		}
+	},
+	high: {
+		label: '強',
+		note: '150 ppi・品質0.6。グレースケール画像もJPEG化。容量を大きく減らしたい場合',
+		settings: {
+			...BASE_EXTRAS,
+			images: { maxPpi: 150, quality: 0.6, jpegGray: true, jpegFewColors: false }
+		}
+	},
+	max: {
+		label: '最大',
+		note: '96 ppi・品質0.5。図やスクリーンショットもJPEG化し、XMPメタデータも削除',
+		settings: {
+			...BASE_EXTRAS,
+			removeMetadata: true,
+			images: { maxPpi: 96, quality: 0.5, jpegGray: true, jpegFewColors: true }
+		}
+	}
+};
+
+export const LEVEL_KEYS = Object.keys(LEVELS) as LevelKey[];
+
+/** カスタムで編集する項目。画像の設定は「画質を維持」を選んでも値を保持し、戻したときに復元する */
+export type CustomSettings = {
+	extras: Required<OptimizeOptions>;
+	recompressImages: boolean;
+	images: ImageRecompressOptions;
+};
+
+/** カスタムで画像の再圧縮を有効にしたときの初期値 */
+const DEFAULT_IMAGE_SETTINGS: ImageRecompressOptions = {
+	maxPpi: 150,
+	quality: 0.75,
+	jpegGray: false,
+	jpegFewColors: false
+};
+
+/** レベルの設定を、カスタムで編集できる独立したコピーにする */
+export function customFrom(level: LevelKey): CustomSettings {
+	const { images, ...extras } = LEVELS[level].settings;
+	return {
+		extras: { ...extras },
+		recompressImages: images !== null,
+		images: { ...(images ?? DEFAULT_IMAGE_SETTINGS) }
+	};
+}
+
+/** 選択中のレベル（またはカスタム）から、圧縮処理に渡す設定を組み立てる */
+export function resolveSettings(
+	level: LevelKey | 'custom',
+	custom: CustomSettings
+): CompressSettings {
+	if (level !== 'custom') return LEVELS[level].settings;
+	return {
+		...custom.extras,
+		// <select> の値は文字列になりうるため数値に揃える
+		images: custom.recompressImages
+			? {
+					...custom.images,
+					quality: Number(custom.images.quality),
+					maxPpi: custom.images.maxPpi === null ? null : Number(custom.images.maxPpi)
+				}
+			: null
+	};
+}

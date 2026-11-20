@@ -5,39 +5,38 @@
 import { PDFDocument } from 'pdf-lib';
 import {
 	dedupeStreams,
-	deflateUncompressedStreams,
 	removeExtras,
+	recompressStreams,
 	removeUnreachable,
-	SAVE_OPTIONS,
-	type OptimizeOptions
+	SAVE_OPTIONS
 } from './pdf-optimizer';
-import { recompressImages, type ImageRecompressOptions } from './image-recompress';
+import { recompressImages } from './image-recompress';
+import type { CompressSettings } from './levels';
 
 export type CompressResult = {
 	bytes: Uint8Array;
 	/** 圧縮結果が元ファイル以上だったため元ファイルを返した */
 	keptOriginal: boolean;
-	stats: { deduped: number; removed: number; deflated: number; images: number };
+	stats: { deduped: number; removed: number; recompressed: number; images: number };
 };
 
 export async function compressPdfFile(
 	original: Uint8Array,
-	options: OptimizeOptions & { images: ImageRecompressOptions | null }
+	options: CompressSettings
 ): Promise<CompressResult> {
 	const doc = await PDFDocument.load(original, { updateMetadata: false });
 	removeExtras(doc, options);
-	// 不要になったオブジェクトを先に捨て、無駄な画像の再符号化を避ける
-	let removed = removeUnreachable(doc);
-	const images = options.images ? await recompressImages(doc, options.images) : 0;
+	// 先に重複をまとめ、不要になったオブジェクトを捨てて、同じ画像の再符号化や無駄な処理を避ける
 	const deduped = dedupeStreams(doc);
-	removed += removeUnreachable(doc);
-	const deflated = await deflateUncompressedStreams(doc);
+	const removed = removeUnreachable(doc);
+	const images = options.images ? await recompressImages(doc, options.images) : 0;
+	const recompressed = recompressStreams(doc);
 
 	const saved = await doc.save(SAVE_OPTIONS);
 	const keptOriginal = saved.length >= original.length;
 	return {
 		bytes: keptOriginal ? original : saved,
 		keptOriginal,
-		stats: { deduped, removed, deflated, images }
+		stats: { deduped, removed, recompressed, images }
 	};
 }

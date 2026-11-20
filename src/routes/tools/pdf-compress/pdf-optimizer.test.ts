@@ -13,13 +13,16 @@ import {
 import {
 	analyzeSpace,
 	dedupeStreams,
-	deflateUncompressedStreams,
+	recompressStreams,
 	removeExtras,
 	removeUnreachable
 } from './pdf-optimizer';
 import { compressPdfFile } from './compress';
+import { zlibSync } from 'fflate';
+import { LEVELS } from './levels';
 
 const N = (s: string) => PDFName.of(s);
+const decode = (s: PDFRawStream) => (decodePDFRawStream(s) as { decode(): Uint8Array }).decode();
 
 /** 非圧縮の画像ストリームを登録して参照を返す */
 function registerImage(doc: PDFDocument, fill: number, size = 4000): PDFRef {
@@ -138,28 +141,86 @@ describe('removeUnreachable / removeExtras', () => {
 	});
 });
 
-describe('deflateUncompressedStreams', () => {
+describe('recompressStreams', () => {
+	const repetitive = new Uint8Array(4000).map((_, i) => i % 7);
+
 	it('Filterなしのストリームを可逆にFlate圧縮する', async () => {
 		const doc = await PDFDocument.create();
 		doc.addPage();
 		const ref = registerImage(doc, 7);
 		usePageImage(doc, 0, ref);
 
-		expect(await deflateUncompressedStreams(doc)).toBe(1);
+		expect(recompressStreams(doc)).toBe(1);
 		const stream = doc.context.lookup(ref) as PDFRawStream;
 		expect(stream.dict.get(N('Filter'))).toBe(PDFName.of('FlateDecode'));
 		expect(stream.getContentsSize()).toBeLessThan(4000);
-		const decoded = (decodePDFRawStream(stream) as { decode(): Uint8Array }).decode();
-		expect(decoded).toEqual(new Uint8Array(4000).fill(7));
+		expect(decode(stream)).toEqual(new Uint8Array(4000).fill(7));
 	});
 
-	it('XMPメタデータは非圧縮のまま残す', async () => {
+	it('ASCIIHex等の汎用フィルタは復号してFlate 1段にする', async () => {
 		const doc = await PDFDocument.create();
+		const hex = Array.from(repetitive, (b) => b.toString(16).padStart(2, '0')).join('') + '>';
 		const ref = doc.context.register(
+			PDFRawStream.of(doc.context.obj({ Filter: 'ASCIIHexDecode' }), new TextEncoder().encode(hex))
+		);
+		expect(recompressStreams(doc)).toBe(1);
+		const stream = doc.context.lookup(ref) as PDFRawStream;
+		expect(stream.dict.get(N('Filter'))).toBe(PDFName.of('FlateDecode'));
+		expect(decode(stream)).toEqual(repetitive);
+	});
+
+	it('低レベルで圧縮済みのFlateを圧縮し直し、予測子のDecodeParmsは保つ', async () => {
+		const doc = await PDFDocument.create();
+		// 単語を擬似乱数で並べた文章風のデータ（圧縮レベルの差が出やすい）
+		const words = ['stream', 'endobj', 'font', 'page', 'image', 'content', 'matrix', 'filter'];
+		let seed = 1;
+		const text = Array.from({ length: 4000 }, () => {
+			seed = (seed * 1103515245 + 12345) % 2 ** 31;
+			return words[seed % words.length];
+		}).join(' ');
+		const data = new TextEncoder().encode(text);
+		const ref = doc.context.register(
+			PDFRawStream.of(
+				doc.context.obj({
+					Filter: ['FlateDecode'],
+					DecodeParms: [{ Predictor: 12, Columns: 100 }]
+				}),
+				zlibSync(data, { level: 1 })
+			)
+		);
+		const before = (doc.context.lookup(ref) as PDFRawStream).getContentsSize();
+		expect(recompressStreams(doc)).toBe(1);
+		const stream = doc.context.lookup(ref) as PDFRawStream;
+		expect(stream.getContentsSize()).toBeLessThan(before);
+		expect(stream.dict.lookup(N('DecodeParms'), PDFDict).get(N('Predictor'))).toEqual(
+			doc.context.obj(12)
+		);
+		expect(decode(stream)).toEqual(data);
+	});
+
+	it('XMPメタデータは対象外', async () => {
+		const doc = await PDFDocument.create();
+		doc.context.register(
 			PDFRawStream.of(doc.context.obj({ Type: 'Metadata', Subtype: 'XML' }), new Uint8Array(500))
 		);
-		doc.catalog.set(N('Metadata'), ref);
-		expect(await deflateUncompressedStreams(doc)).toBe(0);
+		expect(recompressStreams(doc)).toBe(0);
+	});
+
+	it('JPEGには小さくなる場合だけ可逆のFlateを重ねる', async () => {
+		const doc = await PDFDocument.create();
+		const compressible = doc.context.register(
+			PDFRawStream.of(doc.context.obj({ Filter: 'DCTDecode' }), new Uint8Array(500))
+		);
+		const random = crypto.getRandomValues(new Uint8Array(500));
+		const incompressible = doc.context.register(
+			PDFRawStream.of(doc.context.obj({ Filter: 'DCTDecode' }), random)
+		);
+		expect(recompressStreams(doc)).toBe(1);
+		const wrapped = doc.context.lookup(compressible) as PDFRawStream;
+		expect(wrapped.dict.lookup(N('Filter'))!.toString()).toBe('[ /FlateDecode /DCTDecode ]');
+		expect((doc.context.lookup(incompressible) as PDFRawStream).dict.get(N('Filter'))).toBe(
+			PDFName.of('DCTDecode')
+		);
 	});
 });
 
@@ -168,6 +229,13 @@ describe('analyzeSpace', () => {
 		const doc = await PDFDocument.create();
 		doc.addPage([720, 360]);
 		usePageImage(doc, 0, registerImage(doc, 1, 8000)); // 2000×4px
+		// 幅5インチ×高さ0.02インチに描く → 実効ppiは min(2000/5, 4/0.02) = 200
+		doc
+			.getPage(0)
+			.node.set(
+				N('Contents'),
+				doc.context.register(doc.context.flateStream('q 360 0 0 1.44 0 0 cm /Im0 Do Q'))
+			);
 		doc.getPage(0).node.set(N('Thumb'), registerImage(doc, 2, 400));
 		doc.context.register(doc.context.obj({ Type: 'Sig', ByteRange: [0, 1, 2, 3] }));
 
@@ -176,8 +244,7 @@ describe('analyzeSpace', () => {
 		expect(bytesOf('image')).toBe(8000);
 		expect(bytesOf('thumbnail')).toBe(400);
 		expect(report.images).toHaveLength(1);
-		// 長辺2000px ÷ ページ長辺10インチ = 200ppi
-		expect(report.images[0].ppiAtPageSize).toBe(200);
+		expect(report.images[0].effectivePpi).toBe(200);
 		expect(report.hasSignature).toBe(true);
 	});
 });
@@ -201,7 +268,7 @@ describe('compressPdfFile', () => {
 		}
 		const original = await doc.save({ useObjectStreams: false });
 
-		const result = await compressPdfFile(original, { images: null });
+		const result = await compressPdfFile(original, LEVELS.lossless.settings);
 		expect(result.keptOriginal).toBe(false);
 		expect(result.stats.deduped).toBe(2);
 		expect(result.bytes.length).toBeLessThan(original.length / 2);
@@ -213,7 +280,7 @@ describe('compressPdfFile', () => {
 		const doc = await PDFDocument.create();
 		doc.addPage();
 		const original = await doc.save();
-		const result = await compressPdfFile(original, { images: null });
+		const result = await compressPdfFile(original, LEVELS.lossless.settings);
 		expect(result.keptOriginal).toBe(true);
 		expect(result.bytes).toBe(original);
 	});
