@@ -437,7 +437,9 @@ src/routes/tools/ctf-cipher/
 - **PDF編集（pdf-edit）**: 結合・分割・ページ編集を1画面に統合。ページは元ファイルへの参照`{srcId, pageIndex}`として保持し、移動・削除・分割・結合は`organizer.ts`の純粋関数で配列操作のみ行う。PDFの組み立ては書き出し時の`assemblePdf()`1回だけ。
 - **copyPagesのまとめ呼び出し**: `copyPages`は呼び出し単位で共有リソース（フォント等）をコピーするため、`assemblePdf()`では元ファイルごとに1回だけ呼び、出力サイズの肥大化を防ぐ。
 - **ドラッグの種別判定**: ページ・ファイル並び替えのドラッグ中は`drag`状態を持ち、OSからのファイルドロップと区別する。
-- **圧縮**: 新規ドキュメントに全ページをコピーし`useObjectStreams: true`で保存。未使用オブジェクト削除で軽量化（画像の再圧縮は行わない）。
+- **圧縮（pdf-compress）**: `copyPages`で新規文書に移さず、元の文書を直接最適化する（しおり・フォーム等を保つため）。処理順は `compress.ts` の `compressPdfFile()` を参照: 付加データ削除（サムネイル・PieceInfo・XMP・添付）→ Root/Infoから到達不能なオブジェクトの削除 →（任意）画像再圧縮 → 辞書と中身が一致するストリームの重複排除 → 再度GC → Filterなしストリームの`CompressionStream('deflate')`によるFlate化 → `useObjectStreams: true`で保存。結果が元以上なら元ファイルを返す。
+- **容量の内訳**: `analyzeSpace()`でストリームを画像・フォント・描画命令・Form XObject・添付・XMP・サムネイルに分類。画像の解像度は配置を解析せず「ページ長辺に全面配置した場合のppi」で示す（解像度上限による縮小も同じ基準で、小さく配置された画像は上限より高い解像度で残る）。
+- **画像再圧縮**: DeviceRGB/DeviceGray・8bpc・単一フィルタ（DCT/Flate）のみ対象。SMaskとして参照される画像、`/ImageMask`・`/Mask`・`/Decode`付きは非可逆化で見た目が変わるため除外。CanvasのJPEG出力は常に3成分なので`/ColorSpace`を`DeviceRGB`に書き換える。色数256以下のFlate画像（スクリーンショット・図）はJPEGにせず、縮小時のみFlateで再符号化。JPEGの復号は`createImageBitmap`に`imageOrientation: 'none'`・`colorSpaceConversion: 'none'`を指定（PDFビューアはEXIFの向き・ICCを使わないため）。XMPメタデータストリームは非圧縮推奨のためFlate化しない。
 - **メモリ使用量**: 結合・分割・編集・圧縮とも大きなファイルはメモリ使用量に注意。
 
 #### Pcap解析（新規ツール）
@@ -492,11 +494,11 @@ src/routes/tools/ctf-cipher/
 - **実行内容**:
   1. **Linter** (`npm run lint`): Prettier + ESLint
   2. **Type Check** (`npm run check`): TypeScript型チェック
-  3. **Tests** (`npm run test:run`): Vitest による273個のユニットテスト
+  3. **Tests** (`npm run test:run`): Vitest による291個のユニットテスト
 
 **テストカバレッジ**:
 
-- 16ツール、テスト（pdf-edit, csv-to-latex, diff-checker, x-qrcode-generator, ctf-cipher, string-decoder, character-counter, markdown-to-notion, markdown-to-slack, clipboard-table-transpose, pcap-analyzer, whois-lookup, pdf-metadata, ulid-timestamp, unixtime-converter, jwt-decoder）
+- 17ツール、テスト（pdf-edit, pdf-compress, csv-to-latex, diff-checker, x-qrcode-generator, ctf-cipher, string-decoder, character-counter, markdown-to-notion, markdown-to-slack, clipboard-table-transpose, pcap-analyzer, whois-lookup, pdf-metadata, ulid-timestamp, unixtime-converter, jwt-decoder）
 - コアロジックに絞った実用的なテスト戦略
 - 外部依存やブラウザAPIに依存する部分は除外
 

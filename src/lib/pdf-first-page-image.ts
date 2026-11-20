@@ -44,39 +44,6 @@ async function renderPageToImageUrl(pdf: PDFDocumentProxy, pageNum: number): Pro
 	});
 }
 
-/** PDFの指定ページをJPEGバイトでレンダリング（圧縮用、scaleとqualityでサイズ調整） */
-export async function renderPageToJpegBytes(
-	pdf: PDFDocumentProxy,
-	pageNum: number,
-	options: { scale?: number; quality?: number } = {}
-): Promise<Uint8Array> {
-	const { scale = 1.5, quality = 0.85 } = options;
-	const page = await pdf.getPage(pageNum);
-	const viewport = page.getViewport({ scale });
-	const canvas = document.createElement('canvas');
-	canvas.width = viewport.width;
-	canvas.height = viewport.height;
-	const ctx = canvas.getContext('2d');
-	if (!ctx) throw new Error('Canvas context not available');
-	ctx.fillStyle = 'white';
-	ctx.fillRect(0, 0, canvas.width, canvas.height);
-	await page.render({ canvasContext: ctx, viewport }).promise;
-
-	return new Promise((resolve, reject) => {
-		canvas.toBlob(
-			(blob) => {
-				if (blob) {
-					blob.arrayBuffer().then((ab) => resolve(new Uint8Array(ab)));
-				} else {
-					reject(new Error('Failed to create blob'));
-				}
-			},
-			'image/jpeg',
-			quality
-		);
-	});
-}
-
 /** PDFを1回読み込み、複数ページの画像を効率的に取得するレンダラー（使い終わったら destroy する） */
 export async function createPdfPageRenderer(file: File): Promise<{
 	renderPage: (pageNum: number) => Promise<string>;
