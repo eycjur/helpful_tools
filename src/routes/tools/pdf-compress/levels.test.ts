@@ -10,9 +10,10 @@ describe('LEVELS', () => {
 		}
 	});
 
-	it('「画質を維持」は画像を再圧縮せず、どのレベルも添付ファイルは消さない', () => {
+	it('「画質を維持」は画像を再圧縮せず、添付ファイルを消すのは「最大」だけ', () => {
 		expect(LEVELS.lossless.settings.images).toBeNull();
-		for (const k of LEVEL_KEYS) expect(LEVELS[k].settings.removeAttachments).toBe(false);
+		// 添付ファイルは内容が失われるため、削除するのは「最大」だけ
+		for (const k of LEVEL_KEYS) expect(LEVELS[k].settings.removeAttachments).toBe(k === 'max');
 	});
 });
 

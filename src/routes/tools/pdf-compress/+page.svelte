@@ -31,10 +31,19 @@
 	let level = $state<LevelKey | 'custom'>('medium');
 	let custom = $state(customFrom('medium'));
 
-	const STAGES: CompressStage[] = ['load', 'optimize', 'images', 'streams', 'save', 'analyze'];
+	const STAGES: CompressStage[] = [
+		'load',
+		'optimize',
+		'fonts',
+		'images',
+		'streams',
+		'save',
+		'analyze'
+	];
 	const STAGE_LABELS: Record<CompressStage, string> = {
 		load: 'PDFを読み込み中',
 		optimize: '重複・不要データを整理中',
+		fonts: 'フォントを使用文字だけに削減中',
 		images: '画像を再圧縮中',
 		streams: 'データを再圧縮中',
 		save: '保存中',
@@ -276,8 +285,9 @@
 								（{((1 - result.bytes.length / file.size) * 100).toFixed(1)}%削減）
 							</p>
 							<p class="text-xs text-gray-600">
-								画像の再圧縮 {result.stats.images}件・重複の統合 {result.stats
-									.deduped}件・不要データの削除
+								画像の再圧縮 {result.stats.images}件・フォントの削減 {result.stats
+									.fonts}件・重複の統合
+								{result.stats.deduped}件・不要データの削除
 								{result.stats.removed}件・データの再圧縮 {result.stats.recompressed}件
 							</p>
 						{/if}

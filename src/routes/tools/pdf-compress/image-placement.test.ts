@@ -15,7 +15,17 @@ function ops(content: string | Uint8Array) {
 	const out: string[] = [];
 	scanContent(typeof content === 'string' ? enc(content) : content, (op, operands) =>
 		out.push(
-			`${op}(${operands.map((o) => (o === null ? '_' : typeof o === 'number' ? o : '/' + o.name)).join(' ')})`
+			`${op}(${operands
+				.map((o) =>
+					o === null
+						? '_'
+						: typeof o === 'number'
+							? o
+							: 'name' in o
+								? '/' + o.name
+								: JSON.stringify(new TextDecoder('latin1').decode(o.bytes))
+				)
+				.join(' ')})`
 		)
 	);
 	return out;
@@ -31,23 +41,27 @@ describe('multiply', () => {
 });
 
 describe('scanContent', () => {
-	it('数値・名前・演算子を取り出し、文字列や配列の中身は演算子として扱わない', () => {
+	it('数値・名前・文字列（エスケープを復号）を取り出し、文字列の中身は演算子として扱わない', () => {
 		expect(ops('q 1 0 0 1 .5 -2 cm (a (Do) \\) cm) Tj [(x) 3] TJ /Im1 Do Q')).toEqual([
 			'q()',
 			'cm(1 0 0 1 0.5 -2)',
-			'Tj(_)',
-			'TJ(_ 3)',
+			'Tj("a (Do) ) cm")',
+			'TJ("x" 3)',
 			'Do(/Im1)',
 			'Q()'
 		]);
 	});
 
-	it('コメントと16進文字列・辞書を読み飛ばす', () => {
+	it('コメントを読み飛ばし、16進文字列を復号し、辞書の区切りは無視する', () => {
 		expect(ops('% Do comment\n<48656c6c6f> Tj /P <</MCID 0>> BDC EMC')).toEqual([
-			'Tj(_)',
+			'Tj("Hello")',
 			'BDC(/P /MCID 0)',
 			'EMC()'
 		]);
+	});
+
+	it('リテラル文字列の8進数エスケープと改行エスケープを復号する', () => {
+		expect(ops('(\\101\\n\\\\) Tj')).toEqual(['Tj("A\\n\\\\")']);
 	});
 
 	it('インライン画像のバイナリに演算子らしい文字があっても読み飛ばす', () => {

@@ -38,7 +38,53 @@ export function multiply(m: Matrix, n: Matrix): Matrix {
 	];
 }
 
-export type Operand = number | { name: string } | null;
+/** 数値・名前・文字列（復号済みのバイト列）。配列・辞書の区切りや真偽値は null */
+export type Operand = number | { name: string } | { bytes: Uint8Array } | null;
+
+/** リテラル文字列 (...) の中身を復号する（エスケープ・8進数・行継続に対応） */
+function decodeLiteral(raw: Uint8Array): Uint8Array {
+	const out: number[] = [];
+	for (let i = 0; i < raw.length; i++) {
+		const c = raw[i];
+		if (c === 13) {
+			// エスケープされていない CR・CRLF は LF 1バイトとして扱う（PDF仕様）
+			if (raw[i + 1] === 10) i++;
+			out.push(10);
+			continue;
+		}
+		if (c !== 0x5c) {
+			out.push(c);
+			continue;
+		}
+		const n = raw[++i];
+		const simple: Record<number, number> = {
+			0x6e: 10, // n
+			0x72: 13, // r
+			0x74: 9, // t
+			0x62: 8, // b
+			0x66: 12 // f
+		};
+		if (n in simple) out.push(simple[n]);
+		else if (n >= 0x30 && n <= 0x37) {
+			let v = n - 0x30;
+			for (let k = 0; k < 2 && raw[i + 1] >= 0x30 && raw[i + 1] <= 0x37; k++)
+				v = v * 8 + (raw[++i] - 0x30);
+			out.push(v & 0xff);
+		} else if (n === 13) {
+			if (raw[i + 1] === 10) i++; // 行継続（\ + CRLF）
+		} else if (n !== 10 && n !== undefined) out.push(n); // \( \) \\ など。\ + LF は行継続
+	}
+	return new Uint8Array(out);
+}
+
+/** 16進文字列 <...> の中身を復号する（空白は無視、奇数桁は末尾に0を補う） */
+function decodeHex(raw: Uint8Array): Uint8Array {
+	const digits = LATIN1.decode(raw).replace(/[^0-9a-fA-F]/g, '');
+	const padded = digits.length % 2 ? digits + '0' : digits;
+	const out = new Uint8Array(padded.length / 2);
+	for (let k = 0; k < out.length; k++) out[k] = parseInt(padded.substr(k * 2, 2), 16);
+	return out;
+}
 
 const WHITESPACE = new Set([0, 9, 10, 12, 13, 32]);
 const DELIMITERS = new Set([...'()<>[]{}/%'].map((c) => c.charCodeAt(0)));
@@ -70,25 +116,28 @@ export function scanContent(
 		} else if (b === 0x25 /* % */) {
 			while (i < len && bytes[i] !== 10 && bytes[i] !== 13) i++;
 		} else if (b === 0x28 /* ( */) {
+			const start = i + 1;
 			let depth = 0;
 			for (; i < len; i++) {
 				if (bytes[i] === 0x5c /* \ */) i++;
 				else if (bytes[i] === 0x28) depth++;
 				else if (bytes[i] === 0x29 && --depth === 0) break;
 			}
+			operands.push({ bytes: decodeLiteral(bytes.subarray(start, Math.min(i, len))) });
 			i++;
-			operands.push(null);
 		} else if (b === 0x3c /* < */) {
 			if (bytes[i + 1] === 0x3c) i += 2;
 			else {
+				const start = i + 1;
 				while (i < len && bytes[i] !== 0x3e) i++;
+				operands.push({ bytes: decodeHex(bytes.subarray(start, i)) });
 				i++;
-				operands.push(null);
 			}
 		} else if (b === 0x3e /* > */ || b === 0x5b || b === 0x5d || b === 0x7b || b === 0x7d) {
 			i++;
 		} else if (b === 0x2f /* / */) {
 			i++;
+			// 名前の #xx エスケープは、照合時の PDFName.of が復号するため生のまま返す
 			operands.push({ name: readRegular() });
 		} else {
 			const token = readRegular();
@@ -239,7 +288,7 @@ export function collectImagePlacements(doc: PDFDocument): Map<PDFRef, Placement>
 			} else if (op === 'Do') {
 				if (++doCount > MAX_DO_OPERATIONS) throw new BudgetExceeded();
 				const name = operands[operands.length - 1];
-				if (!name || typeof name !== 'object' || !resources) return;
+				if (!name || typeof name !== 'object' || !('name' in name) || !resources) return;
 				const xobjects = resources.lookupMaybe(N('XObject'), PDFDict);
 				const ref = xobjects?.get(N(name.name));
 				if (!(ref instanceof PDFRef)) return;

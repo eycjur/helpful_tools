@@ -1,5 +1,5 @@
 /**
- * 圧縮レベル（画質を維持・弱・中・強）の定義。各レベルは「付加データの削除」と「画像の再圧縮」の設定一式で、
+ * 圧縮レベル（画質を維持・弱・中・強・最大）の定義。各レベルは「付加データの削除」と「画像の再圧縮」の設定一式で、
  * カスタムでは選んでいたレベルの設定を初期値として項目ごとに変更できる
  */
 import type { OptimizeOptions } from './pdf-optimizer';
@@ -10,7 +10,7 @@ export type CompressSettings = Required<OptimizeOptions> & {
 	images: ImageRecompressOptions | null;
 };
 
-export type LevelKey = 'lossless' | 'low' | 'medium' | 'high';
+export type LevelKey = 'lossless' | 'low' | 'medium' | 'high' | 'max';
 
 type Level = { label: string; note: string; settings: CompressSettings };
 
@@ -18,7 +18,8 @@ const BASE_EXTRAS = {
 	removeThumbnails: true,
 	removePieceInfo: true,
 	removeMetadata: false,
-	removeAttachments: false
+	removeAttachments: false,
+	subsetFonts: true
 };
 
 export const LEVELS: Record<LevelKey, Level> = {
@@ -45,11 +46,21 @@ export const LEVELS: Record<LevelKey, Level> = {
 	},
 	high: {
 		label: '強',
-		note: '96 ppi・品質0.5。図やスクリーンショットもJPEG化し、XMPメタデータも削除',
+		note: '72 ppi・品質0.4。図やスクリーンショットもJPEG化し、XMPメタデータも削除。画質より容量を優先',
 		settings: {
 			...BASE_EXTRAS,
 			removeMetadata: true,
-			images: { maxPpi: 96, quality: 0.5, jpegGray: true, jpegFewColors: true }
+			images: { maxPpi: 72, quality: 0.4, jpegGray: true, jpegFewColors: true }
+		}
+	},
+	max: {
+		label: '最大',
+		note: '50 ppi・品質0.3。とにかく小さくしたい場合。画像は粗くなり、添付ファイルとXMPメタデータも削除',
+		settings: {
+			...BASE_EXTRAS,
+			removeMetadata: true,
+			removeAttachments: true,
+			images: { maxPpi: 50, quality: 0.3, jpegGray: true, jpegFewColors: true }
 		}
 	}
 };

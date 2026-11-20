@@ -12,22 +12,40 @@ import {
 } from './pdf-optimizer';
 import { recompressImages } from './image-recompress';
 import type { CompressSettings } from './levels';
+import { hasSubsettableFonts, subsetFonts } from './font-subset';
+import { createSubsetter } from './hb-subset';
+import { loadSubsetWasm } from './hb-wasm';
 
 export type CompressResult = {
 	bytes: Uint8Array;
 	/** 圧縮結果が元ファイル以上だったため元ファイルを返した */
 	keptOriginal: boolean;
-	stats: { deduped: number; removed: number; recompressed: number; images: number };
+	stats: {
+		deduped: number;
+		removed: number;
+		recompressed: number;
+		images: number;
+		fonts: number;
+	};
 };
 
 /** 進捗の段階。done/total は件数が分かる段階（画像・ストリーム）のみ */
-export type CompressStage = 'load' | 'optimize' | 'images' | 'streams' | 'save' | 'analyze';
+export type CompressStage =
+	| 'load'
+	| 'optimize'
+	| 'fonts'
+	| 'images'
+	| 'streams'
+	| 'save'
+	| 'analyze';
 export type CompressProgress = { stage: CompressStage; done?: number; total?: number };
 
 export async function compressPdfFile(
 	original: Uint8Array,
 	options: CompressSettings,
-	onProgress: (p: CompressProgress) => void = () => {}
+	onProgress: (p: CompressProgress) => void = () => {},
+	/** フォント処理用WASMの取得（テストでは差し替える） */
+	loadWasm: () => Promise<BufferSource> = loadSubsetWasm
 ): Promise<CompressResult> {
 	onProgress({ stage: 'load' });
 	const doc = await PDFDocument.load(original, { updateMetadata: false });
@@ -36,6 +54,11 @@ export async function compressPdfFile(
 	// 先に重複をまとめ、不要になったオブジェクトを捨てて、同じ画像の再符号化や無駄な処理を避ける
 	const deduped = dedupeStreams(doc);
 	const removed = removeUnreachable(doc);
+	let fonts = 0;
+	if (options.subsetFonts && hasSubsettableFonts(doc)) {
+		onProgress({ stage: 'fonts' });
+		fonts = subsetFonts(doc, await createSubsetter(await loadWasm()));
+	}
 	const images = options.images
 		? await recompressImages(doc, options.images, (done, total) =>
 				onProgress({ stage: 'images', done, total })
@@ -51,6 +74,6 @@ export async function compressPdfFile(
 	return {
 		bytes: keptOriginal ? original : saved,
 		keptOriginal,
-		stats: { deduped, removed, recompressed, images }
+		stats: { deduped, removed, recompressed, images, fonts }
 	};
 }

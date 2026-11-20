@@ -18,10 +18,13 @@
 		{ value: 200, label: '200 ppi' },
 		{ value: 150, label: '150 ppi（画面・配布向け）' },
 		{ value: 96, label: '96 ppi' },
-		{ value: 72, label: '72 ppi（高圧縮）' }
+		{ value: 72, label: '72 ppi' },
+		{ value: 50, label: '50 ppi（最大圧縮）' }
 	];
 	const QUALITY_OPTIONS = [
-		{ value: 0.5, label: '0.5（高圧縮）' },
+		{ value: 0.3, label: '0.3（最大圧縮）' },
+		{ value: 0.4, label: '0.4' },
+		{ value: 0.5, label: '0.5' },
 		{ value: 0.6, label: '0.6' },
 		{ value: 0.75, label: '0.75' },
 		{ value: 0.85, label: '0.85' },
@@ -106,7 +109,7 @@
 		</fieldset>
 
 		<fieldset class="space-y-1">
-			<legend class="text-sm font-medium">削除する付加データ（見た目は変わりません）</legend>
+			<legend class="text-sm font-medium">フォント・付加データ（見た目は変わりません）</legend>
 			<label class="flex items-center gap-2 text-sm">
 				<input type="checkbox" bind:checked={custom.extras.removeThumbnails} />ページのサムネイル
 			</label>
@@ -121,6 +124,12 @@
 					type="checkbox"
 					bind:checked={custom.extras.removeMetadata}
 				/>XMPメタデータ（作成者・作成ツール等の詳細情報）
+			</label>
+			<label class="flex items-center gap-2 text-sm">
+				<input
+					type="checkbox"
+					bind:checked={custom.extras.subsetFonts}
+				/>フォントを使用文字だけにする（まるごと埋め込まれたフォント）
 			</label>
 			<label class="flex items-center gap-2 text-sm">
 				<input

@@ -64,6 +64,8 @@ export type OptimizeOptions = {
 	removeMetadata?: boolean;
 	removePieceInfo?: boolean;
 	removeAttachments?: boolean;
+	/** まるごと埋め込まれたフォントを使用字形だけに減らす（font-subset.ts） */
+	subsetFonts?: boolean;
 };
 
 const N = (name: string) => PDFName.of(name);
