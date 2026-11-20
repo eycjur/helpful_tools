@@ -1,5 +1,5 @@
 /**
- * PDF内の画像の再圧縮（Canvas使用のためブラウザ専用、純粋関数部分はテスト可能）
+ * PDF内の画像の再圧縮（OffscreenCanvas使用のためブラウザ・Web Worker専用、純粋関数部分はテスト可能）
  * - 写真（色数が多い画像）: JPEGで再符号化
  * - スクリーンショット・図（色数が少ない画像）: JPEGにせず可逆（Flate）のまま。縮小時のみ再符号化
  * - 解像度上限: 紙面に描かれた大きさでの実効解像度が上限を超える場合に縮小
@@ -148,10 +148,9 @@ export function componentsOf(dict: PDFDict): 1 | 3 | null {
 	return null;
 }
 
+/** Web Worker でも動くよう OffscreenCanvas を使う */
 function createCanvas(width: number, height: number) {
-	const canvas = document.createElement('canvas');
-	canvas.width = width;
-	canvas.height = height;
+	const canvas = new OffscreenCanvas(width, height);
 	const ctx = canvas.getContext('2d');
 	if (!ctx) throw new Error('Canvas 2D context が利用できません');
 	return { canvas, ctx };
@@ -165,11 +164,8 @@ function drawScaled(source: CanvasImageSource, width: number, height: number) {
 	return result;
 }
 
-async function canvasToJpeg(canvas: HTMLCanvasElement, quality: number): Promise<Uint8Array> {
-	const blob = await new Promise<Blob | null>((resolve) =>
-		canvas.toBlob(resolve, 'image/jpeg', quality)
-	);
-	if (!blob) throw new Error('JPEGへの変換に失敗しました');
+async function canvasToJpeg(canvas: OffscreenCanvas, quality: number): Promise<Uint8Array> {
+	const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality });
 	return new Uint8Array(await blob.arrayBuffer());
 }
 
@@ -316,10 +312,11 @@ function mergePlacement(a: Placement | undefined, b: Placement): Placement {
 		: b;
 }
 
-/** 文書内の画像を再圧縮し、小さくなったものだけ置き換える。置き換え数を返す */
+/** 文書内の画像を再圧縮し、小さくなったものだけ置き換える。置き換え数を返す。onProgress には処理済み数と総数を渡す */
 export async function recompressImages(
 	doc: PDFDocument,
-	options: ImageRecompressOptions
+	options: ImageRecompressOptions,
+	onProgress?: (done: number, total: number) => void
 ): Promise<number> {
 	// 走査量が上限を超えた場合も含め、配置を特定できない画像は、ページの長辺いっぱいに描かれるものとみなす
 	const placements = collectImagePlacements(doc) ?? new Map<PDFRef, Placement>();
@@ -343,11 +340,18 @@ export async function recompressImages(
 		}
 	}
 
-	let count = 0;
-	for (const [ref, obj] of doc.context.enumerateIndirectObjects()) {
-		if (!(obj instanceof PDFRawStream) || skip.has(ref)) continue;
-		if (obj.dict.lookup(N('Subtype')) !== N('Image')) continue;
+	const targets = doc.context
+		.enumerateIndirectObjects()
+		.filter(
+			(entry): entry is [PDFRef, PDFRawStream] =>
+				entry[1] instanceof PDFRawStream &&
+				!skip.has(entry[0]) &&
+				entry[1].dict.lookup(N('Subtype')) === N('Image')
+		);
 
+	let count = 0;
+	for (const [i, [ref, obj]] of targets.entries()) {
+		onProgress?.(i, targets.length);
 		const maskPlacement = maskPlacements.get(ref);
 		let rep: Replacement | null;
 		try {
@@ -372,5 +376,6 @@ export async function recompressImages(
 		doc.context.assign(ref, PDFRawStream.of(dict, rep.contents));
 		count++;
 	}
+	onProgress?.(targets.length, targets.length);
 	return count;
 }

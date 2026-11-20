@@ -230,10 +230,16 @@ function hasDecodeParms(dict: PDFDict): boolean {
  * - 予測子付きの単一FlateDecode: pdf-libは予測子を戻さないため、予測済みのデータを圧縮し直してDecodeParmsを保つ
  * - JPEG（単一DCTDecode）: 可逆のFlateを重ねる
  */
-export function recompressStreams(doc: PDFDocument): number {
+export function recompressStreams(
+	doc: PDFDocument,
+	onProgress?: (done: number, total: number) => void
+): number {
 	let count = 0;
-	for (const [ref, obj] of doc.context.enumerateIndirectObjects()) {
-		if (!(obj instanceof PDFRawStream)) continue;
+	const streams = doc.context
+		.enumerateIndirectObjects()
+		.filter((entry): entry is [PDFRef, PDFRawStream] => entry[1] instanceof PDFRawStream);
+	for (const [i, [ref, obj]] of streams.entries()) {
+		if (i % 50 === 0) onProgress?.(i, streams.length);
 		// XMPは非圧縮が推奨（PDF/Aでは必須）のため対象外
 		if (nameOf(obj.dict.get(N('Type'))) === 'Metadata') continue;
 		const filters = filterNames(obj.dict);
@@ -270,6 +276,7 @@ export function recompressStreams(doc: PDFDocument): number {
 		doc.context.assign(ref, PDFRawStream.of(dict, compressed));
 		count++;
 	}
+	onProgress?.(streams.length, streams.length);
 	return count;
 }
 

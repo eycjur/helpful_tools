@@ -1,5 +1,5 @@
 /**
- * 圧縮レベルの定義。各レベルは「付加データの削除」と「画像の再圧縮」の設定一式で、
+ * 圧縮レベル（画質を維持・弱・中・強）の定義。各レベルは「付加データの削除」と「画像の再圧縮」の設定一式で、
  * カスタムでは選んでいたレベルの設定を初期値として項目ごとに変更できる
  */
 import type { OptimizeOptions } from './pdf-optimizer';
@@ -10,7 +10,7 @@ export type CompressSettings = Required<OptimizeOptions> & {
 	images: ImageRecompressOptions | null;
 };
 
-export type LevelKey = 'lossless' | 'low' | 'medium' | 'high' | 'max';
+export type LevelKey = 'lossless' | 'low' | 'medium' | 'high';
 
 type Level = { label: string; note: string; settings: CompressSettings };
 
@@ -37,22 +37,14 @@ export const LEVELS: Record<LevelKey, Level> = {
 	},
 	medium: {
 		label: '中（推奨）',
-		note: '150 ppi・品質0.75。画面で見る資料・メール添付向け',
-		settings: {
-			...BASE_EXTRAS,
-			images: { maxPpi: 150, quality: 0.75, jpegGray: false, jpegFewColors: false }
-		}
-	},
-	high: {
-		label: '強',
-		note: '150 ppi・品質0.6。グレースケール画像もJPEG化。容量を大きく減らしたい場合',
+		note: '150 ppi・品質0.6。グレースケール画像もJPEG化。画面で見る資料・メール添付向け',
 		settings: {
 			...BASE_EXTRAS,
 			images: { maxPpi: 150, quality: 0.6, jpegGray: true, jpegFewColors: false }
 		}
 	},
-	max: {
-		label: '最大',
+	high: {
+		label: '強',
 		note: '96 ppi・品質0.5。図やスクリーンショットもJPEG化し、XMPメタデータも削除',
 		settings: {
 			...BASE_EXTRAS,
@@ -72,12 +64,7 @@ export type CustomSettings = {
 };
 
 /** カスタムで画像の再圧縮を有効にしたときの初期値 */
-const DEFAULT_IMAGE_SETTINGS: ImageRecompressOptions = {
-	maxPpi: 150,
-	quality: 0.75,
-	jpegGray: false,
-	jpegFewColors: false
-};
+const DEFAULT_IMAGE_SETTINGS: ImageRecompressOptions = LEVELS.medium.settings.images!;
 
 /** レベルの設定を、カスタムで編集できる独立したコピーにする */
 export function customFrom(level: LevelKey): CustomSettings {

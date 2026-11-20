@@ -20,18 +20,32 @@ export type CompressResult = {
 	stats: { deduped: number; removed: number; recompressed: number; images: number };
 };
 
+/** 進捗の段階。done/total は件数が分かる段階（画像・ストリーム）のみ */
+export type CompressStage = 'load' | 'optimize' | 'images' | 'streams' | 'save' | 'analyze';
+export type CompressProgress = { stage: CompressStage; done?: number; total?: number };
+
 export async function compressPdfFile(
 	original: Uint8Array,
-	options: CompressSettings
+	options: CompressSettings,
+	onProgress: (p: CompressProgress) => void = () => {}
 ): Promise<CompressResult> {
+	onProgress({ stage: 'load' });
 	const doc = await PDFDocument.load(original, { updateMetadata: false });
+	onProgress({ stage: 'optimize' });
 	removeExtras(doc, options);
 	// 先に重複をまとめ、不要になったオブジェクトを捨てて、同じ画像の再符号化や無駄な処理を避ける
 	const deduped = dedupeStreams(doc);
 	const removed = removeUnreachable(doc);
-	const images = options.images ? await recompressImages(doc, options.images) : 0;
-	const recompressed = recompressStreams(doc);
+	const images = options.images
+		? await recompressImages(doc, options.images, (done, total) =>
+				onProgress({ stage: 'images', done, total })
+			)
+		: 0;
+	const recompressed = recompressStreams(doc, (done, total) =>
+		onProgress({ stage: 'streams', done, total })
+	);
 
+	onProgress({ stage: 'save' });
 	const saved = await doc.save(SAVE_OPTIONS);
 	const keptOriginal = saved.length >= original.length;
 	return {

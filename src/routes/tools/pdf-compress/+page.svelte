@@ -1,11 +1,12 @@
 <script lang="ts">
 	import { tools } from '$lib/data/tools';
 	import Icon from '@iconify/svelte';
-	import { PDFDocument } from 'pdf-lib';
-	import { analyzeSpace, type SpaceReport } from './pdf-optimizer';
-	import { compressPdfFile, type CompressResult } from './compress';
+	import { onDestroy } from 'svelte';
+	import type { SpaceReport } from './pdf-optimizer';
+	import type { CompressProgress, CompressResult, CompressStage } from './compress';
 	import { customFrom, resolveSettings, type LevelKey } from './levels';
 	import { formatSize } from './format';
+	import { analyzeInWorker, CancelledError, compressInWorker, type Job } from './worker-client';
 	import CompressOptions from './CompressOptions.svelte';
 	import SpaceBreakdown from './SpaceBreakdown.svelte';
 
@@ -17,17 +18,28 @@
 	let dragOver = $state(false);
 	let isAnalyzing = $state(false);
 	let isCompressing = $state(false);
+	let progress = $state<CompressProgress | null>(null);
 	let errorMessage = $state('');
 	let result = $state<CompressResult | null>(null);
 	let resultReport = $state<SpaceReport | null>(null);
 	let resultUrl = $state<string | null>(null);
 
-	// ファイルの選択・クリアごとに進める。await の後で値が変わっていたら古い処理の結果を捨てる
-	let generation = 0;
+	/** 実行中のWorkerジョブ（クリア・キャンセル時に止める） */
+	let currentJob: Job<unknown> | null = null;
 	const busy = $derived(isAnalyzing || isCompressing);
 
 	let level = $state<LevelKey | 'custom'>('medium');
 	let custom = $state(customFrom('medium'));
+
+	const STAGES: CompressStage[] = ['load', 'optimize', 'images', 'streams', 'save', 'analyze'];
+	const STAGE_LABELS: Record<CompressStage, string> = {
+		load: 'PDFを読み込み中',
+		optimize: '重複・不要データを整理中',
+		images: '画像を再圧縮中',
+		streams: 'データを再圧縮中',
+		save: '保存中',
+		analyze: '圧縮後の内訳を解析中'
+	};
 
 	function resetResult() {
 		if (resultUrl) URL.revokeObjectURL(resultUrl);
@@ -36,53 +48,71 @@
 		resultReport = null;
 	}
 
+	function errorText(prefix: string, err: unknown) {
+		return prefix + (err instanceof Error ? err.message : String(err));
+	}
+
 	async function selectFile(f: File | undefined) {
 		if (busy || f?.type !== 'application/pdf') return;
-		const gen = ++generation;
 		resetResult();
 		file = f;
 		report = null;
+		fileBytes = null;
 		errorMessage = '';
 		isAnalyzing = true;
 		try {
 			const bytes = new Uint8Array(await f.arrayBuffer());
-			const doc = await PDFDocument.load(bytes, { updateMetadata: false });
-			if (gen !== generation) return;
+			if (file !== f) return; // 読み込み中にキャンセルされた
+			const job = analyzeInWorker(bytes);
+			currentJob = job;
+			report = await job.promise;
 			fileBytes = bytes;
-			report = analyzeSpace(doc, f.size);
 		} catch (err) {
-			if (gen !== generation) return;
-			errorMessage =
-				'PDFを読み込めませんでした: ' + (err instanceof Error ? err.message : String(err));
+			if (!(err instanceof CancelledError))
+				errorMessage = errorText('PDFを読み込めませんでした: ', err);
 		} finally {
 			isAnalyzing = false;
+			currentJob = null;
 		}
 	}
 
 	async function doCompress() {
 		if (!fileBytes || busy) return;
-		const gen = generation;
 		isCompressing = true;
+		progress = null;
 		errorMessage = '';
 		resetResult();
 		try {
-			const r = await compressPdfFile(fileBytes, resolveSettings(level, custom));
-			const after = r.keptOriginal
-				? report
-				: analyzeSpace(await PDFDocument.load(r.bytes, { updateMetadata: false }), r.bytes.length);
-			if (gen !== generation) return; // 圧縮中にクリアされた
-			resultReport = after;
-			result = r;
+			// $state のProxyはWorkerへ送れないため、プレーンなオブジェクトにする
+			const settings = $state.snapshot(resolveSettings(level, custom));
+			const job = compressInWorker(fileBytes, settings, (p) => (progress = p));
+			currentJob = job;
+			const done = await job.promise;
+			resultReport = done.report ?? report;
+			result = done.result;
 			resultUrl = URL.createObjectURL(
-				new Blob([new Uint8Array(r.bytes)], { type: 'application/pdf' })
+				new Blob([new Uint8Array(done.result.bytes)], { type: 'application/pdf' })
 			);
 		} catch (err) {
-			if (gen !== generation) return;
-			errorMessage = '圧縮に失敗しました: ' + (err instanceof Error ? err.message : String(err));
+			if (!(err instanceof CancelledError)) errorMessage = errorText('圧縮に失敗しました: ', err);
 		} finally {
 			isCompressing = false;
+			progress = null;
+			currentJob = null;
 		}
 	}
+
+	function cancel() {
+		currentJob?.cancel();
+		// 解析を止めた場合は内訳がなく圧縮できないため、ファイル選択前に戻す
+		if (isAnalyzing) file = null;
+	}
+
+	// ページを離れたら処理中のWorkerを止め、結果のBlob URLを解放する
+	onDestroy(() => {
+		currentJob?.cancel();
+		if (resultUrl) URL.revokeObjectURL(resultUrl);
+	});
 
 	function download() {
 		if (!resultUrl || !file) return;
@@ -93,7 +123,7 @@
 	}
 
 	function clearAll() {
-		generation++;
+		cancel();
 		resetResult();
 		file = null;
 		fileBytes = null;
@@ -169,19 +199,54 @@
 					<button
 						type="button"
 						onclick={doCompress}
-						disabled={isCompressing || isAnalyzing || !report}
+						disabled={busy || !report}
 						class="rounded bg-blue-600 px-6 py-2 font-medium text-white hover:bg-blue-700 disabled:opacity-50"
 					>
 						{isCompressing ? '圧縮中...' : '圧縮する'}
 					</button>
-					<button
-						type="button"
-						onclick={clearAll}
-						class="rounded bg-gray-500 px-4 py-2 text-white hover:bg-gray-600"
-					>
-						クリア
-					</button>
+					{#if busy}
+						<button
+							type="button"
+							onclick={cancel}
+							class="rounded border border-gray-400 bg-white px-4 py-2 text-gray-700 hover:bg-gray-100"
+						>
+							キャンセル
+						</button>
+					{:else}
+						<button
+							type="button"
+							onclick={clearAll}
+							class="rounded bg-gray-500 px-4 py-2 text-white hover:bg-gray-600"
+						>
+							クリア
+						</button>
+					{/if}
 				</div>
+
+				{#if isCompressing}
+					{@const step = progress ? STAGES.indexOf(progress.stage) + 1 : 0}
+					<div class="mt-4" role="status" aria-live="polite">
+						<p class="mb-1 text-sm text-gray-700">
+							{#if progress}
+								{step}/{STAGES.length}
+								{STAGE_LABELS[progress.stage]}
+								{#if progress.total}（{progress.done} / {progress.total}）{/if}
+							{:else}
+								準備中...
+							{/if}
+						</p>
+						<div class="h-2 overflow-hidden rounded bg-gray-200">
+							{#if progress?.total}
+								<div
+									class="h-2 rounded bg-blue-500 transition-[width]"
+									style="width: {((progress.done ?? 0) / progress.total) * 100}%"
+								></div>
+							{:else}
+								<div class="h-2 w-1/3 animate-pulse rounded bg-blue-300"></div>
+							{/if}
+						</div>
+					</div>
+				{/if}
 			</div>
 		{/if}
 
@@ -242,7 +307,7 @@
 		<ul class="list-disc space-y-1 pl-5">
 			<li>
 				<strong>画像が大半</strong>:
-				写真入りスライドなどは「中」から試し、足りなければ「強」「最大」に上げます。画像は紙面に描かれた大きさでの解像度を基準に縮小します。
+				写真入りスライドなどは「中」から試し、足りなければ「強」に上げます。画質を優先するなら「弱」にします。画像は紙面に描かれた大きさでの解像度を基準に縮小します。
 			</li>
 			<li>
 				<strong>ページの描画命令・図が大半</strong>:

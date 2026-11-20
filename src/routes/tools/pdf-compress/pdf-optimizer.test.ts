@@ -276,6 +276,20 @@ describe('compressPdfFile', () => {
 		expect(reloaded.getPageCount()).toBe(3);
 	});
 
+	it('進捗を段階の順に通知し、ストリームの件数は総数まで進む', async () => {
+		const doc = await PDFDocument.create();
+		doc.addPage();
+		usePageImage(doc, 0, registerImage(doc, 1));
+		const stages: string[] = [];
+		let last: { done?: number; total?: number } = {};
+		await compressPdfFile(await doc.save(), LEVELS.lossless.settings, (p) => {
+			if (stages[stages.length - 1] !== p.stage) stages.push(p.stage);
+			if (p.stage === 'streams') last = p;
+		});
+		expect(stages).toEqual(['load', 'optimize', 'streams', 'save']);
+		expect(last.done).toBe(last.total);
+	});
+
 	it('小さくならない場合は元のバイト列を返す', async () => {
 		const doc = await PDFDocument.create();
 		doc.addPage();
