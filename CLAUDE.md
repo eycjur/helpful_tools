@@ -439,7 +439,7 @@ src/routes/tools/ctf-cipher/
 - **ドラッグの種別判定**: ページ・ファイル並び替えのドラッグ中は`drag`状態を持ち、OSからのファイルドロップと区別する。
 - **圧縮（pdf-compress）**: `copyPages`で新規文書に移さず、元の文書を直接最適化する（しおり・フォーム等を保つため）。処理順は `compress.ts` の `compressPdfFile()` を参照: 付加データ削除（サムネイル・PieceInfo・XMP・添付）→ Root/Infoから到達不能なオブジェクトの削除 →（任意）画像再圧縮 → 辞書と中身が一致するストリームの重複排除 → 再度GC → Filterなしストリームの`CompressionStream('deflate')`によるFlate化 → `useObjectStreams: true`で保存。結果が元以上なら元ファイルを返す。
 - **容量の内訳**: `analyzeSpace()`でストリームを画像・フォント・描画命令・Form XObject・添付・XMP・サムネイルに分類。画像の解像度は配置を解析せず「ページ長辺に全面配置した場合のppi」で示す（解像度上限による縮小も同じ基準で、小さく配置された画像は上限より高い解像度で残る）。
-- **画像再圧縮**: DeviceRGB/DeviceGray・8bpc・単一フィルタ（DCT/Flate）のみ対象。SMaskとして参照される画像、`/ImageMask`・`/Mask`・`/Decode`付きは非可逆化で見た目が変わるため除外。CanvasのJPEG出力は常に3成分なので`/ColorSpace`を`DeviceRGB`に書き換える。色数256以下のFlate画像（スクリーンショット・図）はJPEGにせず、縮小時のみFlateで再符号化。JPEGの復号は`createImageBitmap`に`imageOrientation: 'none'`・`colorSpaceConversion: 'none'`を指定（PDFビューアはEXIFの向き・ICCを使わないため）。XMPメタデータストリームは非圧縮推奨のためFlate化しない。
+- **画像再圧縮**: DeviceRGB/DeviceGray・8bpc・単一フィルタ（DCT/Flate）のみ対象。SMaskとして参照される画像、`/ImageMask`・`/Mask`・`/Decode`付きは非可逆化で見た目が変わるため除外。CanvasのJPEG出力は常に3成分なので`/ColorSpace`を`DeviceRGB`に書き換える。色数256以下のFlate画像（スクリーンショット・図）はJPEGにせず、縮小時のみFlateで再符号化。JPEGの復号は`createImageBitmap`に`imageOrientation: 'none'`・`colorSpaceConversion: 'none'`を指定（PDFビューアはEXIFの向き・ICCを使わないため）。XMPメタデータストリームは非圧縮推奨のためFlate化しない。圧縮レベル（弱・中・強）の解像度上限と品質は`IMAGE_PRESETS`で定義し、「カスタム」選択時のみ個別に指定させる。
 - **メモリ使用量**: 結合・分割・編集・圧縮とも大きなファイルはメモリ使用量に注意。
 
 #### Pcap解析（新規ツール）

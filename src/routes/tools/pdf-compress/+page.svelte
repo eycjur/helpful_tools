@@ -4,6 +4,7 @@
 	import { PDFDocument } from 'pdf-lib';
 	import { analyzeSpace, CATEGORY_LABELS, type SpaceReport } from './pdf-optimizer';
 	import { compressPdfFile, type CompressResult } from './compress';
+	import { IMAGE_PRESETS, type ImagePresetKey } from './image-recompress';
 
 	const tool = tools.find((t) => t.name === 'pdf-compress');
 
@@ -22,8 +23,13 @@
 	let removeMetadata = $state(false);
 	let removeAttachments = $state(false);
 	let recompressImagesEnabled = $state(false);
+	let imageLevel = $state<ImagePresetKey | 'custom'>('medium');
 	let imageQuality = $state(0.85);
 	let maxPpi = $state<number | null>(150);
+	const presetEntries = Object.entries(IMAGE_PRESETS) as [
+		ImagePresetKey,
+		(typeof IMAGE_PRESETS)[ImagePresetKey]
+	][];
 
 	const MAX_IMAGE_ROWS = 10;
 
@@ -71,7 +77,14 @@
 				removePieceInfo,
 				removeMetadata,
 				removeAttachments,
-				images: recompressImagesEnabled ? { quality: Number(imageQuality), maxPpi } : null
+				images: !recompressImagesEnabled
+					? null
+					: imageLevel === 'custom'
+						? { quality: Number(imageQuality), maxPpi }
+						: {
+								quality: IMAGE_PRESETS[imageLevel].quality,
+								maxPpi: IMAGE_PRESETS[imageLevel].maxPpi
+							}
 			});
 			result = r;
 			resultUrl = URL.createObjectURL(
@@ -272,38 +285,55 @@
 								</span>
 							</label>
 							{#if recompressImagesEnabled}
-								<div class="flex flex-wrap gap-4 pl-6">
-									<div>
-										<label for="max-ppi" class="mb-1 block text-xs text-gray-600"
-											>解像度の上限</label
-										>
-										<select
-											id="max-ppi"
-											bind:value={maxPpi}
-											class="rounded border border-gray-300 px-2 py-1 text-sm"
-										>
-											<option value={null}>縮小しない</option>
-											<option value={300}>300 ppi（印刷向け）</option>
-											<option value={150}>150 ppi（画面・配布向け）</option>
-											<option value={96}>96 ppi（高圧縮）</option>
-										</select>
+								<fieldset class="space-y-1 pl-6">
+									<legend class="mb-1 text-xs text-gray-600">圧縮レベル</legend>
+									{#each presetEntries as [key, preset] (key)}
+										<label class="flex flex-wrap items-baseline gap-x-2 text-sm">
+											<input type="radio" bind:group={imageLevel} value={key} />
+											<span>{preset.label}</span>
+											<span class="text-xs text-gray-600">{preset.note}</span>
+										</label>
+									{/each}
+									<label class="flex flex-wrap items-baseline gap-x-2 text-sm">
+										<input type="radio" bind:group={imageLevel} value="custom" />
+										<span>カスタム</span>
+										<span class="text-xs text-gray-600">解像度と品質を個別に指定</span>
+									</label>
+								</fieldset>
+								{#if imageLevel === 'custom'}
+									<div class="flex flex-wrap gap-4 pl-12">
+										<div>
+											<label for="max-ppi" class="mb-1 block text-xs text-gray-600"
+												>解像度の上限</label
+											>
+											<select
+												id="max-ppi"
+												bind:value={maxPpi}
+												class="rounded border border-gray-300 px-2 py-1 text-sm"
+											>
+												<option value={null}>縮小しない</option>
+												<option value={300}>300 ppi（印刷向け）</option>
+												<option value={150}>150 ppi（画面・配布向け）</option>
+												<option value={96}>96 ppi（高圧縮）</option>
+											</select>
+										</div>
+										<div>
+											<label for="image-quality" class="mb-1 block text-xs text-gray-600"
+												>JPEG品質</label
+											>
+											<select
+												id="image-quality"
+												bind:value={imageQuality}
+												class="rounded border border-gray-300 px-2 py-1 text-sm"
+											>
+												<option value={0.6}>0.6（高圧縮）</option>
+												<option value={0.75}>0.75</option>
+												<option value={0.85}>0.85（推奨）</option>
+												<option value={0.92}>0.92（高画質）</option>
+											</select>
+										</div>
 									</div>
-									<div>
-										<label for="image-quality" class="mb-1 block text-xs text-gray-600"
-											>JPEG品質</label
-										>
-										<select
-											id="image-quality"
-											bind:value={imageQuality}
-											class="rounded border border-gray-300 px-2 py-1 text-sm"
-										>
-											<option value={0.6}>0.6（高圧縮）</option>
-											<option value={0.75}>0.75</option>
-											<option value={0.85}>0.85（推奨）</option>
-											<option value={0.92}>0.92（高画質）</option>
-										</select>
-									</div>
-								</div>
+								{/if}
 								<p class="pl-6 text-xs text-gray-600">
 									解像度の上限は、画像をページ全面に配置した場合の値です。小さく配置された画像はこれより高い解像度で残ります。
 								</p>
@@ -383,8 +413,8 @@
 		</p>
 		<ul class="list-disc space-y-1 pl-5">
 			<li>
-				<strong>画像が大半</strong>: 写真入りスライドなどは、解像度の上限150
-				ppiとJPEG品質0.85から試すと効果的です。
+				<strong>画像が大半</strong>:
+				写真入りスライドなどは「画像を再圧縮する」の圧縮レベル「中」から試し、足りなければ「強」にします。
 			</li>
 			<li>
 				<strong>ページの描画命令・図が大半</strong>:

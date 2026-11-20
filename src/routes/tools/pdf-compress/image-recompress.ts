@@ -22,6 +22,30 @@ export type ImageRecompressOptions = {
 	maxPpi: number | null; // ページ全面に配置した場合の解像度上限。nullなら縮小しない
 };
 
+/** 画像の圧縮レベル（解像度は縦横両方に効くため主に段階づけ、品質は補助） */
+export const IMAGE_PRESETS = {
+	low: {
+		label: '弱（高画質）',
+		note: '300 ppi・品質0.92。印刷する資料向け',
+		maxPpi: 300,
+		quality: 0.92
+	},
+	medium: {
+		label: '中（推奨）',
+		note: '150 ppi・品質0.85。画面で見る資料・メール添付向け',
+		maxPpi: 150,
+		quality: 0.85
+	},
+	high: {
+		label: '強（高圧縮）',
+		note: '96 ppi・品質0.6。容量制限が厳しい場合向け',
+		maxPpi: 96,
+		quality: 0.6
+	}
+} as const satisfies Record<string, ImageRecompressOptions & { label: string; note: string }>;
+
+export type ImagePresetKey = keyof typeof IMAGE_PRESETS;
+
 /** この色数以下ならスクリーンショット・図とみなし、JPEGにしない */
 export const FEW_COLORS_THRESHOLD = 256;
 
