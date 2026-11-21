@@ -14,3 +14,5 @@ export interface DecryptGroup {
 	results: DecryptResult[];
 	maxConfidence: number;
 }
+
+export type DecryptResponse = { groups: DecryptGroup[] } | { error: string };

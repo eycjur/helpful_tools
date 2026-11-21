@@ -189,7 +189,7 @@
 			let dataUrl: string;
 
 			// Data URL形式かBase64文字列のみかを判定
-			if (input.startsWith('data:image/')) {
+			if (/^data:image\//i.test(input)) {
 				dataUrl = input;
 			} else {
 				const mimeType = detectBase64ImageMimeType(input) ?? 'image/png';

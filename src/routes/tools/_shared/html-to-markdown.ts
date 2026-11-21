@@ -34,6 +34,16 @@ export function convertHtmlToMarkdown(html: string, options: MarkdownOptions = {
 
 	turndown.remove(['script', 'style', 'title', 'template']);
 
+	turndown.addRule('strikethrough', {
+		filter: (node) => /^(DEL|S|STRIKE)$/.test(node.nodeName),
+		replacement: (content) => `~~${content}~~`
+	});
+
+	turndown.addRule('underline', {
+		filter: ['u'],
+		replacement: (content) => `<u>${content}</u>`
+	});
+
 	turndown.addRule('quillListItem', {
 		filter: (node) => node.nodeName === 'LI' && node.hasAttribute('data-list'),
 		replacement(content, node) {
@@ -82,12 +92,12 @@ export function convertHtmlToMarkdown(html: string, options: MarkdownOptions = {
 		});
 	}
 
-	let markdown = turndown.turndown(source.content);
 	if (!options.preserveLineBreaks && !options.newLineAsParagraph) {
-		// フェンス内の空行はコードの一部なので保持する。
-		markdown = markdown.replace(/^(`{3,})[^\n]*\n[\s\S]*?^\1(?=\n|$)|\n{2,}/gm, (part, fence) =>
-			fence ? part : '\n'
-		);
+		// 通常の段落だけを詰め、表・引用・リストなどのブロック境界は残す。
+		turndown.addRule('compactParagraph', {
+			filter: ['p', 'div'],
+			replacement: (content) => '\n' + content + '\n'
+		});
 	}
-	return markdown;
+	return turndown.turndown(source.content);
 }

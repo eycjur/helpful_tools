@@ -2,7 +2,7 @@
 	import { tools } from '$lib/data/tools';
 	import Icon from '@iconify/svelte';
 	import { onDestroy } from 'svelte';
-	import { fetchQrBlob, getQrCodeUrl, loadQrImage } from '../_shared/qrcode';
+	import { fetchQrBlob, getQrCodeUrl, loadQrCodeImage } from '../_shared/qrcode';
 	import { cleanUsername, validateUsername } from './username-validation';
 
 	const tool = tools.find((t) => t.name === 'x-qrcode-generator');
@@ -40,7 +40,7 @@
 		isLoading = true;
 		const url = getQrCodeUrl(`https://x.com/${name}`);
 		try {
-			const image = await loadQrImage(url, includeIcon);
+			const image = await loadQrCodeImage(url, includeIcon);
 			if (id !== generationId) return;
 			if (includeIcon) drawXIcon(canvas, image);
 			qrUrl = url;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calculateAspectRatioConstrainedSize } from './video-size';
+import { calculateAspectRatioConstrainedSize, hasValidVideoLimits } from './video-size';
 
 describe('calculateAspectRatioConstrainedSize', () => {
 	it('keeps tiny videos at their original dimensions', () => {
@@ -22,5 +22,16 @@ describe('calculateAspectRatioConstrainedSize', () => {
 			width: 1,
 			height: 100
 		});
+	});
+});
+
+describe('hasValidVideoLimits', () => {
+	it('accepts both endpoints and rejects values outside the integer limits', () => {
+		expect(hasValidVideoLimits(1, 1)).toBe(true);
+		expect(hasValidVideoLimits(7680, 4320)).toBe(true);
+		expect(hasValidVideoLimits(0, 1)).toBe(false);
+		expect(hasValidVideoLimits(7680, 4321)).toBe(false);
+		expect(hasValidVideoLimits(10.5, 20)).toBe(false);
+		expect(hasValidVideoLimits(10, NaN)).toBe(false);
 	});
 });

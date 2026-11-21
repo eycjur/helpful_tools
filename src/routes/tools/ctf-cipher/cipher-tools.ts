@@ -2,8 +2,7 @@
  * 暗号解読 - 暗号解読アルゴリズム
  */
 
-import { SvelteSet } from 'svelte/reactivity';
-import type { DecryptResult } from './types';
+import type { DecryptGroup, DecryptResult } from './types';
 import { calculateGeneralConfidence } from './scoring';
 
 // 暗号方式ごとの信頼度ボーナス
@@ -130,7 +129,7 @@ export function decryptXOR(text: string): DecryptResult[] {
  */
 export function decryptBase64Multi(text: string): DecryptResult[] {
 	const results: DecryptResult[] = [];
-	const seen = new SvelteSet<string>([text.trim()]);
+	const seen = new Set([text.trim()]);
 	let current = text.trim();
 	let depth = 0;
 
@@ -218,45 +217,35 @@ export function decryptRailFence(text: string): DecryptResult[] {
  * Rail Fence復号化ヘルパー
  */
 function railFenceDecrypt(ciphertext: string, rails: number): string {
-	const len = ciphertext.length;
-	const fence: (string | null)[][] = Array.from({ length: rails }, () => Array(len).fill(null));
+	const characters = Array.from(ciphertext);
+	const cycle = 2 * (rails - 1);
+	const railAt = (index: number) => Math.min(index % cycle, cycle - (index % cycle));
+	const counts = new Array<number>(rails).fill(0);
+	for (let index = 0; index < characters.length; index++) counts[railAt(index)]++;
 
-	// まずジグザグパターンをマーク
-	let rail = 0;
-	let direction = 1;
-	for (let i = 0; i < len; i++) {
-		fence[rail][i] = '*'; // マーカー
-		rail += direction;
-		if (rail === 0 || rail === rails - 1) {
-			direction *= -1;
-		}
+	// 暗号文ではレールごとに文字が並ぶ。各レールの先頭からジグザグ順に読み取る。
+	const offsets = [0];
+	for (let rail = 1; rail < rails; rail++) offsets[rail] = offsets[rail - 1] + counts[rail - 1];
+	return characters.map((_, index) => characters[offsets[railAt(index)]++]).join('');
+}
+
+export function decryptText(text: string): DecryptGroup[] {
+	const results = [
+		...decryptCaesar(text),
+		...[decryptROT47(text), decryptAtbash(text)].filter((result) => result.confidence > 20),
+		...decryptXOR(text),
+		...decryptBase64Multi(text),
+		...[decryptReverse(text)].filter((result) => result.confidence > 20),
+		...decryptRailFence(text)
+	];
+	const groups = new Map<string, DecryptResult[]>();
+	for (const result of results) {
+		const group = groups.get(result.cipher);
+		if (group) group.push(result);
+		else groups.set(result.cipher, [result]);
 	}
-
-	// 暗号文を各レールに配置
-	let idx = 0;
-	for (let r = 0; r < rails; r++) {
-		for (let c = 0; c < len; c++) {
-			if (fence[r][c] === '*') {
-				fence[r][c] = ciphertext[idx++];
-			}
-		}
-	}
-
-	// ジグザグパターンで読み取り
-	const result: string[] = [];
-	rail = 0;
-	direction = 1;
-	for (let i = 0; i < len; i++) {
-		const char = fence[rail][i];
-		if (char === null) {
-			throw new Error(`Unexpected null at rail ${rail}, position ${i}`);
-		}
-		result.push(char);
-		rail += direction;
-		if (rail === 0 || rail === rails - 1) {
-			direction *= -1;
-		}
-	}
-
-	return result.join('');
+	return Array.from(groups, ([cipher, results]) => {
+		results.sort((a, b) => b.confidence - a.confidence);
+		return { cipher, results, maxConfidence: results[0].confidence };
+	}).sort((a, b) => b.maxConfidence - a.maxConfidence);
 }

@@ -16,10 +16,13 @@
 	};
 
 	const tool = tools.find((t) => t.name === 'hex-dump');
+	const rowsPerPage = 128;
+	const hexByByte = Array.from({ length: 256 }, (_, byte) => byte.toString(16).padStart(2, '0'));
 
 	let file = $state<File | null>(null);
-	let hexLines = $state<HexLine[]>([]);
-	let hexDump = $state('');
+	let bytes = $state.raw(new Uint8Array(0));
+	let pageIndex = $state(0);
+	let preview: HTMLDivElement | undefined = $state();
 	let isProcessing = $state(false);
 	let dragOver = $state(false);
 	let copyFeedback = $state(false);
@@ -30,7 +33,10 @@
 
 	// 設定
 	let bytesPerLine = $state(16);
-	let maxBytes = $state(1024 * 1024); // 最大1MB表示
+	let maxBytes = $state(1024 * 1024);
+	let pageCount = $derived(Math.ceil(bytes.length / (bytesPerLine * rowsPerPage)));
+	let hexLines = $derived(makePageLines(bytes, bytesPerLine, pageIndex));
+	let omittedBytes = $derived(Math.max(0, (file?.size ?? 0) - maxBytes));
 
 	// 制御文字のマッピング
 	const controlChars: { [key: number]: string } = {
@@ -80,12 +86,65 @@
 		return '非印字可能文字';
 	}
 
+	function asciiCharacter(byte: number): string {
+		return byte >= 32 && byte <= 126 ? String.fromCharCode(byte) : '.';
+	}
+
+	function formatOffset(offset: number): string {
+		return offset.toString(16).padStart(8, '0');
+	}
+
+	function makePageLines(data: Uint8Array, width: number, page: number): HexLine[] {
+		const start = page * rowsPerPage * width;
+		const end = Math.min(start + rowsPerPage * width, data.length);
+		const lines: HexLine[] = [];
+		for (let offset = start; offset < end; offset += width) {
+			const line: HexLine = { offset: formatOffset(offset), bytes: [] };
+			for (let i = offset; i < Math.min(offset + width, end); i++) {
+				const byte = data[i];
+				line.bytes.push({
+					offset: i,
+					value: byte,
+					hex: hexByByte[byte],
+					ascii: asciiCharacter(byte),
+					description: getByteDescription(byte)
+				});
+			}
+			lines.push(line);
+		}
+		return lines;
+	}
+
+	function formatDump(data: Uint8Array, width: number): string {
+		const hexWidth = width * 2 + Math.floor(width / 2) - 1;
+		const lines: string[] = [];
+		for (let offset = 0; offset < data.length; offset += width) {
+			let hex = '';
+			let ascii = '';
+			const count = Math.min(width, data.length - offset);
+			for (let i = 0; i < count; i++) {
+				const byte = data[offset + i];
+				if (i > 0 && i % 2 === 0) hex += ' ';
+				hex += hexByByte[byte];
+				ascii += asciiCharacter(byte);
+			}
+			lines.push(`${formatOffset(offset)}: ${hex.padEnd(hexWidth)}  ${ascii}\n`);
+		}
+		return lines.join('');
+	}
+
+	function showPage(index: number) {
+		pageIndex = index;
+		handleByteLeave();
+		if (preview) preview.scrollTop = 0;
+	}
+
 	function onFileInput(e: Event) {
 		const input = e.target as HTMLInputElement;
 		if (input.files && input.files.length) {
 			file = input.files[0];
 			input.value = '';
-			generateHexDump();
+			loadHexBytes();
 		}
 	}
 
@@ -94,86 +153,27 @@
 		dragOver = false;
 		if (e.dataTransfer?.files?.length) {
 			file = e.dataTransfer.files[0];
-			generateHexDump();
+			loadHexBytes();
 		}
 	}
 
-	async function generateHexDump() {
+	async function loadHexBytes() {
 		const currentFile = file;
 		if (!currentFile) return;
 		const request = ++latestRequest;
 		const limit = maxBytes;
-		const lineWidth = bytesPerLine;
 
 		try {
 			isProcessing = true;
-			hexDump = '';
-			hexLines = [];
+			bytes = new Uint8Array(0);
+			showPage(0);
 
 			// 必要な部分のみ読み込む（メモリ効率化）
 			const displayBytes = Math.min(currentFile.size, limit);
 			const blob = currentFile.slice(0, displayBytes);
 			const buffer = await blob.arrayBuffer();
 			if (request !== latestRequest) return;
-			const bytes = new Uint8Array(buffer);
-
-			let output = '';
-			let offset = 0;
-			const lines: HexLine[] = [];
-
-			while (offset < displayBytes) {
-				// オフセット（16進数、8桁、ゼロパディング）
-				const offsetStr = offset.toString(16).padStart(8, '0');
-
-				// 現在の行のバイト数
-				const lineBytes = Math.min(lineWidth, displayBytes - offset);
-				const lineData = bytes.slice(offset, offset + lineBytes);
-
-				// 各バイトの情報を構築
-				const byteInfos: ByteInfo[] = [];
-				let hexPart = '';
-				let asciiPart = '';
-
-				for (let i = 0; i < lineData.length; i++) {
-					const byte = lineData[i];
-					const hex = byte.toString(16).padStart(2, '0');
-					const ascii = byte >= 32 && byte <= 126 ? String.fromCharCode(byte) : '.';
-					const description = getByteDescription(byte);
-
-					byteInfos.push({
-						offset: offset + i,
-						value: byte,
-						hex,
-						ascii,
-						description
-					});
-
-					if (i > 0 && i % 2 === 0) {
-						hexPart += ' ';
-					}
-					hexPart += hex;
-					asciiPart += ascii;
-				}
-
-				// 16進数パートをパディング（bytesPerLineに満たない場合）
-				const hexCharsPerLine = lineWidth * 2 + Math.floor(lineWidth / 2) - 1;
-				hexPart = hexPart.padEnd(hexCharsPerLine, ' ');
-
-				lines.push({
-					offset: offsetStr,
-					bytes: byteInfos
-				});
-
-				output += `${offsetStr}: ${hexPart}  ${asciiPart}\n`;
-				offset += lineBytes;
-			}
-
-			if (currentFile.size > limit) {
-				output += `\n... (残り ${currentFile.size - limit} バイトは省略されました)`;
-			}
-
-			hexLines = lines;
-			hexDump = output;
+			bytes = new Uint8Array(buffer);
 		} catch (e) {
 			if (request !== latestRequest) return;
 			console.error('Hexダンプ生成エラー:', e);
@@ -184,10 +184,12 @@
 	}
 
 	async function copyToClipboard() {
-		if (!hexDump) return;
+		if (!bytes.length) return;
 
 		try {
-			await navigator.clipboard.writeText(hexDump);
+			const output = formatDump(bytes, bytesPerLine);
+			const notice = omittedBytes ? `\n... (残り ${omittedBytes} バイトは省略されました)` : '';
+			await navigator.clipboard.writeText(output + notice);
 			copyFeedback = true;
 			setTimeout(() => {
 				copyFeedback = false;
@@ -202,10 +204,8 @@
 		latestRequest++;
 		isProcessing = false;
 		file = null;
-		hexDump = '';
-		hexLines = [];
-		hoveredByteIndex = null;
-		hoveredByteInfo = null;
+		bytes = new Uint8Array(0);
+		showPage(0);
 	}
 
 	function handleByteHover(byte: ByteInfo, event: MouseEvent) {
@@ -243,7 +243,7 @@
 				<select
 					id="bytes-per-line"
 					bind:value={bytesPerLine}
-					onchange={() => file && generateHexDump()}
+					onchange={() => showPage(0)}
 					class="mt-1 w-full rounded border border-gray-300 px-3 py-2"
 				>
 					<option value={8}>8バイト</option>
@@ -258,7 +258,7 @@
 				<select
 					id="max-bytes"
 					bind:value={maxBytes}
-					onchange={() => file && generateHexDump()}
+					onchange={loadHexBytes}
 					class="mt-1 w-full rounded border border-gray-300 px-3 py-2"
 				>
 					<option value={1024}>1 KB</option>
@@ -320,7 +320,7 @@
 								<span>コピーしました</span>
 							{:else}
 								<Icon icon="mdi:content-copy" class="h-4 w-4" />
-								<span>コピー</span>
+								<span>{pageCount > 1 ? '全ページをコピー' : 'コピー'}</span>
 							{/if}
 						</button>
 					{/if}
@@ -336,7 +336,36 @@
 	{#if hexLines.length > 0}
 		<div class="relative rounded-lg border border-gray-200 bg-white p-4">
 			<h3 class="mb-3 font-bold text-gray-800">Hexダンプ（ホバーで詳細表示）</h3>
-			<div class="overflow-x-auto font-mono text-sm text-gray-700">
+			{#if pageCount > 1}
+				<nav aria-label="Hexダンプのページ" class="mb-3 flex flex-wrap items-center gap-2 text-sm">
+					<button
+						onclick={() => showPage(0)}
+						disabled={pageIndex === 0}
+						class="rounded border border-gray-300 px-3 py-1 enabled:hover:bg-gray-100 disabled:opacity-50"
+						>先頭</button
+					>
+					<button
+						onclick={() => showPage(pageIndex - 1)}
+						disabled={pageIndex === 0}
+						class="rounded border border-gray-300 px-3 py-1 enabled:hover:bg-gray-100 disabled:opacity-50"
+						>前へ</button
+					>
+					<span aria-live="polite">{pageIndex + 1} / {pageCount} ページ</span>
+					<button
+						onclick={() => showPage(pageIndex + 1)}
+						disabled={pageIndex + 1 === pageCount}
+						class="rounded border border-gray-300 px-3 py-1 enabled:hover:bg-gray-100 disabled:opacity-50"
+						>次へ</button
+					>
+					<button
+						onclick={() => showPage(pageCount - 1)}
+						disabled={pageIndex + 1 === pageCount}
+						class="rounded border border-gray-300 px-3 py-1 enabled:hover:bg-gray-100 disabled:opacity-50"
+						>最後</button
+					>
+				</nav>
+			{/if}
+			<div bind:this={preview} class="max-h-[36rem] overflow-auto font-mono text-sm text-gray-700">
 				{#each hexLines as line (line.offset)}
 					<div class="hex-line whitespace-pre">
 						<!-- オフセット -->
@@ -384,12 +413,10 @@
 						{/each}
 					</div>
 				{/each}
-				{#if file && file.size > maxBytes}
-					<div class="mt-2 text-gray-500">
-						... (残り {file.size - maxBytes} バイトは省略されました)
-					</div>
-				{/if}
 			</div>
+			{#if omittedBytes}
+				<div class="mt-2 text-gray-500">... (残り {omittedBytes} バイトは省略されました)</div>
+			{/if}
 
 			<!-- カスタムツールチップ -->
 			{#if hoveredByteInfo}

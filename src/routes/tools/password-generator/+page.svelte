@@ -24,6 +24,7 @@
 
 	// 生成されたパスワード
 	let passwords: string[] = [];
+	let strength = describeStrength(0);
 	let copiedIndex: number | null = null;
 
 	// 紛らわしい文字を除外するヘルパー
@@ -35,54 +36,38 @@
 			.join('');
 	}
 
-	// 暗号学的に安全な乱数で1文字を取得
-	function getRandomChar(chars: string): string {
+	function getRandomIndex(size: number): number {
 		const array = new Uint32Array(1);
-		crypto.getRandomValues(array);
-		return chars[array[0] % chars.length];
+		const limit = Math.floor(2 ** 32 / size) * size;
+		do {
+			crypto.getRandomValues(array);
+		} while (array[0] >= limit);
+		return array[0] % size;
 	}
 
-	// 暗号学的に安全な乱数でパスワードを生成
-	function generatePassword(passwordLength: number): string {
-		// 使用する文字セットを準備（紛らわしい文字を除外）
+	function getCharacterSets(): string[] {
 		const charsets: string[] = [];
 		if (includeUppercase) charsets.push(filterAmbiguous(uppercaseChars));
 		if (includeLowercase) charsets.push(filterAmbiguous(lowercaseChars));
 		if (includeNumbers) charsets.push(filterAmbiguous(numberChars));
 		if (includeSymbols) charsets.push(filterAmbiguous(symbolChars));
+		return charsets;
+	}
 
-		// 空のcharsetを除外
-		const validCharsets = charsets.filter((cs) => cs.length > 0);
-		if (validCharsets.length === 0) return '';
-
-		// 全文字セットを結合
-		const allChars = validCharsets.join('');
-
-		// 各文字種から最低1文字ずつ取得
-		const requiredChars: string[] = [];
-		for (const cs of validCharsets) {
-			requiredChars.push(getRandomChar(cs));
+	function generatePassword(passwordLength: number, charsets: string[]): string {
+		const allChars = charsets.join('');
+		const characters = charsets.map((charset) => charset[getRandomIndex(charset.length)]);
+		while (characters.length < passwordLength) {
+			characters.push(allChars[getRandomIndex(allChars.length)]);
 		}
 
-		// 残りの文字をランダムに埋める
-		const remainingLength = passwordLength - requiredChars.length;
-		const remainingChars: string[] = [];
-		for (let i = 0; i < remainingLength; i++) {
-			remainingChars.push(getRandomChar(allChars));
+		// Fisher-Yatesシャッフル
+		for (let i = characters.length - 1; i > 0; i--) {
+			const j = getRandomIndex(i + 1);
+			[characters[i], characters[j]] = [characters[j], characters[i]];
 		}
 
-		// 必須文字と残りの文字を結合してシャッフル
-		const allPasswordChars = [...requiredChars, ...remainingChars];
-
-		// Fisher-Yatesシャッフル（暗号学的に安全な乱数を使用）
-		const shuffleArray = new Uint32Array(allPasswordChars.length);
-		crypto.getRandomValues(shuffleArray);
-		for (let i = allPasswordChars.length - 1; i > 0; i--) {
-			const j = shuffleArray[i] % (i + 1);
-			[allPasswordChars[i], allPasswordChars[j]] = [allPasswordChars[j], allPasswordChars[i]];
-		}
-
-		return allPasswordChars.join('');
+		return characters.join('');
 	}
 
 	// 複数のパスワードを生成
@@ -97,32 +82,30 @@
 		copiedIndex = null;
 		if (noCharsetSelected || !isValidLength(passwordLength)) return;
 
-		for (let i = 0; i < count; i++) {
-			const pwd = generatePassword(passwordLength);
-			if (pwd) {
-				passwords.push(pwd);
-			}
-		}
-		passwords = passwords; // リアクティビティをトリガー
+		const charsets = getCharacterSets();
+		passwords = Array.from({ length: count }, () => generatePassword(passwordLength, charsets));
+		strength = describeStrength(calculateMinimumEntropy(passwordLength, charsets));
 	}
 
-	// パスワードの強度を計算（エントロピー）
-	function calculateStrength(pwd: string): {
+	function calculateMinimumEntropy(passwordLength: number, charsets: string[]): number {
+		const poolSize = charsets.reduce((total, charset) => total + charset.length, 0);
+		const balancedCount = Math.floor(passwordLength / charsets.length);
+		const extraCount = passwordLength % charsets.length;
+		let entropy = (passwordLength - charsets.length) * Math.log2(poolSize);
+		// 各文字種の出現数の積が最大になる均等な配分が、最も生成されやすい。
+		for (const [i, charset] of charsets.entries()) {
+			const occurrences = balancedCount + (i < extraCount ? 1 : 0);
+			entropy += Math.log2(((passwordLength - i) * charset.length) / occurrences);
+		}
+		return entropy;
+	}
+
+	function describeStrength(entropy: number): {
 		score: number;
 		label: string;
 		color: string;
 		entropy: number;
 	} {
-		if (!pwd) return { score: 0, label: '---', color: 'gray', entropy: 0 };
-
-		let charset = 0;
-		if (/[A-Z]/.test(pwd)) charset += 26;
-		if (/[a-z]/.test(pwd)) charset += 26;
-		if (/[0-9]/.test(pwd)) charset += 10;
-		if (/[^A-Za-z0-9]/.test(pwd)) charset += 32;
-
-		const entropy = Math.log2(Math.pow(charset, pwd.length));
-
 		if (entropy < 28) return { score: 1, label: '非常に弱い', color: 'red', entropy };
 		if (entropy < 36) return { score: 2, label: '弱い', color: 'orange', entropy };
 		if (entropy < 60) return { score: 3, label: '普通', color: 'yellow', entropy };
@@ -282,7 +265,6 @@
 
 			<div class="space-y-3">
 				{#each passwords as password, index (index)}
-					{@const strength = calculateStrength(password)}
 					<div class="rounded-lg border border-gray-100 bg-gray-50 p-4">
 						<div class="flex items-center gap-3">
 							<!-- パスワード -->
@@ -339,7 +321,7 @@
 								{strength.label}
 							</span>
 							<span class="text-xs text-gray-500">
-								(エントロピー: {strength.entropy.toFixed(1)} bits)
+								(最小エントロピー: {strength.entropy.toFixed(1)} bits)
 							</span>
 						</div>
 					</div>

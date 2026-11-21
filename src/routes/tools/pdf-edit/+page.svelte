@@ -20,6 +20,7 @@
 	type Renderer = Awaited<ReturnType<typeof createPdfPageRenderer>>;
 
 	let nextId = 0;
+	let importGeneration = 0;
 	// 元ファイルとレンダラー。画面表示は docs/thumbs で駆動するため意図的に非リアクティブにする
 	/* eslint-disable svelte/prefer-svelte-reactivity */
 	const sources = new Map<number, File>();
@@ -65,12 +66,13 @@
 	}
 
 	async function addFiles(files: File[]) {
+		const generation = importGeneration;
 		errorMessage = '';
 		for (const file of files) {
 			const srcId = nextId++;
 			try {
 				const renderer = await createPdfPageRenderer(file);
-				if (destroyed) {
+				if (generation !== importGeneration) {
 					await renderer.destroy();
 					return;
 				}
@@ -93,6 +95,7 @@
 				docs = [...docs, doc];
 				ensureThumbs(doc.pages.slice(0, 1));
 			} catch (err) {
+				if (generation !== importGeneration) return;
 				errorMessage = `${file.name} を読み込めませんでした: ${err instanceof Error ? err.message : String(err)}`;
 			}
 		}
@@ -123,11 +126,7 @@
 		for (const d of next) ensureThumbs(d.expanded ? d.pages : d.pages.slice(0, 1));
 	}
 
-	let destroyed = false;
-	onDestroy(() => {
-		destroyed = true;
-		commit([]);
-	});
+	onDestroy(clearAll);
 
 	function toggleExpanded(doc: Doc) {
 		doc.expanded = !doc.expanded;
@@ -339,6 +338,7 @@
 	}
 
 	function clearAll() {
+		importGeneration++;
 		commit([]);
 		selected = new Set();
 		anchor = null;

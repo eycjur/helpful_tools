@@ -141,6 +141,13 @@ describe('formatLatexCell', () => {
 		expect(formatLatexCell('A&B')).toBe('A\\&B');
 	});
 
+	it.each(['[1]', '*', ' [1]', '\t* note'])(
+		'行頭の %j を直前の行末コマンドから分離する',
+		(cell) => {
+			expect(formatLatexCell(cell)).toBe('{}' + cell);
+		}
+	);
+
 	it('空行を含む複数行を同じセルに保持し、角括弧を行間の指定と区別する', () => {
 		expect(formatLatexCell('A&B\r\n\r\n[1]')).toBe(
 			'\\shortstack[l]{\\strut A\\&B \\\\ \\strut  \\\\ \\strut [1]}'

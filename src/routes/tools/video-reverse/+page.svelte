@@ -2,6 +2,7 @@
 	import { tools } from '$lib/data/tools';
 	import { loadFfmpegCore } from '../_shared/ffmpeg-core';
 	import { formatVideoDuration } from '../_shared/video-duration';
+	import { isVideoFile, videoFileAccept } from '../_shared/video-file';
 	import Icon from '@iconify/svelte';
 	import { onMount, onDestroy } from 'svelte';
 	import type { FFmpeg as FFmpegType } from '@ffmpeg/ffmpeg';
@@ -131,14 +132,14 @@
 
 	function processFile(file: File) {
 		if (isConverting) return;
-		if (!file.type.startsWith('video/')) {
+		if (!isVideoFile(file)) {
 			errorMessage = '動画ファイルを選択してください';
 			return;
 		}
 
 		clearAll();
 
-		if (file.size > FILE_SIZE_WARNING_THRESHOLD) {
+		if (file.size >= FILE_SIZE_WARNING_THRESHOLD) {
 			const sizeMB = Math.round(file.size / 1024 / 1024);
 			warningMessage = `ファイルサイズが大きいため（${sizeMB}MB）、逆再生変換に時間とメモリを多く使います。ブラウザが応答しなくなる場合があります。`;
 		}
@@ -357,7 +358,7 @@
 		<input
 			id="reverse-video-input"
 			type="file"
-			accept="video/*"
+			accept={videoFileAccept}
 			disabled={isConverting}
 			onchange={handleFileSelect}
 			class="hidden"

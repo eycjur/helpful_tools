@@ -633,7 +633,7 @@
 												{record.data}
 											</div>
 											<div class="flex shrink-0 items-center gap-2">
-												{#if record.ttl}
+												{#if record.ttl !== undefined}
 													<span class="rounded bg-blue-100 px-2 py-1 text-xs text-blue-700">
 														TTL: {record.ttl}s
 													</span>
@@ -696,7 +696,7 @@
 												{record.data}
 											</div>
 											<div class="flex shrink-0 items-center gap-2">
-												{#if record.ttl}
+												{#if record.ttl !== undefined}
 													<span class="rounded bg-purple-100 px-2 py-1 text-xs text-purple-700">
 														TTL: {record.ttl}s
 													</span>

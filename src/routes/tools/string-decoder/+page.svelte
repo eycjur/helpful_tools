@@ -55,7 +55,7 @@
 		},
 		base64: {
 			label: 'Base64',
-			description: 'Base64エンコード',
+			description: 'UTF-8文字列のBase64エンコード',
 			example: 'SGVsbG8gV29ybGQ= → Hello World'
 		},
 		'unicode-js': {
@@ -96,7 +96,7 @@
 		base58: {
 			label: 'Base58',
 			description: 'Bitcoin等で使用',
-			example: '5Kd3... → バイナリ'
+			example: '112 → 0x000001'
 		},
 		rot13: {
 			label: 'ROT13',

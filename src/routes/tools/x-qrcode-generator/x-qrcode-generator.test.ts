@@ -1,11 +1,11 @@
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { expect, it, vi } from 'vitest';
-import { loadQrImage } from '../_shared/qrcode';
+import { loadQrCodeImage } from '../_shared/qrcode';
 import Page from './+page.svelte';
 
 vi.mock('../_shared/qrcode', async (importOriginal) => ({
 	...(await importOriginal<typeof import('../_shared/qrcode')>()),
-	loadQrImage: vi.fn()
+	loadQrCodeImage: vi.fn()
 }));
 
 it('preserves the validation message when toggling the icon for an invalid username', async () => {
@@ -17,5 +17,5 @@ it('preserves the validation message when toggling the icon for an invalid usern
 		screen.getByText('ユーザー名は英数字とアンダースコアのみ、15文字以内で入力してください。')
 	).toBeTruthy();
 	expect(screen.queryByRole('button', { name: 'QRコードをダウンロード' })).toBeNull();
-	expect(loadQrImage).not.toHaveBeenCalled();
+	expect(loadQrCodeImage).not.toHaveBeenCalled();
 });

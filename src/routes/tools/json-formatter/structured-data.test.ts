@@ -45,6 +45,22 @@ describe('構造化データの解析', () => {
 		});
 	});
 
+	it.each(['\n', '\r\n', '\r'])('Python文字列で改行 %j の行継続を扱う', (newline) => {
+		expect(parseStructuredData("A(text='a\\" + newline + "b')")).toMatchObject({ text: 'ab' });
+	});
+
+	it.each(['\\x1', '\\u12', '\\U1234'])('不完全なエスケープ %s を拒否する', (escape) => {
+		expect(() => parseStructuredData("A(text='" + escape + "')")).toThrow(
+			'文字コードのエスケープが不完全です'
+		);
+	});
+
+	it('未対応の名前付きUnicodeエスケープを知らせる', () => {
+		expect(() => parseStructuredData("A(text='\\N{LATIN CAPITAL LETTER A}')")).toThrow(
+			'名前付きUnicodeエスケープは対応していません'
+		);
+	});
+
 	it.each(['1.000e3', '1e100', '9007199254740992', '{"text":"\\"1e400\\""}'])(
 		'表記の正規化や文字列の数値 %s を許可する',
 		(input) => expect(parseStructuredData(input)).toEqual(JSON.parse(input))

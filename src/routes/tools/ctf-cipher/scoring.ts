@@ -2,8 +2,6 @@
  * 暗号解読 - 信頼度評価システム
  */
 
-import { SvelteSet, SvelteMap } from 'svelte/reactivity';
-
 // 英語の一般的な単語リスト
 const COMMON_WORD_LIST = [
 	'the',
@@ -183,7 +181,7 @@ export function calculateGeneralConfidence(text: string): number {
 	const digits = text.match(/[0-9]/g)?.length || 0;
 	const lettersDigits = letters + digits;
 	const punctuation = text.match(/[.,;:'"!?()[\]{}<>/\\\-_=+@#$%^&*]/g)?.length || 0;
-	const uniqueChars = new SvelteSet(text).size;
+	const uniqueChars = new Set(text).size;
 	const wordMatches = text.match(/[A-Za-z]{2,}/g) || [];
 	const wordLikeCount = wordMatches.reduce((sum, word) => sum + word.length, 0);
 	const avgWordLength =
@@ -280,7 +278,7 @@ function getMaxRunLength(text: string): number {
 function calculateShannonEntropy(text: string): number {
 	const len = text.length;
 	if (len === 0) return 0;
-	const freq = new SvelteMap<string, number>();
+	const freq = new Map<string, number>();
 	for (const char of text) {
 		freq.set(char, (freq.get(char) || 0) + 1);
 	}

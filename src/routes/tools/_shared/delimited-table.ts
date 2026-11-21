@@ -5,7 +5,7 @@ export function detectDelimiter(text: string): TableDelimiter {
 	let quoted = false;
 	let hasComma = false;
 
-	for (const character of text) {
+	for (const character of text.replace(/^\uFEFF/, '')) {
 		if (character === '"' && (fieldStart || quoted)) {
 			quoted = !quoted;
 			fieldStart = true;
@@ -22,10 +22,11 @@ export function detectDelimiter(text: string): TableDelimiter {
 	return 'comma';
 }
 
-export function parsePlainTable(text: string, delimiter = detectDelimiter(text)): string[][] {
+export function parsePlainTable(text: string, delimiter?: TableDelimiter): string[][] {
+	text = text.replace(/^\uFEFF/, '');
 	if (!text.trim() && !text.includes('\t')) return [];
 
-	const separator = delimiter === 'tab' ? '\t' : ',';
+	const separator = (delimiter ?? detectDelimiter(text)) === 'tab' ? '\t' : ',';
 	const rows: string[][] = [];
 	let row: string[] = [];
 	let cell = '';

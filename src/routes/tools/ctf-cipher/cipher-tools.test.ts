@@ -6,7 +6,8 @@ import {
 	decryptBase64Multi,
 	decryptROT47,
 	decryptAtbash,
-	decryptReverse
+	decryptReverse,
+	decryptText
 } from './cipher-tools';
 
 describe('暗号解読 - コアロジック', () => {
@@ -107,6 +108,21 @@ describe('暗号解読 - コアロジック', () => {
 			const decrypted = results.map((r) => r.result);
 			expect(decrypted).toContain('WEAREDISCOVEREDFLEEATONCE');
 		});
+
+		it('絵文字を1文字として並べ替えて復号する', () => {
+			const encrypted = 'Wrivdf o,dlheeeaedsoee  lea ne n eltepol.  cr😀etcat  p';
+			const decrypted = decryptRailFence(encrypted).find((result) => result.detail === 'Rails: 3');
+			expect(decrypted?.result).toBe('We are discovered 😀 flee at once, and tell the people.');
+		});
+	});
+
+	it('方式ごとの候補とグループを信頼度順で返す', () => {
+		const groups = decryptText('U0dWc2JHOGdWMjl5YkdRPQ==');
+		const scores = groups.map((group) => group.maxConfidence);
+		expect(scores).toEqual(scores.toSorted((a, b) => b - a));
+		const base64Group = groups.find((group) => group.cipher === 'Base64');
+		expect(base64Group?.results).toContainEqual(expect.objectContaining({ result: 'Hello World' }));
+		expect(base64Group?.maxConfidence).toEqual(base64Group?.results[0].confidence);
 	});
 
 	describe('Base64多段デコード', () => {

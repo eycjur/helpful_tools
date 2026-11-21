@@ -31,7 +31,7 @@
 		}
 
 		outputText = tableToTsv(transposeTable(parsed.rows));
-		navigator.clipboard.writeText(outputText).catch((err) => {
+		navigator.clipboard?.writeText(outputText).catch((err) => {
 			console.error('自動コピーに失敗しました: ', err);
 		});
 	}

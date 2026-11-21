@@ -20,7 +20,7 @@ describe('Markdown変換', () => {
 		const html =
 			'<h1>一部を<strong>太字</strong>にする</h1><ol start="4"><li>甲</li><li>乙</li></ol>';
 		expect(convertHtmlToMarkdown(html, { ignoreBoldInHeader: true })).toBe(
-			'# 一部を太字にする\n4.  甲\n5.  乙'
+			'# 一部を太字にする\n\n4.  甲\n5.  乙'
 		);
 		expect(convertHtmlToMarkdown(html)).toContain('# 一部を**太字**にする');
 	});
@@ -29,7 +29,7 @@ describe('Markdown変換', () => {
 		const html = '<pre><code>一行目\n\n  三行目</code></pre><p>説明</p>';
 		const quillHtml =
 			'<div class="ql-code-block-container"><div class="ql-code-block">一行目</div><div class="ql-code-block"><br></div><div class="ql-code-block">  三行目</div></div><p>説明</p>';
-		const expected = '```\n一行目\n\n  三行目\n```\n説明';
+		const expected = '```\n一行目\n\n  三行目\n```\n\n説明';
 		expect(convertHtmlToMarkdown(html)).toBe(expected);
 		expect(convertHtmlToMarkdown(quillHtml)).toBe(expected);
 	});
@@ -55,5 +55,20 @@ describe('Markdown変換', () => {
 		expect(
 			convertHtmlToMarkdown('<style>body { color: red }</style><script>throw 1</script><p>本文</p>')
 		).toBe('本文');
+	});
+
+	it('取り消し線と下線を保持する', () => {
+		expect(convertHtmlToMarkdown('<p><s>取り消し</s>と<u>下線</u></p>')).toBe(
+			'~~取り消し~~と<u>下線</u>'
+		);
+	});
+
+	it('段落を詰める設定でも表・引用・リストと本文を別ブロックにする', () => {
+		const html =
+			'<p>甲</p><p>乙</p><table><tr><th>表</th></tr><tr><td>行</td></tr></table>' +
+			'<p>丙</p><blockquote><p>引用</p></blockquote><p>丁</p><ol start="4"><li>項目</li></ol>';
+		expect(convertHtmlToMarkdown(html)).toBe(
+			'甲\n乙\n\n| 表 |\n| --- |\n| 行 |\n\n丙\n\n> 引用\n\n丁\n\n4.  項目'
+		);
 	});
 });

@@ -176,6 +176,13 @@ describe('Whois解析 - パーサー', () => {
 			expect(text).toContain('1.1.1.1');
 			expect(text).toContain('TTL: 60s');
 		});
+
+		it('DNSレコードのTTLが0でもテキストに表示する', () => {
+			const text = formatDnsRecordsAsText([
+				{ name: 'example.com', type: 'A', data: '203.0.113.5', ttl: 0 }
+			]);
+			expect(text).toContain('TTL: 0s');
+		});
 	});
 
 	describe('フォーマット関数', () => {
@@ -392,6 +399,32 @@ describe('Whois解析 - パーサー', () => {
 			await expect(performSearch('example.com')).resolves.toMatchObject({ dnsRecords: [] });
 			fetchMock.mockImplementation(async () => Response.json({ Status: 2 }));
 			await expect(performSearch('example.com')).rejects.toThrow('DNS情報を取得できませんでした');
+		});
+
+		it('複数の照会で返る同じCNAMEは最短のTTLで1回だけ表示する', async () => {
+			const fetchMock = vi.mocked(globalThis.fetch);
+			const defaultFetch = fetchMock.getMockImplementation()!;
+			fetchMock.mockImplementation(async (input) => {
+				const url = new URL(String(input));
+				if (!url.pathname.endsWith('/dns-query')) return defaultFetch(input);
+				const type = url.searchParams.get('type');
+				const answer = [
+					{
+						name: 'example.com.',
+						type: 5,
+						data: 'target.example.net.',
+						TTL: type === 'CNAME' ? 0 : 20
+					}
+				];
+				if (type === 'A')
+					answer.push({ name: 'target.example.net.', type: 1, data: '203.0.113.5', TTL: 90 });
+				return Response.json({ Status: 0, Answer: answer });
+			});
+			const result = await performSearch('example.com');
+			expect(result.dnsRecords).toEqual([
+				{ name: 'example.com.', type: 'CNAME', data: 'target.example.net.', ttl: 0 },
+				{ name: 'target.example.net.', type: 'A', data: '203.0.113.5', ttl: 90 }
+			]);
 		});
 
 		it('一部のDNS照会が失敗した場合は、取得できたレコードを返し、空ならエラーにする', async () => {

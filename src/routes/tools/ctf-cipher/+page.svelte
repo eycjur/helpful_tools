@@ -1,18 +1,8 @@
 <script lang="ts">
 	import { tools } from '$lib/data/tools';
 	import Icon from '@iconify/svelte';
-	import { SvelteMap } from 'svelte/reactivity';
-
-	import type { DecryptGroup, DecryptResult } from './types';
-	import {
-		decryptCaesar,
-		decryptROT47,
-		decryptAtbash,
-		decryptXOR,
-		decryptBase64Multi,
-		decryptReverse,
-		decryptRailFence
-	} from './cipher-tools';
+	import { onDestroy } from 'svelte';
+	import type { DecryptGroup, DecryptResponse } from './types';
 
 	const tool = tools.find((t) => t.name === 'ctf-cipher');
 
@@ -21,92 +11,56 @@
 	let decryptGroups = $state<DecryptGroup[]>([]);
 	let errorMessage = $state('');
 	let isAnalyzing = $state(false);
+	let activeWorker: Worker | null = null;
+	const MAX_INPUT_LENGTH = 1024 * 1024;
+	const PREVIEW_LENGTH = 4096;
 
-	// 自動解読実行
-	async function performDecrypt() {
+	function cancelAnalysis() {
+		activeWorker?.terminate();
+		activeWorker = null;
+		isAnalyzing = false;
+	}
+	onDestroy(cancelAnalysis);
+
+	function resetAnalysis() {
+		cancelAnalysis();
 		errorMessage = '';
 		decryptGroups = [];
+	}
+
+	// 自動解読実行
+	function performDecrypt() {
+		resetAnalysis();
 
 		if (!inputText.trim()) {
 			errorMessage = '入力テキストを入力してください';
 			return;
 		}
-
-		// 入力サイズ制限（1MB）
-		const MAX_INPUT_SIZE = 1 * 1024 * 1024;
-		if (inputText.length > MAX_INPUT_SIZE) {
-			errorMessage = `入力が大きすぎます（最大: ${(MAX_INPUT_SIZE / 1024 / 1024).toFixed(0)}MB）`;
+		if (inputText.length > MAX_INPUT_LENGTH) {
+			errorMessage = '入力が大きすぎます（上限: 1,048,576文字）';
 			return;
 		}
 
-		isAnalyzing = true;
-
 		try {
-			const allResults: DecryptResult[] = [];
-
-			// Caesar cipher
-			allResults.push(...decryptCaesar(inputText));
-			await new Promise((resolve) => setTimeout(resolve, 0));
-
-			// ROT47
-			const rot47 = decryptROT47(inputText);
-			if (rot47.confidence > 20) {
-				allResults.push(rot47);
-			}
-
-			// Atbash
-			const atbash = decryptAtbash(inputText);
-			if (atbash.confidence > 20) {
-				allResults.push(atbash);
-			}
-
-			// XOR（重い処理）
-			allResults.push(...decryptXOR(inputText));
-			await new Promise((resolve) => setTimeout(resolve, 0));
-
-			// Base64多段
-			allResults.push(...decryptBase64Multi(inputText));
-
-			// Reverse
-			const reverse = decryptReverse(inputText);
-			if (reverse.confidence > 20) {
-				allResults.push(reverse);
-			}
-
-			// Rail Fence
-			allResults.push(...decryptRailFence(inputText));
-			await new Promise((resolve) => setTimeout(resolve, 0));
-
-			// 信頼度でソート
-			const grouped = new SvelteMap<string, DecryptResult[]>();
-			for (const result of allResults) {
-				const list = grouped.get(result.cipher) ?? [];
-				list.push(result);
-				grouped.set(result.cipher, list);
-			}
-
-			decryptGroups = Array.from(grouped.entries())
-				.map(([cipher, results]) => {
-					const sorted = results.sort((a, b) => b.confidence - a.confidence);
-					return {
-						cipher,
-						results: sorted,
-						maxConfidence: sorted[0]?.confidence ?? 0
-					};
-				})
-				.sort((a, b) => b.maxConfidence - a.maxConfidence);
-
-			if (decryptGroups.length === 0) {
-				errorMessage = '有効な復号結果が見つかりませんでした';
-			}
-		} catch (error) {
-			if (error instanceof Error) {
-				errorMessage = error.message;
-			} else {
+			const worker = new Worker(new URL('./cipher.worker.ts', import.meta.url), { type: 'module' });
+			activeWorker = worker;
+			isAnalyzing = true;
+			worker.onmessage = ({ data }: MessageEvent<DecryptResponse>) => {
+				if (activeWorker !== worker) return;
+				cancelAnalysis();
+				if ('error' in data) errorMessage = data.error;
+				else if (data.groups.length === 0) errorMessage = '有効な復号結果が見つかりませんでした';
+				else decryptGroups = data.groups;
+			};
+			worker.onerror = () => {
+				if (activeWorker !== worker) return;
+				cancelAnalysis();
 				errorMessage = '解読に失敗しました';
-			}
-		} finally {
-			isAnalyzing = false;
+			};
+			worker.postMessage(inputText);
+		} catch {
+			cancelAnalysis();
+			errorMessage = '解読に失敗しました';
 		}
 	}
 
@@ -123,8 +77,7 @@
 	// クリア
 	function clear() {
 		inputText = '';
-		decryptGroups = [];
-		errorMessage = '';
+		resetAnalysis();
 	}
 
 	// サンプルデータ
@@ -163,9 +116,9 @@
 
 	let sampleKey = $state('caesar');
 
-	async function loadSample() {
+	function loadSample() {
 		inputText = samples[sampleKey].input;
-		await performDecrypt();
+		performDecrypt();
 	}
 
 	function totalResultsCount() {
@@ -247,6 +200,7 @@
 		</div>
 		<textarea
 			bind:value={inputText}
+			oninput={resetAnalysis}
 			placeholder="暗号化されたテキストを入力してください..."
 			class="h-32 w-full rounded border border-gray-300 p-3 font-mono text-sm"
 		></textarea>
@@ -309,7 +263,15 @@
 									</button>
 								</div>
 								<div class="rounded bg-white p-3">
-									<pre class="font-mono text-sm break-all whitespace-pre-wrap">{result.result}</pre>
+									<pre class="font-mono text-sm break-all whitespace-pre-wrap">{result.result.slice(
+											0,
+											PREVIEW_LENGTH
+										)}{result.result.length > PREVIEW_LENGTH ? '…' : ''}</pre>
+									{#if result.result.length > PREVIEW_LENGTH}
+										<p class="mt-2 text-xs text-gray-500">
+											先頭4,096文字を表示しています。全文はコピーできます。
+										</p>
+									{/if}
 								</div>
 							</div>
 						{/each}
@@ -346,7 +308,7 @@
 			<div>• Caesar cipher（全26シフトパターン）</div>
 			<div>• ROT13 / ROT47</div>
 			<div>• Atbash cipher</div>
-			<div>• XOR single-byte（0x00-0xFF総当たり）</div>
+			<div>• XOR single-byte（0x01〜0xFFを総当たり）</div>
 			<div>• Base64多段デコード（最大10回）</div>
 			<div>• Reverse（文字列反転）</div>
 			<div>• Rail Fence cipher（2-5レール）</div>

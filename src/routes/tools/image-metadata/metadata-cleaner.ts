@@ -1,4 +1,27 @@
-// JPEG: APP11 (0xFFEB) セグメントを除去してC2PAマニフェストを削除
+const C2PA_JUMBF_UUID = new Uint8Array([
+	0x63, 0x32, 0x70, 0x61, 0x00, 0x11, 0x00, 0x10, 0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71
+]);
+
+function isC2paJumbfStart(packet: DataView): boolean {
+	const boxOffset = 8; // JPEG XT の CI、En、Z フィールドの後
+	if (packet.byteLength < boxOffset + 8 || packet.getUint32(boxOffset + 4) !== 0x6a756d62)
+		return false; // jumb
+
+	const description = boxOffset + (packet.getUint32(boxOffset) === 1 ? 16 : 8);
+	if (packet.byteLength < description + 8 || packet.getUint32(description + 4) !== 0x6a756d64)
+		return false; // jumd
+
+	const uuid = description + (packet.getUint32(description) === 1 ? 16 : 8);
+	const label = uuid + C2PA_JUMBF_UUID.length + 1; // UUID に続くトグルバイトの後
+	return (
+		packet.byteLength >= label + 5 &&
+		C2PA_JUMBF_UUID.every((byte, index) => packet.getUint8(uuid + index) === byte) &&
+		packet.getUint32(label) === 0x63327061 && // c2pa
+		packet.getUint8(label + 4) === 0
+	);
+}
+
+// JPEG: C2PAマニフェストを含むAPP11セグメントのみ除去
 export async function removeJpegC2pa(file: File): Promise<Blob> {
 	const arrayBuffer = await file.arrayBuffer();
 	const data = new Uint8Array(arrayBuffer);
@@ -6,6 +29,7 @@ export async function removeJpegC2pa(file: File): Promise<Blob> {
 	if (data[0] !== 0xff || data[1] !== 0xd8) throw new Error('Invalid JPEG');
 
 	const keptSegments: Uint8Array[] = [data.slice(0, 2)]; // SOI
+	const c2paPackets = new Map<number, number>();
 	let pos = 2;
 	let modified = false;
 
@@ -43,13 +67,21 @@ export async function removeJpegC2pa(file: File): Promise<Blob> {
 
 		if (segEnd > data.length) break;
 
-		if (marker === 0xeb) {
-			// APP11: C2PA JUMBF — スキップ
-			modified = true;
-		} else {
-			keptSegments.push(data.slice(pos, segEnd));
+		if (marker === 0xeb && segLength >= 18) {
+			const packet = new DataView(arrayBuffer, pos + 4, segLength - 2);
+			if (packet.getUint16(0) === 0x4a50) {
+				const instance = packet.getUint16(2);
+				const sequence = packet.getUint32(4);
+				if (sequence === 1 ? isC2paJumbfStart(packet) : c2paPackets.get(instance) === sequence) {
+					c2paPackets.set(instance, sequence + 1);
+					modified = true;
+					pos = segEnd;
+					continue;
+				}
+			}
 		}
 
+		keptSegments.push(data.slice(pos, segEnd));
 		pos = segEnd;
 	}
 
@@ -165,16 +197,15 @@ export async function removeAllMetadataViaCanvas(file: File): Promise<Blob> {
 	}
 }
 
-// C2PAメタデータ削除のメインエントリ
+export function canRemoveC2paMetadata(file: File): boolean {
+	return file.type === 'image/jpeg' || file.type === 'image/png';
+}
+
+// C2PAメタデータのみ削除
 export async function removeC2paMetadata(file: File): Promise<Blob> {
-	if (file.type === 'image/jpeg') {
-		return removeJpegC2pa(file);
-	} else if (file.type === 'image/png') {
-		return removePngC2pa(file);
-	} else {
-		// WebP等はCanvasで全削除
-		return removeAllMetadataViaCanvas(file);
-	}
+	if (file.type === 'image/jpeg') return removeJpegC2pa(file);
+	if (file.type === 'image/png') return removePngC2pa(file);
+	throw new Error('C2PAのみ削除できる形式はJPEGとPNGです');
 }
 
 export function getCleanFileName(originalName: string, suffix: string, mimeType: string): string {

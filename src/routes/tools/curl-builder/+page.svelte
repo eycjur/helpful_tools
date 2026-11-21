@@ -76,7 +76,8 @@
 
 	// コマンド生成
 	function generateCurlCommand(): string {
-		if (!url.trim()) {
+		const target = url.trim();
+		if (!target) {
 			return 'curl # URLを入力してください';
 		}
 
@@ -131,7 +132,8 @@
 		if (timeout > 0) parts.push(`--max-time ${timeout}`);
 
 		// URL（最後に追加）
-		parts.push(`--url ${shellQuote(url.trim())}`);
+		if (/[{}[\]]/.test(target)) parts.push('--globoff');
+		parts.push(`--url ${shellQuote(target)}`);
 
 		// コマンド組み立て（長い場合は複数行に）
 		if (parts.join(' ').length > 80) {

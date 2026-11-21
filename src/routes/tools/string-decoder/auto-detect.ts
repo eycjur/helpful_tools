@@ -22,6 +22,14 @@ import {
 	decodeQuotedPrintable
 } from './decoders';
 
+function hasCssEscape(text: string): boolean {
+	for (const [, hex] of text.matchAll(/(?:^|[ \t\n\r\f])\\([0-9][0-9a-f]{1,5})(?![0-9a-f])/gi)) {
+		// 短い8進数はJavaScriptのエスケープや正規表現の参照と区別できない。
+		if (hex.length > 3 || /[89a-f]/i.test(hex)) return true;
+	}
+	return false;
+}
+
 /**
  * 入力テキストから可能性のあるエンコード形式を自動検出してデコード
  * @param text - エンコードされた文字列
@@ -63,7 +71,8 @@ export function autoDetect(text: string): DecodeResult[] {
 	}
 
 	// Base64検出
-	if (/^[A-Za-z0-9+/]+=*$/.test(text.trim()) && text.length % 4 === 0) {
+	const base64 = text.trim();
+	if (/^[A-Za-z0-9+/]+=*$/.test(base64) && base64.length % 4 === 0) {
 		try {
 			const decoded = decodeBase64(text);
 			results.push({
@@ -109,7 +118,7 @@ export function autoDetect(text: string): DecodeResult[] {
 	}
 
 	// CSS Unicode検出
-	if (/\\[0-9a-fA-F]{1,6}(?:\s|$)/.test(text)) {
+	if (hasCssEscape(text)) {
 		try {
 			const decoded = decodeUnicodeCSS(text);
 			if (decoded !== text) {

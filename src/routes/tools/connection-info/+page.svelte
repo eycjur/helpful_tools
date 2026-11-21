@@ -2,6 +2,7 @@
 	import { tools } from '$lib/data/tools';
 	import Icon from '@iconify/svelte';
 	import { onMount } from 'svelte';
+	import { identifyBrowser } from './browser-info';
 
 	const tool = tools.find((t) => t.name === 'connection-info');
 
@@ -62,32 +63,10 @@
 	// Browser情報を解析
 	function parseBrowserInfo(): BrowserInfo {
 		const ua = navigator.userAgent;
-		let browserName = 'Unknown';
-		let browserVersion = 'Unknown';
-
-		// ブラウザ名とバージョンを解析
-		if (ua.includes('Chrome') && !ua.includes('Edg')) {
-			browserName = 'Chrome';
-			const match = ua.match(/Chrome\/([\d.]+)/);
-			browserVersion = match ? match[1] : 'Unknown';
-		} else if (ua.includes('Firefox')) {
-			browserName = 'Firefox';
-			const match = ua.match(/Firefox\/([\d.]+)/);
-			browserVersion = match ? match[1] : 'Unknown';
-		} else if (ua.includes('Safari') && !ua.includes('Chrome')) {
-			browserName = 'Safari';
-			const match = ua.match(/Version\/([\d.]+)/);
-			browserVersion = match ? match[1] : 'Unknown';
-		} else if (ua.includes('Edg')) {
-			browserName = 'Edge';
-			const match = ua.match(/Edg\/([\d.]+)/);
-			browserVersion = match ? match[1] : 'Unknown';
-		}
 
 		return {
 			userAgent: ua,
-			browserName,
-			browserVersion,
+			...identifyBrowser(ua),
 			platform: navigator.platform,
 			language: navigator.language,
 			languages: navigator.languages ? Array.from(navigator.languages) : [navigator.language],

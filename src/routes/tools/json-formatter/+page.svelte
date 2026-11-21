@@ -22,7 +22,10 @@
 		if (!input.trim()) return;
 
 		const MAX_INPUT_SIZE = 1_048_576; // 1MB
-		if (input.length > MAX_INPUT_SIZE) {
+		if (
+			input.length > MAX_INPUT_SIZE ||
+			new TextEncoder().encode(input).byteLength > MAX_INPUT_SIZE
+		) {
 			errorMessage = '入力サイズが大きすぎます（最大: 1.0MB）';
 			return;
 		}
@@ -58,7 +61,6 @@
 			textarea.style.opacity = '0';
 			document.body.appendChild(textarea);
 			textarea.select();
-			textarea.setSelectionRange(0, 99999);
 			const successful = document.execCommand('copy');
 			document.body.removeChild(textarea);
 

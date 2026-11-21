@@ -3,6 +3,16 @@ import { describe, expect, it } from 'vitest';
 import CurlBuilder from './+page.svelte';
 
 describe('curlビルダー', () => {
+	it('1つのURLとして入力した括弧をcurlのURL展開から除外する', async () => {
+		const { container } = render(CurlBuilder);
+		await fireEvent.input(screen.getByPlaceholderText('https://api.example.com/endpoint'), {
+			target: { value: 'https://example.com/?range=[1-3]&choices={a,b}' }
+		});
+		const command = container.querySelector('pre')?.textContent;
+		expect(command).toContain('--globoff');
+		expect(command).toContain("--url 'https://example.com/?range=[1-3]&choices={a,b}'");
+	});
+
 	it('フォームの名前と値をURLエンコードする', async () => {
 		const { container } = render(CurlBuilder);
 		await fireEvent.click(screen.getByRole('button', { name: 'フォームデータ' }));

@@ -14,10 +14,11 @@ export function parseHtmlTable(html: string): string[][] | null {
 	if (!table) return null;
 
 	const rows: string[][] = [];
-	for (const tr of table.querySelectorAll('tr')) {
-		const cells = [...tr.querySelectorAll('th, td')].map(
-			(cell) => cell.textContent?.replace(/\u00a0/g, ' ').trim() ?? ''
-		);
+	for (const tr of table.rows) {
+		const cells = [...tr.cells].map((cell) => {
+			for (const br of cell.querySelectorAll('br')) br.replaceWith('\n');
+			return cell.textContent?.replace(/\u00a0/g, ' ').trim() ?? '';
+		});
 		if (cells.length > 0) rows.push(cells);
 	}
 	return rows.length > 0 ? rows : null;
@@ -54,7 +55,7 @@ export function tableToTsv(rows: string[][]): string {
 			row
 				.map((cell) => {
 					const needsQuotes =
-						/["\t\r\n]/.test(cell) || (row.length === 1 && (cell === '' || cell.includes(',')));
+						/["\t\r\n]/.test(cell) || (row.length === 1 && (!cell.trim() || cell.includes(',')));
 					return needsQuotes ? `"${cell.replaceAll('"', '""')}"` : cell;
 				})
 				.join('\t')

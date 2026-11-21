@@ -2,6 +2,7 @@
 	import { tools } from '$lib/data/tools';
 	import { loadFfmpegCore } from '../_shared/ffmpeg-core';
 	import { formatVideoDuration } from '../_shared/video-duration';
+	import { isVideoFile, videoFileAccept } from '../_shared/video-file';
 	import Icon from '@iconify/svelte';
 	import { onMount, onDestroy } from 'svelte';
 	import type { FFmpeg as FFmpegType } from '@ffmpeg/ffmpeg';
@@ -15,6 +16,7 @@
 	let isConverting = $state(false);
 	let conversionProgress = $state(0);
 	let progressMessage = $state('');
+	let encoderSettingsRejected = false;
 	let dragOver = $state(false);
 	let errorMessage = $state('');
 	let warningMessage = $state('');
@@ -30,6 +32,7 @@
 	let outputFormat = $state('mp3');
 	let audioBitrate = $state(192);
 	let sampleRate = $state(44100);
+	let unsupportedMp3Bitrate = $derived(!isBitrateSupported(audioBitrate));
 
 	// 動画情報
 	let videoInfo = $state({
@@ -69,10 +72,13 @@
 	const VALID_BITRATES = [128, 192, 256, 320];
 	const VALID_SAMPLE_RATES = [22050, 44100, 48000];
 
+	function isBitrateSupported(bitrate: number): boolean {
+		return outputFormat !== 'mp3' || sampleRate !== 22050 || bitrate <= 160;
+	}
+
 	// FFmpegの読み込み
 	async function loadFFmpeg() {
 		isLoading = true;
-		errorMessage = '';
 
 		try {
 			const { FFmpeg } = await import('@ffmpeg/ffmpeg');
@@ -83,6 +89,7 @@
 			// 進捗イベントのリスナー
 			ffmpegInstance.on('log', ({ message }) => {
 				progressMessage = message;
+				if (message.includes('encoder setup failed')) encoderSettingsRejected = true;
 				// 時間情報から進捗を計算
 				const timeMatch = message.match(/time=(\d{2}):(\d{2}):(\d{2})/);
 				if (timeMatch && videoInfo.duration > 0) {
@@ -151,7 +158,7 @@
 
 	function processFile(file: File) {
 		if (isConverting) return;
-		if (!file.type.startsWith('video/')) {
+		if (!isVideoFile(file)) {
 			errorMessage = '動画ファイルを選択してください';
 			return;
 		}
@@ -160,7 +167,7 @@
 		clearAll();
 
 		// ファイルサイズの警告チェック
-		if (file.size > FILE_SIZE_WARNING_THRESHOLD) {
+		if (file.size >= FILE_SIZE_WARNING_THRESHOLD) {
 			const sizeMB = Math.round(file.size / 1024 / 1024);
 			warningMessage = `ファイルサイズが大きいため（${sizeMB}MB）、変換に時間がかかる場合があります。ブラウザがメモリ不足になる可能性もあります。`;
 		}
@@ -180,7 +187,7 @@
 
 	// 音声変換処理
 	async function convertToAudio() {
-		if (isConverting) return;
+		if (isConverting || unsupportedMp3Bitrate) return;
 		if (!ffmpeg || !ffmpeg.loaded || !originalFile) {
 			errorMessage = 'FFmpegが読み込まれていないか、ファイルが選択されていません';
 			return;
@@ -190,11 +197,13 @@
 		conversionProgress = 0;
 		progressMessage = '変換を準備しています...';
 		errorMessage = '';
+		encoderSettingsRejected = false;
 		if (convertedAudioUrl) URL.revokeObjectURL(convertedAudioUrl);
 		convertedAudioUrl = null;
 
 		let inputFileName = '';
 		let outputFileName = '';
+		let restartWorker = false;
 
 		try {
 			// ファイルをFFmpegに書き込み
@@ -212,10 +221,17 @@
 			const ffmpegArgs = buildFFmpegArgs(inputFileName, outputFileName);
 
 			// 変換実行
+			restartWorker = true;
 			const exitCode = await ffmpeg.exec(ffmpegArgs);
 			if (exitCode !== 0) {
+				if (outputFormat === 'ogg' && encoderSettingsRejected) {
+					throw new Error(
+						'この音声のチャンネル数では、指定したVorbisのサンプルレートとビットレートを組み合わせられません。サンプルレートを上げるか、ビットレートを下げてください。'
+					);
+				}
 				throw new Error('音声トラックがないか、指定した設定で変換できませんでした');
 			}
+			restartWorker = false;
 
 			// 結果を読み込み
 			const outputData = await ffmpeg.readFile(outputFileName);
@@ -249,8 +265,13 @@
 			}
 			errorMessage = message;
 		} finally {
-			// FFmpeg仮想ファイルシステムのクリーンアップ
-			if (ffmpeg && !lifecycle.signal.aborted) {
+			if (restartWorker && ffmpeg && !lifecycle.signal.aborted) {
+				// エンコーダーが失敗した後はWASM内部の状態が壊れる場合がある。
+				ffmpeg.terminate();
+				ffmpeg = null;
+				await loadFFmpeg();
+			} else if (ffmpeg && !lifecycle.signal.aborted) {
+				// FFmpeg仮想ファイルシステムのクリーンアップ
 				try {
 					if (inputFileName) await ffmpeg.deleteFile(inputFileName);
 				} catch {
@@ -437,24 +458,37 @@
 		<!-- ビットレート（非可逆形式のみ） -->
 		{#if outputFormat !== 'wav' && outputFormat !== 'flac'}
 			<div class="rounded-lg border border-gray-200 bg-white p-4">
-				<h3 class="mb-3 font-medium text-gray-900">ビットレート</h3>
+				<label for="audio-bitrate" class="mb-3 block font-medium text-gray-900">ビットレート</label>
 				<select
+					id="audio-bitrate"
 					bind:value={audioBitrate}
 					disabled={isConverting}
 					class="w-full rounded border border-gray-300 px-3 py-2"
 				>
 					{#each bitrateOptions as option (option.value)}
-						<option value={option.value}>{option.label} - {option.description}</option>
+						<option value={option.value} disabled={!isBitrateSupported(option.value)}>
+							{option.label} - {option.description}
+						</option>
 					{/each}
 				</select>
+				{#if unsupportedMp3Bitrate}
+					<p class="mt-2 text-sm text-red-700">22.05 kHzのMP3では128 kbpsを選択してください。</p>
+				{:else if outputFormat === 'aac' || outputFormat === 'ogg'}
+					<p class="mt-2 text-sm text-gray-600">
+						出力ビットレートは音源とエンコーダーにより変わります。
+					</p>
+				{/if}
 			</div>
 		{/if}
 
 		<!-- サンプルレート（WAVとFLAC以外） -->
 		{#if outputFormat !== 'wav' && outputFormat !== 'flac'}
 			<div class="rounded-lg border border-gray-200 bg-white p-4">
-				<h3 class="mb-3 font-medium text-gray-900">サンプルレート</h3>
+				<label for="audio-sample-rate" class="mb-3 block font-medium text-gray-900"
+					>サンプルレート</label
+				>
 				<select
+					id="audio-sample-rate"
 					bind:value={sampleRate}
 					disabled={isConverting}
 					class="w-full rounded border border-gray-300 px-3 py-2"
@@ -512,7 +546,7 @@
 		<input
 			id="video-file-input"
 			type="file"
-			accept="video/*"
+			accept={videoFileAccept}
 			disabled={isConverting}
 			onchange={handleFileSelect}
 			class="hidden"
@@ -526,7 +560,7 @@
 			<div class="flex items-center justify-center gap-4">
 				<button
 					onclick={convertToAudio}
-					disabled={isConverting || isLoading || !ffmpeg?.loaded}
+					disabled={isConverting || isLoading || !ffmpeg?.loaded || unsupportedMp3Bitrate}
 					class="rounded bg-blue-600 px-6 py-3 text-white hover:bg-blue-700 disabled:opacity-50"
 				>
 					{#if isConverting}

@@ -52,6 +52,11 @@ describe('tableToTsv / transposeToTsv', () => {
 		expect(transposeToTsv('"a,b"\nc')).toBe('a,b\tc');
 	});
 
+	it('空白だけを持つセルを再び転置できる', () => {
+		expect(transposeToTsv('" "\t"  "')).toBe('" "\n"  "');
+		expect(transposeToTsv('" "\n"  "')).toBe(' \t  ');
+	});
+
 	it('空入力は null', () => {
 		expect(transposeToTsv('')).toBeNull();
 	});
@@ -68,5 +73,11 @@ describe('parseHtmlTable', () => {
 
 	it('table が無い場合は null', () => {
 		expect(parseHtmlTable('<p>no table</p>')).toBeNull();
+	});
+
+	it('BRをセル内改行として保持し、内側の表の行を列に加えない', () => {
+		const html =
+			'<table><tr><td>a<br>b</td><td><table><tr><td>x</td></tr></table></td></tr></table>';
+		expect(parseHtmlTable(html)).toEqual([['a\nb', 'x']]);
 	});
 });

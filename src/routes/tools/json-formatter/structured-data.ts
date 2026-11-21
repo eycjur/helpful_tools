@@ -93,16 +93,18 @@ function parsePythonObject(input: string, depth = 0): DataValue {
 		return parsePairList(text.slice(1, -1), ':', depth);
 	}
 
-	if (/^(['"])(?:\\[\s\S]|(?!\1)[^\\\r\n])*\1$/.test(text)) {
+	if (/^(['"])(?:\\(?:\r\n|[\s\S])|(?!\1)[^\\\r\n])*\1$/.test(text)) {
 		return text
 			.slice(1, -1)
 			.replace(
-				/\\(\r?\n|x[\da-fA-F]{2}|u[\da-fA-F]{4}|U[\da-fA-F]{8}|[0-7]{1,3}|.)/gs,
+				/\\(\r\n?|\n|x[\da-fA-F]{2}|u[\da-fA-F]{4}|U[\da-fA-F]{8}|[0-7]{1,3}|.)/gs,
 				(match, escaped: string) => {
-					if (escaped.endsWith('\n')) return '';
+					if (escaped === '\r' || escaped.endsWith('\n')) return '';
 					if (escaped.length > 1 && /^[xuU]/.test(escaped)) {
 						return String.fromCodePoint(Number.parseInt(escaped.slice(1), 16));
 					}
+					if (/^[xuU]$/.test(escaped)) throw new Error('文字コードのエスケープが不完全です');
+					if (escaped === 'N') throw new Error('名前付きUnicodeエスケープは対応していません');
 					if (/^[0-7]/.test(escaped)) return String.fromCodePoint(Number.parseInt(escaped, 8));
 					return STRING_ESCAPES[escaped] ?? match;
 				}

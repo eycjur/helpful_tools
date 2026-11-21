@@ -68,6 +68,11 @@ describe('エンコード文字列デコーダ - コアロジック', () => {
 			const encoded = btoa(unescape(encodeURIComponent('こんにちは')));
 			expect(decodeBase64(encoded)).toBe('こんにちは');
 		});
+
+		it('元のBOMを保持し、不正なUTF-8はエラーにする', () => {
+			expect(decodeBase64('77u/QQ==')).toBe('\uFEFFA');
+			expect(() => decodeBase64('/w==')).toThrow();
+		});
 	});
 
 	describe('Unicode JS-style decode', () => {
@@ -88,6 +93,14 @@ describe('エンコード文字列デコーダ - コアロジック', () => {
 		it('CSSのUnicodeエスケープをデコードできる', () => {
 			expect(decodeUnicodeCSS('\\0048\\0065\\006C\\006C\\006F')).toBe('Hello');
 		});
+
+		it('6桁の後の16進文字とCSSで空白ではない文字を残す', () => {
+			expect(decodeUnicodeCSS('\\000041f\\41\u00a0x')).toBe('AfA\u00a0x');
+		});
+
+		it('CRLFを1つの空白として消費し、不正なコードポイントは置換文字にする', () => {
+			expect(decodeUnicodeCSS('\\41\r\nx\\0\\D800\\110000')).toBe('Ax���');
+		});
 	});
 
 	describe('Unicode CodePoint decode', () => {
@@ -105,6 +118,10 @@ describe('エンコード文字列デコーダ - コアロジック', () => {
 	describe('Octal JS-style decode', () => {
 		it('\\NNN形式のエスケープをデコードできる', () => {
 			expect(decodeOctalJS('\\110\\145\\154\\154\\157')).toBe('Hello');
+		});
+
+		it('先頭が4以上の場合は2桁だけを消費する', () => {
+			expect(decodeOctalJS('\\377\\400\\777')).toBe('ÿ 0?7');
 		});
 	});
 
@@ -138,12 +155,23 @@ describe('エンコード文字列デコーダ - コアロジック', () => {
 
 	describe('Base58 decode', () => {
 		it('Base58をデコードできる', () => {
-			expect(decodeBase58('1')).toBe('0x0');
-			expect(decodeBase58('2')).toBe('0x1');
+			expect(decodeBase58('1')).toBe('0x00');
+			expect(decodeBase58('2')).toBe('0x01');
+			expect(decodeBase58('112')).toBe('0x000001');
+			expect(decodeBase58('StV1DL6CwTryKyV')).toBe('0x68656c6c6f20776f726c64');
 		});
 
 		it('無効な文字はエラー', () => {
 			expect(() => decodeBase58('0')).toThrow();
+			expect(() => decodeBase58('z'.repeat(18) + '0')).toThrow();
+		});
+
+		it('ブロックの境界で桁や先頭のゼロバイトを失わない', () => {
+			for (const digits of [8, 9, 10, 17, 18, 19, 35, 36, 37]) {
+				const hex = (58n ** BigInt(digits) - 1n).toString(16);
+				const bytes = hex.length % 2 ? '0' + hex : hex;
+				expect(decodeBase58('11' + 'z'.repeat(digits))).toBe('0x0000' + bytes);
+			}
 		});
 	});
 
@@ -179,6 +207,7 @@ describe('エンコード文字列デコーダ - コアロジック', () => {
 
 		it('認識できないコードは?に変換される', () => {
 			expect(decodeMorse('.... . invalid')).toBe('HE?');
+			expect(decodeMorse('.... . constructor')).toBe('HE?');
 		});
 	});
 

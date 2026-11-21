@@ -41,4 +41,46 @@ describe('Hexダンプ', () => {
 		expect(container.querySelector('.hex-line')).toBeNull();
 		expect(screen.queryByText('old.txt')).toBeNull();
 	});
+
+	it('表示行数を制限し、最後のページからも全バイトをコピーできる', async () => {
+		const { container } = render(HexDump);
+		const upload = container.querySelector<HTMLInputElement>('#hex-file-input')!;
+		const bytes = Uint8Array.from({ length: 2053 }, (_, index) => index % 256);
+		const file = new File([bytes], 'pages.bin');
+		vi.spyOn(file, 'slice').mockReturnValue(
+			Object.assign(new Blob(), { arrayBuffer: async () => bytes.buffer })
+		);
+		const writeText = vi.fn<(text: string) => Promise<void>>(async () => {});
+		const clipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+		Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+		try {
+			await fireEvent.change(screen.getByLabelText('1行あたりのバイト数'), {
+				target: { value: '8' }
+			});
+			await fireEvent.change(upload, { target: { files: [file] } });
+			expect(await screen.findByText('1 / 3 ページ')).toBeTruthy();
+			const offsets = () => [...container.querySelectorAll('.hex-line > :first-child')];
+			expect(offsets()).toHaveLength(128);
+			expect(offsets()[0].textContent).toBe('00000000:');
+
+			await fireEvent.click(screen.getByRole('button', { name: '次へ' }));
+			expect(offsets()[0].textContent).toBe('00000400:');
+			await fireEvent.click(screen.getByRole('button', { name: '最後' }));
+			expect(offsets().map((item) => item.textContent)).toEqual(['00000800:']);
+			expect(container.querySelectorAll('.hex-byte')).toHaveLength(5);
+			await fireEvent.click(screen.getByRole('button', { name: '全ページをコピー' }));
+			const dump = writeText.mock.calls[0][0];
+			const copiedBytes = dump
+				.split('\n')
+				.map((line) => line.slice(10, 29).replaceAll(' ', ''))
+				.join('');
+			expect(copiedBytes).toBe(Buffer.from(bytes).toString('hex'));
+
+			await fireEvent.click(screen.getByRole('button', { name: '先頭' }));
+			expect(offsets()[0].textContent).toBe('00000000:');
+		} finally {
+			if (clipboard) Object.defineProperty(navigator, 'clipboard', clipboard);
+			else Reflect.deleteProperty(navigator, 'clipboard');
+		}
+	});
 });

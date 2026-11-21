@@ -412,7 +412,16 @@ export async function fetchDomainInfo(domain: string): Promise<{
 		ipGeoInfo = (await fetchIPGeolocation(resolvedIP)) || undefined;
 	}
 
-	return { dnsRecords, ipGeoInfo, resolvedIP };
+	// 同じCNAMEなどが複数のレコード照会に含まれるため、DNSレコード単位でまとめる。
+	const uniqueRecords = new Map<string, DNSRecord>();
+	for (const record of dnsRecords) {
+		const key = JSON.stringify([record.name.toLowerCase(), record.type, record.data]);
+		const previous = uniqueRecords.get(key);
+		if (!previous || (record.ttl !== undefined && record.ttl < (previous.ttl ?? Infinity))) {
+			uniqueRecords.set(key, record);
+		}
+	}
+	return { dnsRecords: Array.from(uniqueRecords.values()), ipGeoInfo, resolvedIP };
 }
 
 /**
@@ -439,7 +448,7 @@ export function formatDnsRecordsAsText(records: DNSRecord[]): string {
 	Object.entries(groupedRecords).forEach(([type, recs]) => {
 		text += `${type}レコード:\n`;
 		recs.forEach((record) => {
-			text += `  ${record.data}${record.ttl ? ` (TTL: ${record.ttl}s)` : ''}\n`;
+			text += `  ${record.data}${record.ttl !== undefined ? ` (TTL: ${record.ttl}s)` : ''}\n`;
 		});
 		text += '\n';
 	});

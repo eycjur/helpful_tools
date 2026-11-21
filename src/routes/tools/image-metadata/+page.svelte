@@ -5,6 +5,7 @@
 	import * as exifr from 'exifr';
 	import { loadC2paProvenance, getActionLabel, formatSoftwareAgent } from './ai-detector';
 	import {
+		canRemoveC2paMetadata,
 		removeC2paMetadata,
 		removeAllMetadataViaCanvas,
 		getCleanFileName
@@ -42,6 +43,8 @@
 	let cleanedMode: 'c2pa' | 'all' | null = null;
 	let warnings: Array<{ message: string; type: 'warning' | 'error' }> = [];
 	let processId = 0;
+
+	$: canRemoveC2pa = currentFile !== null && canRemoveC2paMetadata(currentFile);
 
 	function cleanup() {
 		if (imageUrl) {
@@ -134,7 +137,7 @@
 		currentFile = file;
 		const myId = processId;
 
-		if (file.size > FILE_SIZE_WARNING_THRESHOLD) {
+		if (file.size >= FILE_SIZE_WARNING_THRESHOLD) {
 			const sizeMB = Math.round(file.size / 1024 / 1024);
 			warnings = [
 				...warnings,
@@ -792,16 +795,16 @@
 							C2PAメタデータのみ削除
 						</h3>
 						<p class="mb-3 text-xs text-purple-700">
-							C2PAマニフェスト（来歴情報）のみを削除します。EXIFや画素データはそのまま保持されます。画質劣化なし（バイナリ操作）。
+							JPEGとPNGのC2PAマニフェスト（来歴情報）のみを削除し、EXIFと画素データを保持します。
 						</p>
-						<ul class="mb-3 space-y-0.5 text-xs text-purple-600">
-							<li>• JPEG: APP11セグメント（JUMBF）を除去</li>
-							<li>• PNG: caBXチャンクを除去</li>
-							<li>• WebP等: Canvas再描画（全削除）</li>
-						</ul>
+						{#if !canRemoveC2pa}
+							<p class="mb-3 text-xs text-purple-700">
+								この形式のメタデータを削除する場合は「全メタデータを削除」を選んでください。
+							</p>
+						{/if}
 						<button
 							on:click={() => handleRemove('c2pa')}
-							disabled={isRemovingC2pa || isRemovingAll}
+							disabled={!canRemoveC2pa || isRemovingC2pa || isRemovingAll}
 							class="w-full rounded bg-purple-600 px-4 py-2 text-sm text-white transition-colors hover:bg-purple-700 disabled:opacity-50"
 						>
 							{#if isRemovingC2pa}

@@ -29,6 +29,7 @@ class TestReader {
 
 class TestImage {
 	onload: (() => void) | null = null;
+	src = '';
 
 	constructor() {
 		images.push(this);
@@ -72,6 +73,15 @@ describe('画像とBase64の変換中に入力を変更する', () => {
 				static revokeObjectURL = revokeObjectURL;
 			}
 		);
+	});
+
+	it('Data URLの大文字表記を画像として読み込む', async () => {
+		render(Page);
+		await fireEvent.click(screen.getByRole('button', { name: 'Base64 → 画像' }));
+		const dataUrl = 'DATA:IMAGE/GIF;BASE64,R0lGODlhAQABAA';
+		await fireEvent.input(screen.getByRole('textbox'), { target: { value: dataUrl } });
+		await fireEvent.click(screen.getByRole('button', { name: '画像に変換' }));
+		expect(images[0]?.src).toBe(dataUrl);
 	});
 
 	afterEach(() => {

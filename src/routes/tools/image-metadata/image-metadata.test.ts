@@ -14,7 +14,7 @@ vi.mock('./ai-detector', () => ({
 
 afterEach(() => vi.unstubAllGlobals());
 
-it('links to GPS coordinates on the equator', async () => {
+function mockImage() {
 	vi.stubGlobal(
 		'URL',
 		class extends URL {
@@ -33,6 +33,10 @@ it('links to GPS coordinates on the equator', async () => {
 			}
 		}
 	);
+}
+
+it('links to GPS coordinates on the equator', async () => {
+	mockImage();
 	const { container } = render(Page);
 	const input = container.querySelector('input[type="file"]')!;
 	const file = new File(['test'], 'photo.jpg', { type: 'image/jpeg' });
@@ -42,4 +46,43 @@ it('links to GPS coordinates on the equator', async () => {
 		.getAllByRole<HTMLAnchorElement>('link')
 		.find((item) => item.href.includes('google.com/maps'));
 	expect(link?.href).toBe('https://www.google.com/maps?q=0,139');
+});
+
+it('keeps only full metadata removal available for formats without C2PA-only removal', async () => {
+	mockImage();
+	const { container } = render(Page);
+	const input = container.querySelector('input[type="file"]')!;
+	await fireEvent.change(input, {
+		target: { files: [new File(['test'], 'photo.webp', { type: 'image/webp' })] }
+	});
+	await fireEvent.click(await screen.findByRole('button', { name: 'メタデータ削除' }));
+
+	const only = screen.getByRole<HTMLButtonElement>('button', { name: 'C2PAメタデータを削除' });
+	const all = screen.getByRole<HTMLButtonElement>('button', { name: '全メタデータを削除' });
+	expect(only.disabled).toBe(true);
+	expect(all.disabled).toBe(false);
+	expect(screen.getByText(/「全メタデータを削除」を選んでください/)).toBeTruthy();
+
+	await fireEvent.change(input, {
+		target: { files: [new File(['test'], 'photo.png', { type: 'image/png' })] }
+	});
+	const enabled = await screen.findByRole<HTMLButtonElement>('button', {
+		name: 'C2PAメタデータを削除'
+	});
+	expect(enabled.disabled).toBe(false);
+});
+
+it.each([
+	[-1, false],
+	[0, true],
+	[1, true]
+])('checks the large-image warning at 50 MiB plus %i bytes', async (offset, expected) => {
+	mockImage();
+	const { container } = render(Page);
+	const input = container.querySelector('input[type="file"]')!;
+	const file = new File(['test'], 'photo.png', { type: 'image/png' });
+	Object.defineProperty(file, 'size', { value: 50 * 1024 * 1024 + offset });
+	await fireEvent.change(input, { target: { files: [file] } });
+	await screen.findByText('GPS情報');
+	expect(Boolean(screen.queryByText(/ファイルサイズが大きいため/))).toBe(expected);
 });

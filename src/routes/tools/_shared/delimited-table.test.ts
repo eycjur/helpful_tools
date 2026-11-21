@@ -17,6 +17,15 @@ describe('表の区切り文字', () => {
 });
 
 describe('CSV/TSVの読み取り', () => {
+	it.each([
+		['comma', ','],
+		['tab', '\t']
+	] as const)('BOM付きの%s区切りで先頭の引用セルを読み取る', (delimiter, separator) => {
+		const input = '\uFEFF"a' + separator + 'b"' + separator + 'last';
+		expect(detectDelimiter(input)).toBe(delimiter);
+		expect(parsePlainTable(input)).toEqual([['a' + separator + 'b', 'last']]);
+	});
+
 	it('TSVをパースする', () => {
 		expect(parsePlainTable('a\tb\nc\td')).toEqual([
 			['a', 'b'],

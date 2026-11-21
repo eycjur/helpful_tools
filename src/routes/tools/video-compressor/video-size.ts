@@ -1,3 +1,14 @@
+export function hasValidVideoLimits(maxWidth: number, maxHeight: number): boolean {
+	return (
+		Number.isInteger(maxWidth) &&
+		maxWidth >= 1 &&
+		maxWidth <= 7680 &&
+		Number.isInteger(maxHeight) &&
+		maxHeight >= 1 &&
+		maxHeight <= 4320
+	);
+}
+
 export function calculateAspectRatioConstrainedSize(
 	originalWidth: number,
 	originalHeight: number,

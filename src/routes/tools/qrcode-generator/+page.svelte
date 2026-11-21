@@ -2,7 +2,7 @@
 	import { tools } from '$lib/data/tools';
 	import Icon from '@iconify/svelte';
 	import { onDestroy } from 'svelte';
-	import { fetchQrBlob, getQrCodeUrl, loadQrImage } from '../_shared/qrcode';
+	import { fetchQrBlob, getQrCodeUrl, loadQrCodeImage, loadQrImage } from '../_shared/qrcode';
 
 	const tool = tools.find((t) => t.name === 'qrcode-generator');
 	const MAX_INPUT_LENGTH = 2000;
@@ -39,7 +39,7 @@
 		isLoading = true;
 		const url = getQrCodeUrl(text);
 		try {
-			const image = await loadQrImage(url, !!logo);
+			const image = await loadQrCodeImage(url, !!logo);
 			if (id !== generationId) return;
 			if (logo) {
 				let logoImage: HTMLImageElement;

@@ -1,9 +1,10 @@
 <script lang="ts">
 	import { tools } from '$lib/data/tools';
 	import { formatVideoDuration } from '../_shared/video-duration';
+	import { isVideoFile, videoFileAccept } from '../_shared/video-file';
 	import Icon from '@iconify/svelte';
 	import { onMount, onDestroy } from 'svelte';
-	import { calculateAspectRatioConstrainedSize } from './video-size';
+	import { calculateAspectRatioConstrainedSize, hasValidVideoLimits } from './video-size';
 
 	const tool = tools.find((t) => t.name === 'video-compressor');
 
@@ -107,7 +108,7 @@
 	}
 
 	function processFile(file: File) {
-		if (!file.type.startsWith('video/')) {
+		if (!isVideoFile(file)) {
 			alert('動画ファイルを選択してください');
 			return;
 		}
@@ -123,7 +124,7 @@
 			return;
 		}
 
-		if (file.size > FILE_SIZE_WARNING_THRESHOLD) {
+		if (file.size >= FILE_SIZE_WARNING_THRESHOLD) {
 			const sizeMB = (file.size / 1024 / 1024).toFixed(0);
 			if (
 				!confirm(
@@ -175,14 +176,7 @@
 
 		const { maxWidth, maxHeight, mimeType, videoBitsPerSecond, audioBitsPerSecond } =
 			compressionSettings;
-		if (
-			!Number.isInteger(maxWidth) ||
-			maxWidth < 1 ||
-			maxWidth > 7680 ||
-			!Number.isInteger(maxHeight) ||
-			maxHeight < 1 ||
-			maxHeight > 4320
-		) {
+		if (!hasValidVideoLimits(maxWidth, maxHeight)) {
 			alert('最大幅は1〜7680、最大高さは1〜4320の整数を入力してください');
 			return;
 		}
@@ -513,7 +507,7 @@
 												: mimeType.includes('avc1.64001E')
 													? 'MP4 (H.264 High)'
 													: mimeType.includes('mp4')
-														? 'MP4 (汎用)'
+														? 'MP4 (ブラウザー既定のコーデック)'
 														: mimeType.includes('mpeg')
 															? 'MPEG'
 															: 'WebM (標準)'}
@@ -564,19 +558,19 @@
 				<Icon icon="mdi:folder-open" class="mr-2 inline h-5 w-5" />
 				ファイルを選択
 			</button>
-			<p class="text-xs text-gray-500">対応形式: MP4, WebM, AVI, MOV, MKV, FLV</p>
+			<p class="text-xs text-gray-500">対応形式: MP4、WebMなど、ブラウザーで再生できる動画</p>
 		</div>
 		<input
 			id="video-file-input"
 			type="file"
-			accept="video/*"
+			accept={videoFileAccept}
 			on:change={handleFileSelect}
 			class="hidden"
 		/>
 	</div>
 
 	<!-- 想定容量表示 -->
-	{#if Number.isFinite(originalStats.duration) && originalStats.duration > 0}
+	{#if Number.isFinite(originalStats.duration) && originalStats.duration > 0 && hasValidVideoLimits(compressionSettings.maxWidth, compressionSettings.maxHeight)}
 		{@const estimatedSize = calculateEstimatedSize()}
 		{@const estimatedReduction = calculateEstimatedReduction()}
 		<div class="mb-6 rounded-lg border border-blue-200 bg-blue-50 p-4">

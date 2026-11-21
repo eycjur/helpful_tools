@@ -41,6 +41,10 @@ describe('文字数カウンタ - コアロジック', () => {
 		it('空文字列は0を返す', () => {
 			expect(countGraphemes('')).toBe(0);
 		});
+
+		it('長い文字列でも結合文字と絵文字を書記素単位で数える', () => {
+			expect(countGraphemes('e\u0301👩🏽‍💻'.repeat(3000))).toBe(6000);
+		});
 	});
 
 	describe('countBytes', () => {

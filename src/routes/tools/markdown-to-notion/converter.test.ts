@@ -54,7 +54,8 @@ describe('Markdown → Notion変換', () => {
 		['引用', '> ', '> '],
 		['入れ子の引用', '> > ', '> > '],
 		['リストと同じ行から開始', '1.  ', '    '],
-		['リスト内の4空白インデント', '    ', '    ']
+		['リスト内の4空白インデント', '    ', '    '],
+		['リスト内のタブインデント', '-\t', '\t']
 	])('%sのコードと後続本文の改行を区別する', (_kind, openingPrefix, bodyPrefix) => {
 		const code = [
 			openingPrefix + '````md',
@@ -64,6 +65,22 @@ describe('Markdown → Notion変換', () => {
 			bodyPrefix + '`````'
 		].join('\n');
 		expect(markdownToNotion('前\n' + code + '\n後\n本文')).toBe('前\n\n' + code + '\n\n後\n\n本文');
+	});
+
+	it.each(['    ', '\t'])('インデント %j のコード内に空行を追加しない', (indent) => {
+		const code = indent + 'first\n' + indent + 'second';
+		expect(markdownToNotion('前\n\n' + code + '\n\n後')).toBe('前\n\n\n\n' + code + '\n\n\n\n後');
+	});
+
+	it('リスト内の通常のインデントは本文の改行として変換する', () => {
+		expect(markdownToNotion('- a\n\n    - b\n    - c')).toBe('- a\n\n\n\n    - b\n\n    - c');
+		expect(markdownToNotion('- a\n\n    b\n    c')).toBe('- a\n\n\n\n    b\n\n    c');
+	});
+
+	it('リスト内のインデントコードは項目の開始列から4桁分を数える', () => {
+		expect(markdownToNotion('- a\n\n      first\n      second')).toBe(
+			'- a\n\n\n\n      first\n      second'
+		);
 	});
 
 	it('引用内で閉じていないフェンスは引用が終わるところまで保持する', () => {
@@ -86,6 +103,10 @@ describe('Markdown → Notion変換', () => {
 	it('インラインコードの開始と終了でバッククォートの本数をそろえる', () => {
 		const code = '``a `b`\nc``';
 		expect(markdownToNotion('前 ' + code + '\n後')).toBe('前 ' + code + '\n\n後');
+	});
+
+	it('空行の前後にあるバッククォートを1つのインラインコードにしない', () => {
+		expect(markdownToNotion('前 `a\r\n\r\nb`\r\n後')).toBe('前 `a\r\n\r\n\r\n\r\nb`\r\n\r\n後');
 	});
 
 	it('エスケープされたバッククォートをインラインコードの開始とみなさない', () => {

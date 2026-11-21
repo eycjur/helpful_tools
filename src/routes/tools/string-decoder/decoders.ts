@@ -17,7 +17,7 @@ export function decodeBase64(text: string): string {
 	try {
 		const binaryStr = atob(text.trim());
 		const bytes = Uint8Array.from(binaryStr, (c) => c.charCodeAt(0));
-		return new TextDecoder('utf-8').decode(bytes);
+		return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
 	} catch {
 		throw new Error('Base64デコードに失敗');
 	}
@@ -28,9 +28,13 @@ export function decodeUnicodeJS(text: string): string {
 }
 
 export function decodeUnicodeCSS(text: string): string {
-	return text.replace(/\\([a-fA-F0-9]{1,6})(?:\s|$|(?=[^a-fA-F0-9]))/g, (_, hex) =>
-		String.fromCodePoint(parseInt(hex, 16))
-	);
+	return text.replace(/\\([a-fA-F0-9]{1,6})(?:\r\n|[ \t\n\r\f])?/g, (_, hex) => {
+		const codePoint = parseInt(hex, 16);
+		if (codePoint === 0 || codePoint > 0x10ffff || (codePoint >= 0xd800 && codePoint <= 0xdfff)) {
+			return '\uFFFD';
+		}
+		return String.fromCodePoint(codePoint);
+	});
 }
 
 export function decodeUnicodeCodePoint(text: string): string {
@@ -44,7 +48,9 @@ export function decodeHexJS(text: string): string {
 }
 
 export function decodeOctalJS(text: string): string {
-	return text.replace(/\\([0-7]{1,3})/g, (_, oct) => String.fromCharCode(parseInt(oct, 8)));
+	return text.replace(/\\([0-3][0-7]{0,2}|[4-7][0-7]?)/g, (_, oct) =>
+		String.fromCharCode(parseInt(oct, 8))
+	);
 }
 
 export function decodeJSONString(text: string): string {
@@ -71,18 +77,50 @@ export function decodePunycode(text: string): string {
 
 export function decodeBase58(text: string): string {
 	const alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+	const leadingZeroBytes = text.match(/^1*/)?.[0].length ?? 0;
+	const digitsPerBlock = 9; // 58^9はNumberの安全な整数の範囲内。
+	const radices = [58n ** BigInt(digitsPerBlock)];
+	const blocks: Array<bigint | undefined> = [];
 
-	let result = 0n;
-	for (let i = 0; i < text.length; i++) {
-		const char = text[i];
-		const value = alphabet.indexOf(char);
-		if (value === -1) {
-			throw new Error('無効なBase58文字');
+	function readBlock(start: number, end: number): bigint {
+		let block = 0;
+		for (let i = start; i < end; i++) {
+			const digit = alphabet.indexOf(text[i]);
+			if (digit === -1) throw new Error('無効なBase58文字');
+			block = block * 58 + digit;
 		}
-		result = result * 58n + BigInt(value);
+		return BigInt(block);
 	}
 
-	return '0x' + result.toString(16);
+	let offset = leadingZeroBytes;
+	for (; offset + digitsPerBlock <= text.length; offset += digitsPerBlock) {
+		let block = readBlock(offset, offset + digitsPerBlock);
+		let level = 0;
+
+		// 同じ桁数のブロックを結合し、大きなBigIntを全桁で掛け直すのを避ける。
+		while (true) {
+			const prefix = blocks[level];
+			if (prefix === undefined) break;
+			const radix = radices[level];
+			block = prefix * radix + block;
+			blocks[level] = undefined;
+			level++;
+			radices[level] ??= radix * radix;
+		}
+		blocks[level] = block;
+	}
+
+	let result = 0n;
+	for (let level = blocks.length - 1; level >= 0; level--) {
+		const block = blocks[level];
+		if (block !== undefined) result = result * radices[level] + block;
+	}
+	if (offset < text.length) {
+		result = result * 58n ** BigInt(text.length - offset) + readBlock(offset, text.length);
+	}
+
+	const hex = result ? result.toString(16) : '';
+	return '0x' + '00'.repeat(leadingZeroBytes) + hex.padStart(hex.length + (hex.length % 2), '0');
 }
 
 export function decodeROT13(text: string): string {
@@ -168,7 +206,7 @@ export function decodeMorse(text: string): string {
 	return text
 		.trim()
 		.split(/\s+/)
-		.map((code) => morseToChar[code] || '?')
+		.map((code) => (Object.hasOwn(morseToChar, code) ? morseToChar[code] : '?'))
 		.join('');
 }
 

@@ -3,6 +3,28 @@ import { describe, expect, it } from 'vitest';
 import PasswordGenerator from './+page.svelte';
 
 describe('パスワード生成器', () => {
+	it('除外後の数字8種で19桁の最小エントロピーは57ビットになる', async () => {
+		render(PasswordGenerator);
+		for (const name of ['大文字', '小文字', '記号']) {
+			await fireEvent.click(screen.getByRole('checkbox', { name }));
+		}
+		await fireEvent.input(screen.getByRole('spinbutton', { name: 'パスワードの長さ' }), {
+			target: { value: '19' }
+		});
+		expect(screen.getAllByText('(最小エントロピー: 57.0 bits)')).toHaveLength(5);
+		expect(screen.getAllByText('普通')).toHaveLength(5);
+	});
+
+	it('4桁で4文字種を必須とする場合は各文字の選び方と並び順を数える', async () => {
+		render(PasswordGenerator);
+		await fireEvent.input(screen.getByRole('spinbutton', { name: 'パスワードの長さ' }), {
+			target: { value: '4' }
+		});
+		const combinations = 24 * 25 * 8 * 26 * (4 * 3 * 2);
+		const bits = Math.log2(combinations).toFixed(1);
+		expect(screen.getAllByText(`(最小エントロピー: ${bits} bits)`)).toHaveLength(5);
+	});
+
 	it('範囲外・空欄・小数を弾き、最大値で再生成できる', async () => {
 		const { container } = render(PasswordGenerator);
 		const length = screen.getByRole('spinbutton', { name: 'パスワードの長さ' });

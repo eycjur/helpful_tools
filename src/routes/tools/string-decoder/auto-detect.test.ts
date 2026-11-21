@@ -35,6 +35,11 @@ describe('エンコード自動検出', () => {
 		expect(base64Result?.result).toBe('Hello World');
 	});
 
+	it('前後に空白があるBase64を検出し、不正なUTF-8は候補から除外する', () => {
+		expect(autoDetect(' TQ==\n').find((r) => r.format === 'Base64')?.result).toBe('M');
+		expect(autoDetect('/w==').some((r) => r.format === 'Base64')).toBe(false);
+	});
+
 	it('Unicode JS-styleエスケープを自動検出できる', () => {
 		const encoded = '\\u0048\\u0065\\u006C\\u006C\\u006F';
 		const results = autoDetect(encoded);
@@ -87,7 +92,15 @@ describe('エンコード自動検出', () => {
 		const results = autoDetect(encoded);
 		const hit = results.find((r) => r.format === 'CSS Unicode');
 		expect(hit?.result).toBe('Hello');
+		expect(autoDetect('\\4a!').find((r) => r.format === 'CSS Unicode')?.result).toBe('J!');
 	});
+
+	it.each(['C:\\data\\backup', '\\d+', '\\12\\b'])(
+		'パスや正規表現（%s）をCSSの候補にしない',
+		(input) => {
+			expect(autoDetect(input).some((r) => r.format === 'CSS Unicode')).toBe(false);
+		}
+	);
 
 	it('8進数エスケープを検出できる', () => {
 		const encoded = '\\110\\145\\154\\154\\157';
