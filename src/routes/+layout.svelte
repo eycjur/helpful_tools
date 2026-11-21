@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	import '../app.css';
 	import { base } from '$app/paths';
 	import { page } from '$app/stores';
@@ -6,9 +6,9 @@
 	import Icon from '@iconify/svelte';
 
 	let sidebarOpen = false;
+	let menuButton: HTMLButtonElement;
 
-	$: isTopPage =
-		$page.url.pathname === (base || '/') || $page.url.pathname === (base ? `${base}/` : '/');
+	$: isTopPage = $page.route.id === '/';
 
 	function toggleSidebar() {
 		sidebarOpen = !sidebarOpen;
@@ -18,16 +18,19 @@
 <div class="flex h-screen">
 	<!-- Sidebar（トップページでは非表示） -->
 	{#if !isTopPage}
-		<Sidebar bind:isOpen={sidebarOpen} />
+		<Sidebar bind:isOpen={sidebarOpen} onDismiss={() => menuButton?.focus()} />
 	{/if}
 
 	<!-- Main Content -->
-	<div class="flex flex-1 flex-col">
+	<div class="flex min-w-0 flex-1 flex-col">
 		<header class="bg-gray-100 p-4 lg:hidden">
 			<nav class="flex items-center justify-between">
 				{#if !isTopPage}
 					<button
+						bind:this={menuButton}
 						on:click={toggleSidebar}
+						aria-expanded={sidebarOpen}
+						aria-controls="tool-sidebar"
 						class="rounded p-2 hover:bg-gray-200"
 						aria-label="メニューを開く"
 					>

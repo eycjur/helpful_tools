@@ -345,7 +345,7 @@
 							type="url"
 							bind:value={url}
 							placeholder="https://api.example.com/endpoint"
-							class="flex-1 rounded border-gray-300 px-3 py-2"
+							class="min-w-0 flex-1 rounded border-gray-300 px-3 py-2"
 						/>
 					</div>
 				</div>
@@ -353,10 +353,10 @@
 
 			<!-- ヘッダー -->
 			<div class="rounded-lg border border-gray-200 bg-white p-4">
-				<div class="mb-3 flex items-center justify-between">
+				<div class="mb-3 flex flex-wrap items-center justify-between gap-2">
 					<h3 class="font-medium text-gray-900">ヘッダー</h3>
-					<div class="flex gap-2">
-						<div class="relative">
+					<div class="flex max-w-full gap-2">
+						<div class="min-w-0">
 							<select
 								on:change={(e) => {
 									const target = e.target as HTMLSelectElement;
@@ -364,7 +364,7 @@
 									if (selected) addCommonHeader(selected);
 									target.value = '';
 								}}
-								class="rounded border-gray-300 px-3 py-1 text-sm"
+								class="max-w-full rounded border-gray-300 px-3 py-1 text-sm"
 							>
 								<option value="">よく使うヘッダー</option>
 								{#each commonHeaders as header, i (i)}
@@ -388,13 +388,13 @@
 								type="text"
 								bind:value={header.key}
 								placeholder="Header-Name"
-								class="flex-1 rounded border-gray-300 px-3 py-1 text-sm"
+								class="min-w-0 flex-1 rounded border-gray-300 px-3 py-1 text-sm"
 							/>
 							<input
 								type="text"
 								bind:value={header.value}
 								placeholder="value"
-								class="flex-1 rounded border-gray-300 px-3 py-1 text-sm"
+								class="min-w-0 flex-1 rounded border-gray-300 px-3 py-1 text-sm"
 							/>
 							<button
 								on:click={() => removeHeader(i)}
@@ -409,7 +409,7 @@
 
 			<!-- リクエストボディ -->
 			<div class="rounded-lg border border-gray-200 bg-white p-4">
-				<div class="mb-3 flex items-center justify-between">
+				<div class="mb-3 flex flex-wrap items-center justify-between gap-2">
 					<h3 class="font-medium text-gray-900">リクエストボディ</h3>
 					<div class="flex rounded-lg bg-gray-100 p-1">
 						{#each ['none', 'json', 'form', 'raw'] as type (type)}
@@ -467,13 +467,13 @@
 									type="text"
 									bind:value={form.key}
 									placeholder="key"
-									class="flex-1 rounded border-gray-300 px-3 py-1 text-sm"
+									class="min-w-0 flex-1 rounded border-gray-300 px-3 py-1 text-sm"
 								/>
 								<input
 									type="text"
 									bind:value={form.value}
 									placeholder="value"
-									class="flex-1 rounded border-gray-300 px-3 py-1 text-sm"
+									class="min-w-0 flex-1 rounded border-gray-300 px-3 py-1 text-sm"
 								/>
 								<button
 									on:click={() => removeFormData(i)}
@@ -585,7 +585,7 @@
 		<!-- 生成されたコマンド -->
 		<div class="lg:col-span-1">
 			<div class="sticky top-4 rounded-lg border border-gray-200 bg-white p-4">
-				<div class="mb-3 flex items-center justify-between">
+				<div class="mb-3 flex flex-wrap items-center justify-between gap-2">
 					<h3 class="font-medium text-gray-900">生成されたコマンド</h3>
 					<button
 						on:click={() => copyToClipboard(generatedCommand)}

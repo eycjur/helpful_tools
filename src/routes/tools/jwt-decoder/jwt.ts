@@ -10,6 +10,7 @@ const MAX_INPUT_LENGTH = 100_000;
  * Base64URL文字列をUTF-8文字列としてデコードする。
  */
 function base64UrlDecode(input: string): string {
+	if (!input || /[^A-Za-z0-9_-]/.test(input)) throw new Error('Base64URLの形式が不正です');
 	let base64 = input.replace(/-/g, '+').replace(/_/g, '/');
 	const paddingLength = base64.length % 4;
 	if (paddingLength === 2) {
@@ -49,6 +50,7 @@ export function decodeJwt(token: string): DecodedJwt {
 	let header: unknown;
 	try {
 		header = JSON.parse(base64UrlDecode(headerPart));
+		if (!isPlainObject(header)) throw new Error('ヘッダーはJSONオブジェクトである必要があります');
 	} catch {
 		throw new Error('ヘッダーのデコードに失敗しました');
 	}
@@ -56,6 +58,8 @@ export function decodeJwt(token: string): DecodedJwt {
 	let payload: unknown;
 	try {
 		payload = JSON.parse(base64UrlDecode(payloadPart));
+		if (!isPlainObject(payload))
+			throw new Error('ペイロードはJSONオブジェクトである必要があります');
 	} catch {
 		throw new Error('ペイロードのデコードに失敗しました');
 	}

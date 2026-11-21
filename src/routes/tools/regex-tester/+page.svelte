@@ -1,9 +1,15 @@
 <script lang="ts">
 	import { tools } from '$lib/data/tools';
 	import Icon from '@iconify/svelte';
-	import { findMatches } from './matches';
+	import { onDestroy } from 'svelte';
+	import type { findMatches } from './matches';
+	import type { MatchRequest, MatchResponse, MatchWorkerMessage } from './matches.worker';
 
 	const tool = tools.find((t) => t.name === 'regex-tester');
+	const MAX_INPUT_SIZE = 100_000;
+	const MATCHES_PER_PAGE = 50;
+	const MATCH_TIMEOUT_MS = 1000;
+	const WORKER_ERROR = '正規表現を実行できませんでした';
 
 	let pattern = '';
 	let flags = { g: true, i: false, m: false, s: false, u: true };
@@ -11,7 +17,30 @@
 	let error: string | null = null;
 
 	let matches: ReturnType<typeof findMatches> = [];
-	let highlightedHtml = '';
+	let page = 1;
+	let isEvaluating = false;
+	let activeWorker: Worker | undefined;
+	let timeout: ReturnType<typeof setTimeout> | undefined;
+
+	$: pageCount = Math.ceil(matches.length / MATCHES_PER_PAGE);
+	$: pageOffset = (page - 1) * MATCHES_PER_PAGE;
+	$: pageMatches = matches.slice(pageOffset, pageOffset + MATCHES_PER_PAGE);
+	$: highlightStart = page === 1 ? 0 : pageMatches[0].index;
+	$: highlightEnd = matches[pageOffset + MATCHES_PER_PAGE]?.index ?? inputText.length;
+	$: lastMatch = pageMatches.at(-1);
+	$: highlightTail = inputText.slice(
+		lastMatch ? lastMatch.index + lastMatch.text.length : highlightStart,
+		highlightEnd
+	);
+
+	function stopEvaluation() {
+		clearTimeout(timeout);
+		activeWorker?.terminate();
+		activeWorker = undefined;
+		isEvaluating = false;
+	}
+
+	onDestroy(stopEvaluation);
 
 	type Example = {
 		label: string;
@@ -93,57 +122,54 @@
 		return f as string;
 	}
 
-	function escapeHtml(s: string) {
-		return s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
-	}
-
 	function recompute() {
+		stopEvaluation();
 		error = null;
 		matches = [];
-		highlightedHtml = '';
+		page = 1;
 
-		// 入力サイズ制限（100KB）- ReDoS対策
-		const MAX_INPUT_SIZE = 100_000; // 100KB
 		if (inputText.length > MAX_INPUT_SIZE) {
 			error = `入力が大きすぎます（最大: ${(MAX_INPUT_SIZE / 1000).toFixed(0)}KB）`;
-			highlightedHtml = `<pre class="whitespace-pre-wrap break-words">${escapeHtml(inputText)}</pre>`;
 			return;
 		}
 
-		if (!pattern) {
-			highlightedHtml = `<pre class="whitespace-pre-wrap break-words">${escapeHtml(inputText)}</pre>`;
-			return;
-		}
+		if (!pattern) return;
 
-		let re: RegExp;
 		try {
-			re = new RegExp(pattern, currentFlags());
-		} catch (e) {
-			error = (e as Error).message;
-			highlightedHtml = `<pre class="whitespace-pre-wrap break-words">${escapeHtml(inputText)}</pre>`;
-			return;
-		}
+			const request: MatchRequest = { pattern, flags: currentFlags(), input: inputText };
+			const worker = new Worker(new URL('./matches.worker.ts', import.meta.url), {
+				type: 'module'
+			});
+			activeWorker = worker;
+			isEvaluating = true;
 
-		matches = findMatches(re, inputText);
-		const ranges = matches
-			.filter(({ text }) => text.length > 0)
-			.map(({ index, text }) => ({ start: index, end: index + text.length }));
+			function finish(response: MatchResponse) {
+				if (activeWorker !== worker) return;
+				stopEvaluation();
+				if ('error' in response) {
+					error = response.error;
+				} else {
+					matches = response.matches;
+				}
+			}
 
-		// ハイライトHTML生成
-		if (!ranges.length) {
-			highlightedHtml = `<pre class="whitespace-pre-wrap break-words">${escapeHtml(inputText)}</pre>`;
-			return;
+			worker.onmessage = ({ data }: MessageEvent<MatchWorkerMessage>) => {
+				if (activeWorker !== worker) return;
+				if ('started' in data) {
+					timeout = setTimeout(
+						() => finish({ error: '正規表現の評価が1秒以内に完了しませんでした' }),
+						MATCH_TIMEOUT_MS
+					);
+				} else {
+					finish(data);
+				}
+			};
+			worker.onerror = () => finish({ error: WORKER_ERROR });
+			worker.postMessage(request);
+		} catch {
+			stopEvaluation();
+			error = WORKER_ERROR;
 		}
-		let html = '';
-		let cursor = 0;
-		for (const r of ranges) {
-			if (cursor < r.start) html += escapeHtml(inputText.slice(cursor, r.start));
-			const frag = escapeHtml(inputText.slice(r.start, r.end));
-			html += `<mark class="bg-yellow-200 text-black">${frag}</mark>`;
-			cursor = r.end;
-		}
-		if (cursor < inputText.length) html += escapeHtml(inputText.slice(cursor));
-		highlightedHtml = `<pre class="whitespace-pre-wrap break-words">${html}</pre>`;
 	}
 </script>
 
@@ -296,9 +322,36 @@
 						>一致: {matches.length} 件</span
 					>
 				</div>
+				{#if pageCount > 1}
+					<nav aria-label="一致結果のページ" class="mb-3 flex flex-wrap items-center gap-2 text-sm">
+						<button
+							type="button"
+							class="rounded border border-gray-300 px-3 py-1 disabled:opacity-50"
+							disabled={page === 1}
+							on:click={() => (page -= 1)}>前のページ</button
+						>
+						<span aria-live="polite" class="text-gray-700"
+							>{page} / {pageCount} ページ（{pageOffset + 1}〜{pageOffset +
+								pageMatches.length}件目）</span
+						>
+						<button
+							type="button"
+							class="rounded border border-gray-300 px-3 py-1 disabled:opacity-50"
+							disabled={page === pageCount}
+							on:click={() => (page += 1)}>次のページ</button
+						>
+					</nav>
+				{/if}
 				<div class="rounded border border-gray-100 bg-gray-50 p-3">
-					<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-					{@html highlightedHtml}
+					<div class="font-mono break-words whitespace-pre-wrap">
+						{#each pageMatches as m, i (pageOffset + i)}
+							{@const previous = pageMatches[i - 1]}
+							{@const start = previous ? previous.index + previous.text.length : highlightStart}
+							{inputText.slice(start, m.index)}{#if m.text.length}<mark
+									class="bg-yellow-200 text-black">{m.text}</mark
+								>{/if}
+						{/each}{highlightTail}
+					</div>
 				</div>
 			</div>
 
@@ -306,9 +359,11 @@
 				<div class="mb-3 text-sm font-medium text-gray-700">マッチ詳細</div>
 				{#if matches.length}
 					<ul class="space-y-3">
-						{#each matches as m, i (i)}
+						{#each pageMatches as m, i (pageOffset + i)}
 							<li class="rounded border border-gray-100 bg-gray-50 p-3">
-								<div class="mb-1 text-sm text-gray-700">#{i + 1} @ {m.index} ({m.length}文字)</div>
+								<div class="mb-1 text-sm text-gray-700">
+									#{pageOffset + i + 1} @ {m.index} ({m.length}文字)
+								</div>
 								<div class="mb-2 overflow-x-auto rounded bg-white p-2 font-mono text-sm">
 									<code>{m.text}</code>
 								</div>
@@ -337,6 +392,8 @@
 							</li>
 						{/each}
 					</ul>
+				{:else if isEvaluating}
+					<div role="status" class="text-sm text-gray-500">評価中…</div>
 				{:else}
 					<div class="text-sm text-gray-500">一致はありません</div>
 				{/if}

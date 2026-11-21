@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { tools } from '$lib/data/tools';
+	import { formatVideoDuration } from '../_shared/video-duration';
 	import Icon from '@iconify/svelte';
 	import { onMount, onDestroy } from 'svelte';
-	import { browser } from '$app/environment';
 	import { calculateAspectRatioConstrainedSize } from './video-size';
 
 	const tool = tools.find((t) => t.name === 'video-compressor');
@@ -64,7 +64,7 @@
 
 	// ブラウザでのみ実行される初期化処理
 	onMount(() => {
-		if (browser && typeof MediaRecorder !== 'undefined') {
+		if (typeof MediaRecorder !== 'undefined') {
 			availableMimeTypes = supportedMimeTypes.filter((type) => MediaRecorder.isTypeSupported(type));
 
 			// デフォルトのMIMEタイプを利用可能な形式から自動選択
@@ -211,7 +211,6 @@
 			canvas.height = targetHeight;
 			const ctx = canvas.getContext('2d');
 			if (!ctx) throw new Error('Canvasの初期化に失敗しました');
-			videoStream = canvas.captureStream(30);
 
 			try {
 				// 同じvideo要素には1つのAudioSourceNodeだけを作り、各録画で使い回す。
@@ -226,14 +225,22 @@
 						throw error;
 					}
 				}
+				const destination = audioCapture.context.createMediaStreamDestination();
+				audioCapture.source.connect(destination);
 				audioSource = audioCapture.source;
-				audioDestination = audioCapture.context.createMediaStreamDestination();
-				audioSource.connect(audioDestination);
-				const [track] = audioDestination.stream.getAudioTracks();
-				if (track) videoStream.addTrack(track);
+				audioDestination = destination;
 			} catch (error) {
 				console.warn('音声トラックの取得に失敗しました。映像のみで圧縮を続行します:', error);
 			}
+
+			video.currentTime = 0;
+			await video.play();
+			controller.signal.throwIfAborted();
+			// キャプチャ開始時点でCanvasが空だと、先頭に黒フレームが入る。
+			ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
+			videoStream = canvas.captureStream(30);
+			const audioTrack = audioDestination?.stream.getAudioTracks()[0];
+			if (audioTrack) videoStream.addTrack(audioTrack);
 
 			const activeRecorder = new MediaRecorder(videoStream, {
 				mimeType,
@@ -273,13 +280,7 @@
 				};
 
 				activeRecorder.start();
-				video.currentTime = 0;
-				video
-					.play()
-					.then(() => {
-						if (!controller.signal.aborted) drawFrame();
-					})
-					.catch(reject);
+				drawFrame();
 			});
 
 			const blob = await recording;
@@ -330,8 +331,11 @@
 	}
 
 	function clearAll() {
-		compression?.abort();
-		compression = null;
+		if (compression) {
+			compression.abort();
+			originalVideoEl?.pause();
+			compression = null;
+		}
 		if (audioCapture) {
 			void audioCapture.context.close().catch(console.error);
 			audioCapture = null;
@@ -363,13 +367,6 @@
 			return (kbps / 1000).toFixed(1) + ' Mbps';
 		}
 		return kbps + ' kbps';
-	}
-
-	function formatDuration(seconds: number): string {
-		if (!Number.isFinite(seconds)) return '—';
-		const mins = Math.floor(seconds / 60);
-		const secs = Math.floor(seconds % 60);
-		return `${mins}:${secs.toString().padStart(2, '0')}`;
 	}
 
 	// 動画がロードされたときの処理
@@ -665,7 +662,7 @@
 							</div>
 							<div>
 								<span class="text-gray-500">長さ:</span>
-								{formatDuration(originalStats.duration)}
+								{formatVideoDuration(originalStats.duration)}
 							</div>
 							<div>
 								<span class="text-gray-500">解像度:</span>
@@ -705,7 +702,7 @@
 							</div>
 							<div>
 								<span class="text-gray-500">長さ:</span>
-								{formatDuration(compressedStats.duration)}
+								{formatVideoDuration(compressedStats.duration)}
 							</div>
 							<div>
 								<span class="text-gray-500">解像度:</span>

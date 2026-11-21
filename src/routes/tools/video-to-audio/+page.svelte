@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { tools } from '$lib/data/tools';
+	import { loadFfmpegCore } from '../_shared/ffmpeg-core';
+	import { formatVideoDuration } from '../_shared/video-duration';
 	import Icon from '@iconify/svelte';
 	import { onMount, onDestroy } from 'svelte';
 	import type { FFmpeg as FFmpegType } from '@ffmpeg/ffmpeg';
@@ -7,6 +9,7 @@
 	const tool = tools.find((t) => t.name === 'video-to-audio');
 
 	// 状態管理
+	const lifecycle = new AbortController();
 	let ffmpeg: FFmpegType | null = $state(null);
 	let isLoading = $state(false);
 	let isConverting = $state(false);
@@ -73,9 +76,9 @@
 
 		try {
 			const { FFmpeg } = await import('@ffmpeg/ffmpeg');
-			const { toBlobURL } = await import('@ffmpeg/util');
-
+			lifecycle.signal.throwIfAborted();
 			const ffmpegInstance = new FFmpeg();
+			ffmpeg = ffmpegInstance;
 
 			// 進捗イベントのリスナー
 			ffmpegInstance.on('log', ({ message }) => {
@@ -92,15 +95,12 @@
 			});
 
 			// FFmpegコアをCDNから読み込み
-			const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
-			await ffmpegInstance.load({
-				coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-				wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm')
-			});
-
-			ffmpeg = ffmpegInstance;
+			await loadFfmpegCore(ffmpegInstance, lifecycle.signal);
 			isLoading = false;
 		} catch (error) {
+			if (lifecycle.signal.aborted) return;
+			ffmpeg?.terminate();
+			ffmpeg = null;
 			console.error('FFmpeg load error:', error);
 			errorMessage =
 				'FFmpegの読み込みに失敗しました。ブラウザを更新して再試行してください。' +
@@ -116,14 +116,9 @@
 
 	// クリーンアップ
 	onDestroy(() => {
+		lifecycle.abort();
 		revokeUrls();
-		if (ffmpeg) {
-			try {
-				ffmpeg.terminate();
-			} catch {
-				// 終了時のエラーは無視
-			}
-		}
+		ffmpeg?.terminate();
 	});
 
 	function revokeUrls() {
@@ -204,6 +199,7 @@
 		try {
 			// ファイルをFFmpegに書き込み
 			const fileData = new Uint8Array(await originalFile.arrayBuffer());
+			lifecycle.signal.throwIfAborted();
 			inputFileName = 'input' + getFileExtension(originalFile.name);
 			await ffmpeg.writeFile(inputFileName, fileData);
 
@@ -223,6 +219,7 @@
 
 			// 結果を読み込み
 			const outputData = await ffmpeg.readFile(outputFileName);
+			lifecycle.signal.throwIfAborted();
 
 			// 型安全な処理（FFmpegはバイナリに対してUint8Arrayを返す）
 			if (!(outputData instanceof Uint8Array) || outputData.length === 0) {
@@ -236,6 +233,7 @@
 			conversionProgress = 100;
 			progressMessage = '変換が完了しました！';
 		} catch (error) {
+			if (lifecycle.signal.aborted) return;
 			console.error('Conversion error:', error);
 
 			// エラーの種類に応じたメッセージ
@@ -252,7 +250,7 @@
 			errorMessage = message;
 		} finally {
 			// FFmpeg仮想ファイルシステムのクリーンアップ
-			if (ffmpeg) {
+			if (ffmpeg && !lifecycle.signal.aborted) {
 				try {
 					if (inputFileName) await ffmpeg.deleteFile(inputFileName);
 				} catch {
@@ -381,13 +379,6 @@
 		const sizes = ['B', 'KB', 'MB', 'GB'];
 		const i = Math.floor(Math.log(bytes) / Math.log(k));
 		return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-	}
-
-	function formatDuration(seconds: number): string {
-		if (isNaN(seconds) || seconds === 0) return '0:00';
-		const mins = Math.floor(seconds / 60);
-		const secs = Math.floor(seconds % 60);
-		return `${mins}:${secs.toString().padStart(2, '0')}`;
 	}
 </script>
 
@@ -567,7 +558,7 @@
 						bind:this={originalVideoEl}
 						src={originalVideoUrl}
 						controls
-						onloadedmetadata={onVideoLoaded}
+						ondurationchange={onVideoLoaded}
 						class="w-full rounded bg-gray-100"
 					></video>
 
@@ -579,7 +570,7 @@
 							</div>
 							<div>
 								<span class="text-gray-500">長さ:</span>
-								{formatDuration(videoInfo.duration)}
+								{formatVideoDuration(videoInfo.duration)}
 							</div>
 						</div>
 					{/if}

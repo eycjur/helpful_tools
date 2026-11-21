@@ -35,11 +35,13 @@ describe('Whois解析 - パーサー', () => {
 			expect(isIPAddress('2001:db8:85a3::8a2e:370:7334')).toBe(true); // 圧縮表記
 			expect(isIPAddress('::1')).toBe(true); // ループバック
 			expect(isIPAddress('::')).toBe(true); // 全ゼロ
+			expect(isIPAddress('::ffff:192.0.2.1')).toBe(true);
 		});
 
 		it('無効なIPv6アドレスを拒否する', () => {
 			expect(isIPAddress('2001:0db8:85a3:::8a2e:0370:7334')).toBe(false); // 3連コロン
 			expect(isIPAddress('gggg::')).toBe(false); // 無効な16進数
+			expect(isIPAddress('::ffff:256.0.2.1')).toBe(false);
 		});
 
 		it('ドメイン名をIPアドレスとして検出しない', () => {
@@ -143,6 +145,15 @@ describe('Whois解析 - パーサー', () => {
 			expect(analyzeIP('fc00::1')?.isPrivate).toBe(true);
 			expect(analyzeIP('fe80::1')?.isLinkLocal).toBe(true);
 			expect(analyzeIP('ff00::1')?.isMulticast).toBe(true);
+		});
+
+		it('IPv6リンクローカルの境界と展開されたループバックを判定する', () => {
+			expect(analyzeIP('fe7f::1')?.isLinkLocal).toBe(false);
+			expect(analyzeIP('fe80::1')?.isLinkLocal).toBe(true);
+			expect(analyzeIP('febf::1')?.isLinkLocal).toBe(true);
+			expect(analyzeIP('fec0::1')?.isLinkLocal).toBe(false);
+			expect(analyzeIP('0:0:0:0:0:0:0:1')?.isLoopback).toBe(true);
+			expect(analyzeIP('::::')).toBeNull();
 		});
 	});
 
@@ -381,6 +392,25 @@ describe('Whois解析 - パーサー', () => {
 			await expect(performSearch('example.com')).resolves.toMatchObject({ dnsRecords: [] });
 			fetchMock.mockImplementation(async () => Response.json({ Status: 2 }));
 			await expect(performSearch('example.com')).rejects.toThrow('DNS情報を取得できませんでした');
+		});
+
+		it('一部のDNS照会が失敗した場合は、取得できたレコードを返し、空ならエラーにする', async () => {
+			const fetchMock = vi.mocked(globalThis.fetch);
+			const defaultFetch = fetchMock.getMockImplementation()!;
+			let hasRecord = false;
+			fetchMock.mockImplementation(async (input) => {
+				const url = new URL(String(input));
+				if (!url.pathname.endsWith('/dns-query')) return defaultFetch(input);
+				const type = url.searchParams.get('type');
+				if (type === 'MX') return Response.json({ Status: 2 });
+				if (type === 'A' && hasRecord) return defaultFetch(input);
+				return Response.json({ Status: 0 });
+			});
+			await expect(performSearch('example.com')).rejects.toThrow('DNS情報を取得できませんでした');
+			hasRecord = true;
+			await expect(performSearch('example.com')).resolves.toMatchObject({
+				dnsRecords: [{ type: 'A', data: '93.184.216.34' }]
+			});
 		});
 	});
 });

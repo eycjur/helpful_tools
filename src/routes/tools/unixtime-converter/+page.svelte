@@ -5,6 +5,7 @@
 		unixtimeToDate,
 		dateToUnixtime,
 		formatInTimeZone,
+		parseLocalDatetime,
 		TIMEZONE_OPTIONS,
 		type UnixtimeUnit
 	} from './unixtime';
@@ -48,17 +49,15 @@
 
 		if (!datetimeInput) return;
 
-		// datetime-localの値はブラウザのローカルタイムゾーンとして解釈される
-		const date = new Date(datetimeInput);
-		if (Number.isNaN(date.getTime())) {
-			datetimeError = '日時の形式が不正です';
-			return;
+		try {
+			const date = parseLocalDatetime(datetimeInput);
+			convertedUnixtime = {
+				seconds: dateToUnixtime(date, 'seconds'),
+				milliseconds: dateToUnixtime(date, 'milliseconds')
+			};
+		} catch (e) {
+			datetimeError = e instanceof Error ? e.message : '変換に失敗しました';
 		}
-
-		convertedUnixtime = {
-			seconds: dateToUnixtime(date, 'seconds'),
-			milliseconds: dateToUnixtime(date, 'milliseconds')
-		};
 	}
 
 	async function copyToClipboard(text: string) {

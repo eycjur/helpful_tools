@@ -8,8 +8,9 @@ export function isPythonObject(value: DataValue): value is PythonObject {
 }
 
 export function parseStructuredData(input: string): DataValue {
+	let data: DataValue;
 	try {
-		return JSON.parse(input);
+		data = JSON.parse(input);
 	} catch (jsonError) {
 		try {
 			return parsePythonObject(input);
@@ -21,6 +22,37 @@ export function parseStructuredData(input: string): DataValue {
 			);
 		}
 	}
+
+	// JSON.parse が丸める前の数値を確認する。文字列内の数字は対象外。
+	for (const [, number] of input.matchAll(
+		/"[^"\\]*(?:\\.[^"\\]*)*"|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g
+	)) {
+		if (number !== undefined) parseDecimal(number);
+	}
+	return data;
+}
+
+const DECIMAL = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
+
+function parseDecimal(text: string): number {
+	const number = Number(text);
+	if (!Number.isFinite(number)) throw new Error('数値が扱える範囲を超えています');
+	if (normalizeDecimal(text) !== normalizeDecimal(String(number))) {
+		throw new Error('数値の精度を保持できません');
+	}
+	return number;
+}
+
+function normalizeDecimal(text: string): string {
+	const [coefficient, exponent = '0'] = text.toLowerCase().split('e');
+	const sign = coefficient.startsWith('-') ? '-' : '';
+	const [integer, fraction = ''] = coefficient.replace(/^[+-]/, '').split('.');
+	const digits = (integer + fraction).replace(/^0+/, '');
+	if (!digits) return '0';
+
+	const significant = digits.replace(/0+$/, '');
+	const power = Number(exponent) - fraction.length + digits.length - significant.length;
+	return sign + significant + 'e' + power;
 }
 
 const STRING_ESCAPES: Record<string, string> = {
@@ -42,9 +74,13 @@ function parsePythonObject(input: string, depth = 0): DataValue {
 	const text = input.trim();
 	const call = text.match(/^(\w+)\((.*)\)$/s);
 	if (call) {
+		const fields = parsePairList(call[2], '=', depth);
+		if (Object.hasOwn(fields, '__class__')) {
+			throw new Error('引数名の「__class__」はJSON出力でクラス名に使われます');
+		}
 		const value: PythonObject = {
 			__class__: call[1],
-			...parsePairList(call[2], '=', depth),
+			...fields,
 			[PYTHON_CLASS]: true
 		};
 		return value;
@@ -77,9 +113,14 @@ function parsePythonObject(input: string, depth = 0): DataValue {
 	if (text === 'True') return true;
 	if (text === 'False') return false;
 
+	if (DECIMAL.test(text)) return parseDecimal(text);
+
 	if (text) {
-		const num = Number(text);
-		if (Number.isFinite(num)) return num;
+		const number = Number(text);
+		if (Number.isFinite(number)) {
+			if (!Number.isSafeInteger(number)) throw new Error('数値の精度を保持できません');
+			return number;
+		}
 	}
 
 	throw new Error('認識できない値があります');

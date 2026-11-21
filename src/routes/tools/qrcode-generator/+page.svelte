@@ -144,7 +144,7 @@
 				id="logo"
 				accept="image/*"
 				on:change={handleLogoUpload}
-				class="flex-1 rounded-lg border border-gray-300 p-2"
+				class="min-w-0 flex-1 rounded-lg border border-gray-300 p-2"
 			/>
 			{#if logoFile}
 				<button
@@ -171,7 +171,7 @@
 		<div class="flex flex-col items-center">
 			<canvas
 				bind:this={canvasRef}
-				class="max-w-xs rounded-lg border border-gray-300 {logoDataUrl &&
+				class="h-auto w-full max-w-xs rounded-lg border border-gray-300 {logoDataUrl &&
 				qrUrl &&
 				!errorMessage &&
 				!isLoading
@@ -193,7 +193,11 @@
 					<p class="text-gray-600">QRコードを生成中...</p>
 				</div>
 			{:else if qrUrl && !logoDataUrl}
-				<img src={qrUrl} alt="QRコード" class="max-w-xs rounded-lg border border-gray-300" />
+				<img
+					src={qrUrl}
+					alt="QRコード"
+					class="h-auto w-full max-w-xs rounded-lg border border-gray-300"
+				/>
 			{/if}
 
 			<!-- ダウンロードボタン -->

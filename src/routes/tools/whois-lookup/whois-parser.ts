@@ -183,30 +183,17 @@ function isIPv4(input: string): boolean {
 	return parts.length === 4 && parts.every((p) => p >= 0 && p <= 255);
 }
 
-function isIPv6(input: string): boolean {
-	if (!input.includes(':')) return false;
-	if (!/^[0-9a-fA-F:]+$/.test(input)) return false;
-	if (input.includes(':::')) return false;
-
-	const parts = input.split('::');
-	if (parts.length > 2) return false;
-
-	const left = parts[0] ? parts[0].split(':') : [];
-	const right = parts[1] ? parts[1].split(':') : [];
-
-	const isValidSeg = (seg: string) => /^[0-9a-fA-F]{1,4}$/.test(seg);
-	if (left.some((s) => !isValidSeg(s)) || right.some((s) => !isValidSeg(s))) return false;
-
-	if (parts.length === 1) {
-		return left.length === 8;
+function normalizeIPv6(input: string): string | null {
+	if (!input.includes(':') || /[^0-9a-f:.]/i.test(input)) return null;
+	try {
+		return new URL(`http://[${input}]/`).hostname.slice(1, -1);
+	} catch {
+		return null;
 	}
-
-	// 圧縮表記は全体で8セグメント未満
-	return left.length + right.length < 8;
 }
 
 export function isIPAddress(input: string): boolean {
-	return isIPv4(input) || isIPv6(input);
+	return isIPv4(input) || normalizeIPv6(input) !== null;
 }
 
 /**
@@ -363,13 +350,15 @@ export function analyzeIP(ip: string): IPAnalysis | null {
 		};
 	}
 
-	if (ip.includes(':')) {
+	const ipv6 = normalizeIPv6(ip);
+	if (ipv6) {
+		const firstGroup = Number.parseInt(ipv6.split(':')[0], 16);
 		return {
 			version: 'IPv6',
-			isPrivate: ip.toLowerCase().startsWith('fc') || ip.toLowerCase().startsWith('fd'),
-			isLoopback: ip === '::1',
-			isLinkLocal: ip.toLowerCase().startsWith('fe80'),
-			isMulticast: ip.toLowerCase().startsWith('ff')
+			isPrivate: (firstGroup & 0xfe00) === 0xfc00,
+			isLoopback: ipv6 === '::1',
+			isLinkLocal: (firstGroup & 0xffc0) === 0xfe80,
+			isMulticast: (firstGroup & 0xff00) === 0xff00
 		};
 	}
 
@@ -390,11 +379,11 @@ export async function fetchDomainInfo(domain: string): Promise<{
 	const results = await Promise.allSettled(
 		recordTypes.map((type) => queryDNSOverHTTPS(domain, type))
 	);
-	if (results.every((result) => result.status === 'rejected')) {
-		throw new Error('DNS情報を取得できませんでした');
-	}
 	for (const result of results) {
 		if (result.status === 'fulfilled') dnsRecords.push(...result.value);
+	}
+	if (dnsRecords.length === 0 && results.some((result) => result.status === 'rejected')) {
+		throw new Error('DNS情報を取得できませんでした');
 	}
 
 	let resolvedIP = (

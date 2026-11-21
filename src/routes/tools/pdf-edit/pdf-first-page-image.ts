@@ -48,15 +48,32 @@ async function renderPageToImageUrl(pdf: PDFDocumentProxy, pageNum: number): Pro
 export async function createPdfPageRenderer(file: File): Promise<{
 	renderPage: (pageNum: number) => Promise<string>;
 	pageCount: number;
+	hasFormsOrSignatures: boolean;
 	destroy: () => Promise<void>;
 }> {
 	const arrayBuffer = await file.arrayBuffer();
 	const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer, ...PDFJS_CMAP_OPTIONS });
-	const pdf = await loadingTask.promise;
-
-	return {
-		pageCount: pdf.numPages,
-		renderPage: (pageNum: number) => renderPageToImageUrl(pdf, pageNum),
-		destroy: () => pdf.destroy()
-	};
+	try {
+		const pdf = await loadingTask.promise;
+		const { info } = await pdf.getMetadata();
+		// PDF.js で表示できても、pdf-lib は暗号化PDFを書き出せない。
+		if ('EncryptFilterName' in info && info.EncryptFilterName) {
+			throw new Error('暗号化されたPDFは編集できません。');
+		}
+		return {
+			pageCount: pdf.numPages,
+			hasFormsOrSignatures:
+				('IsAcroFormPresent' in info && info.IsAcroFormPresent === true) ||
+				('IsXFAPresent' in info && info.IsXFAPresent === true) ||
+				('IsSignaturesPresent' in info && info.IsSignaturesPresent === true),
+			renderPage: (pageNum: number) => renderPageToImageUrl(pdf, pageNum),
+			destroy: () => pdf.destroy()
+		};
+	} catch (error) {
+		await loadingTask.destroy();
+		if (error instanceof Error && error.name === 'PasswordException') {
+			throw new Error('暗号化されたPDFは編集できません。', { cause: error });
+		}
+		throw error;
+	}
 }

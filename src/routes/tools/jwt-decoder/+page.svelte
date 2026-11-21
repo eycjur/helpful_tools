@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { tools } from '$lib/data/tools';
+	import { epochSecondsToMilliseconds } from '../_shared/unix-date';
 	import Icon from '@iconify/svelte';
 	import { decodeJwt, isPlainObject, JWT_TIME_CLAIMS } from './jwt';
 
@@ -14,7 +15,7 @@
 
 	function formatClaimTime(value: unknown): string | null {
 		if (typeof value !== 'number' || !Number.isFinite(value)) return null;
-		const date = new Date(value * 1000);
+		const date = new Date(epochSecondsToMilliseconds(value));
 		if (Number.isNaN(date.getTime())) return null;
 		return date.toISOString();
 	}
@@ -39,7 +40,10 @@
 					.filter(([key]) => JWT_TIME_CLAIMS.has(key))
 					.map(([key, value]) => {
 						const formatted = formatClaimTime(value);
-						return { key, value: formatted ?? String(value) };
+						return {
+							key,
+							value: formatted ?? (typeof value === 'string' ? value : JSON.stringify(value))
+						};
 					});
 			}
 		} catch (e) {

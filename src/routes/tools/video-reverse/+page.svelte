@@ -1,11 +1,14 @@
 <script lang="ts">
 	import { tools } from '$lib/data/tools';
+	import { loadFfmpegCore } from '../_shared/ffmpeg-core';
+	import { formatVideoDuration } from '../_shared/video-duration';
 	import Icon from '@iconify/svelte';
 	import { onMount, onDestroy } from 'svelte';
 	import type { FFmpeg as FFmpegType } from '@ffmpeg/ffmpeg';
 
 	const tool = tools.find((t) => t.name === 'video-reverse');
 
+	const lifecycle = new AbortController();
 	let ffmpeg: FFmpegType | null = $state(null);
 	let isLoading = $state(false);
 	let isConverting = $state(false);
@@ -59,9 +62,9 @@
 
 		try {
 			const { FFmpeg } = await import('@ffmpeg/ffmpeg');
-			const { toBlobURL } = await import('@ffmpeg/util');
-
+			lifecycle.signal.throwIfAborted();
 			const ffmpegInstance = new FFmpeg();
+			ffmpeg = ffmpegInstance;
 
 			ffmpegInstance.on('log', ({ message }) => {
 				progressMessage = message;
@@ -75,15 +78,12 @@
 				}
 			});
 
-			const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
-			await ffmpegInstance.load({
-				coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-				wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm')
-			});
-
-			ffmpeg = ffmpegInstance;
+			await loadFfmpegCore(ffmpegInstance, lifecycle.signal);
 			isLoading = false;
 		} catch (error) {
+			if (lifecycle.signal.aborted) return;
+			ffmpeg?.terminate();
+			ffmpeg = null;
 			console.error('FFmpeg load error:', error);
 			errorMessage =
 				'FFmpegの読み込みに失敗しました。ブラウザを更新して再試行してください。' +
@@ -97,14 +97,9 @@
 	});
 
 	onDestroy(() => {
+		lifecycle.abort();
 		revokeUrls();
-		if (ffmpeg) {
-			try {
-				ffmpeg.terminate();
-			} catch {
-				/* ignore */
-			}
-		}
+		ffmpeg?.terminate();
 	});
 
 	function revokeUrls() {
@@ -179,6 +174,7 @@
 
 		try {
 			const fileData = new Uint8Array(await originalFile.arrayBuffer());
+			lifecycle.signal.throwIfAborted();
 			inputFileName = 'input' + getFileExtension(originalFile.name);
 			await ffmpeg.writeFile(inputFileName, fileData);
 
@@ -188,12 +184,14 @@
 			for (const includeAudio of [true, false]) {
 				try {
 					await ffmpeg.deleteFile(OUTPUT_FILE_NAME).catch(() => {});
+					lifecycle.signal.throwIfAborted();
 					const exitCode = await ffmpeg.exec(buildReverseArgs(inputFileName, includeAudio));
 					if (exitCode !== 0) throw new Error('動画を読み込めないか、対応していない形式です');
 					usedAudioReverse = includeAudio;
 					lastError = null;
 					break;
 				} catch (err) {
+					lifecycle.signal.throwIfAborted();
 					lastError = err;
 					if (includeAudio) {
 						progressMessage = '音声がないか未対応のため、映像のみを逆順に変換します...';
@@ -206,6 +204,7 @@
 			}
 
 			const outputData = await ffmpeg.readFile(OUTPUT_FILE_NAME);
+			lifecycle.signal.throwIfAborted();
 			if (!(outputData instanceof Uint8Array) || outputData.length === 0) {
 				throw new Error('FFmpegから予期しない出力形式が返されました');
 			}
@@ -216,6 +215,7 @@
 			conversionProgress = 100;
 			progressMessage = '完了しました';
 		} catch (error) {
+			if (lifecycle.signal.aborted) return;
 			console.error('Reverse conversion error:', error);
 			let message = '変換に失敗しました';
 			if (error instanceof Error) {
@@ -229,7 +229,7 @@
 			}
 			errorMessage = message;
 		} finally {
-			if (ffmpeg) {
+			if (ffmpeg && !lifecycle.signal.aborted) {
 				try {
 					if (inputFileName) await ffmpeg.deleteFile(inputFileName);
 				} catch {
@@ -277,13 +277,6 @@
 		const sizes = ['B', 'KB', 'MB', 'GB'];
 		const i = Math.floor(Math.log(bytes) / Math.log(k));
 		return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-	}
-
-	function formatDuration(seconds: number): string {
-		if (isNaN(seconds) || seconds === 0) return '0:00';
-		const mins = Math.floor(seconds / 60);
-		const secs = Math.floor(seconds % 60);
-		return `${mins}:${secs.toString().padStart(2, '0')}`;
 	}
 </script>
 
@@ -406,7 +399,7 @@
 						bind:this={originalVideoEl}
 						src={originalVideoUrl}
 						controls
-						onloadedmetadata={onVideoLoaded}
+						ondurationchange={onVideoLoaded}
 						class="w-full rounded bg-gray-100"
 					></video>
 					{#if videoInfo.size > 0}
@@ -417,7 +410,7 @@
 							</div>
 							<div>
 								<span class="text-gray-500">長さ:</span>
-								{formatDuration(videoInfo.duration)}
+								{formatVideoDuration(videoInfo.duration)}
 							</div>
 						</div>
 					{/if}

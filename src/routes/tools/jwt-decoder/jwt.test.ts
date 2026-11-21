@@ -47,6 +47,22 @@ describe('decodeJwt', () => {
 		expect(() => decodeJwt(`eyJhbGciOiJIUzI1NiJ9.${invalidPayload}.sig`)).toThrow('ペイロード');
 	});
 
+	it('HeaderとPayloadにはJSONオブジェクトが必要', () => {
+		expect(() => decodeJwt('bnVsbA.e30.')).toThrow('ヘッダー');
+		expect(() => decodeJwt('e30.W10.')).toThrow('ペイロード');
+	});
+
+	it('Base64URL部分の空白やパディングは拒否する', () => {
+		expect(() => decodeJwt('e30\n.e30.')).toThrow('ヘッダー');
+		expect(() => decodeJwt('e30.e30=.')).toThrow('ペイロード');
+	});
+
+	it('入力上限ちょうどのJWTをデコードできる', () => {
+		const atLimit = `e30.e30.${'a'.repeat(99_992)}`;
+		expect(atLimit).toHaveLength(100_000);
+		expect(decodeJwt(atLimit).header).toEqual({});
+	});
+
 	it('日本語を含むペイロードを正しくデコードする（UTF-8対応）', () => {
 		const payload = { name: '田中太郎' };
 		const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))))

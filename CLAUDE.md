@@ -349,7 +349,7 @@ src/routes/tools/ctf-cipher/
 
 #### 正規表現テスター（新規）
 
-- **正規表現エンジン**: ブラウザのJavaScript RegExpを使用（`u`フラグ既定ON）。
+- **正規表現エンジン**: 専用WorkerでJavaScript RegExpを実行（`u`フラグ既定ON）。応答が1秒を超えた場合と入力変更時はWorkerを終了する。
 - **ゼロ幅一致対策**: `g`フラグ時は`matchAll()`を使い、`u`フラグ有効時もUnicodeの文字境界に従って次の一致へ進む。
 - **ハイライト**: 一致範囲のみ `<mark>` で着色。オーバーラップは未対応（先着順）。
 
@@ -362,10 +362,9 @@ src/routes/tools/ctf-cipher/
 
 #### Pythonコード解析（新規ツール）
 
-- **Pyodide使用**: ブラウザ上でPythonを実行できるPyodide (v0.25.0) をCDN経由で動的読み込み。
+- **Pyodide使用**: 専用WorkerからCDN上のPyodide (v0.25.0) を読み込む。
 - **インジェクション対策**: ユーザーコードは`pyodide.globals.set()`で安全に渡す（`JSON.stringify()`によるインジェクションリスク回避）。
-- **メモリリーク対策**: onMountで追加したスクリプトタグをクリーンアップ関数で削除。
-- **型定義**: PyodideInterfaceインターフェースで`any`型を最小限に抑制。
+- **実行時間**: 解析・実行が5秒を超えたらWorkerを終了し、次の入力用にPython環境を初期化する。ページ離脱時にもWorkerを終了する。
 - **エラーハンドリング**: `instanceof Error`で型安全なエラーメッセージ表示。
 - **表示機能**: AST（抽象構文木）とBytecode（dis.Bytecode）の2つの視点でPythonコード解析、実行出力も確認可能。
 

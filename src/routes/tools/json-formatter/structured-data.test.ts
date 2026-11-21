@@ -34,6 +34,41 @@ describe('構造化データの解析', () => {
 		expect(parsed).toEqual({ __class__: 'literal' });
 	});
 
+	it('辞書やクラスの値をJSONに変換しても内容を保持する', () => {
+		const data = parseStructuredData(
+			"ModelResponse(text='9007199254740993', values=[None, True, -0.125, 1e100, 42])"
+		);
+		expect(parseStructuredData(JSON.stringify(data))).toEqual({
+			__class__: 'ModelResponse',
+			text: '9007199254740993',
+			values: [null, true, -0.125, 1e100, 42]
+		});
+	});
+
+	it.each(['1.000e3', '1e100', '9007199254740992', '{"text":"\\"1e400\\""}'])(
+		'表記の正規化や文字列の数値 %s を許可する',
+		(input) => expect(parseStructuredData(input)).toEqual(JSON.parse(input))
+	);
+
+	it.each([
+		'9007199254740993',
+		'{"list": [0.1234567890123456789]}',
+		'1e-400',
+		'A(id=9007199254740993)'
+	])('桁が失われる数値 %s を拒否する', (input) => {
+		expect(() => parseStructuredData(input)).toThrow('数値の精度を保持できません');
+	});
+
+	it.each(['{"n":1e400}', 'A(n=1e400)'])('範囲外の数値 %s を拒否する', (input) => {
+		expect(() => parseStructuredData(input)).toThrow('数値が扱える範囲を超えています');
+	});
+
+	it('Pythonクラス名と衝突する引数名を知らせる', () => {
+		expect(() => parseStructuredData("A(__class__='ユーザー入力')")).toThrow(
+			'引数名の「__class__」はJSON出力でクラス名に使われます'
+		);
+	});
+
 	it.each([
 		'hello world',
 		'{"a":}',

@@ -10,13 +10,10 @@ const config = {
 	preprocess: vitePreprocess(),
 
 	kit: {
+		paths: { base: dev ? '' : '/helpful_tools' },
 		adapter: adapter({
-			paths: {
-				base: dev ? '' : '/helpful_tools'
-			},
 			pages: 'build',
 			assets: 'build',
-			fallback: 'undefined',
 			precompress: false,
 			strict: true
 		})

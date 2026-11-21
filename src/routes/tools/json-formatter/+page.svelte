@@ -97,6 +97,7 @@
 			></textarea>
 			<p class="mt-2 text-xs text-gray-600">
 				Python表記は辞書・リスト・クラス表現と、文字列・数値・True/False・Noneに対応します。
+				数値は、出力時に桁が失われたり範囲を超えたりする場合にエラーになります。
 			</p>
 		</div>
 

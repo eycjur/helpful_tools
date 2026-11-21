@@ -73,8 +73,11 @@
 </script>
 
 <svelte:head>
-	<title>Home</title>
-	<meta name="description" content="Svelte demo app" />
+	<title>困った時のツール集</title>
+	<meta
+		name="description"
+		content="テキストや画像の変換、PDFの編集など、ブラウザで使える便利ツールの一覧です。"
+	/>
 </svelte:head>
 
 <section class="mx-auto max-w-7xl">

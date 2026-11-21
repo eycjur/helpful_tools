@@ -22,13 +22,31 @@
 	// 共通
 	let activeTab: 'to-base64' | 'to-image' = 'to-base64';
 	let isLoading = false;
+	let conversionId = 0;
+	let pendingReader: FileReader | null = null;
+
+	function cancelPendingConversion() {
+		conversionId += 1;
+		pendingReader?.abort();
+		pendingReader = null;
+		isLoading = false;
+	}
+
+	function selectTab(tab: typeof activeTab) {
+		if (activeTab === tab) return;
+		cancelPendingConversion();
+		activeTab = tab;
+	}
 
 	function revokeObjectUrls() {
 		if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl);
 		if (convertedImageUrl) URL.revokeObjectURL(convertedImageUrl);
 	}
 
-	onDestroy(revokeObjectUrls);
+	onDestroy(() => {
+		cancelPendingConversion();
+		revokeObjectUrls();
+	});
 
 	// 画像 → Base64 変換
 	function handleFileSelect(e: Event) {
@@ -59,21 +77,30 @@
 			);
 			return;
 		}
+
+		cancelPendingConversion();
+		const id = conversionId;
+		isLoading = true;
 		try {
 			const items = await navigator.clipboard.read();
+			if (id !== conversionId) return;
 			for (const item of items) {
 				const imageType = item.types.find((type) => type.startsWith('image/'));
 				if (imageType) {
-					processFile(imageFileFromBlob(await item.getType(imageType)));
+					const blob = await item.getType(imageType);
+					if (id === conversionId) processFile(imageFileFromBlob(blob));
 					return;
 				}
 			}
 			alert('クリップボードに画像がありません');
 		} catch (err) {
+			if (id !== conversionId) return;
 			console.error('クリップボードの読み取りに失敗:', err);
 			alert(
 				'クリップボードの読み取りに失敗しました。ブラウザの権限を確認するか、Ctrl+V（⌘+V）で貼り付けてください'
 			);
+		} finally {
+			if (id === conversionId) isLoading = false;
 		}
 	}
 
@@ -102,6 +129,7 @@
 			return;
 		}
 
+		cancelPendingConversion();
 		selectedFile = file;
 
 		// プレビュー用URL作成
@@ -115,14 +143,20 @@
 	function convertImageToBase64(file: File) {
 		isLoading = true;
 		imageDataUrl = '';
+		const id = conversionId;
 		const reader = new FileReader();
+		pendingReader = reader;
 
 		reader.onload = () => {
+			if (id !== conversionId) return;
+			pendingReader = null;
 			imageDataUrl = reader.result as string;
 			isLoading = false;
 		};
 
 		reader.onerror = () => {
+			if (id !== conversionId) return;
+			pendingReader = null;
 			isLoading = false;
 			alert('ファイルの読み込みに失敗しました');
 		};
@@ -147,6 +181,8 @@
 			return;
 		}
 
+		cancelPendingConversion();
+		const id = conversionId;
 		isLoading = true;
 
 		try {
@@ -162,27 +198,26 @@
 
 			// 画像の有効性を検証
 			const img = new Image();
-			img.onload = () => {
-				// 既存のURLを解放
-				if (convertedImageUrl) URL.revokeObjectURL(convertedImageUrl);
+			img.onload = async () => {
+				if (id !== conversionId) return;
+				try {
+					const response = await fetch(dataUrl);
+					const blob = await response.blob();
+					if (id !== conversionId) return;
 
-				// BlobとしてURLを作成
-				fetch(dataUrl)
-					.then((res) => res.blob())
-					.then((blob) => {
-						convertedImageUrl = URL.createObjectURL(blob);
-
-						convertedImageName = `converted-image.${imageFileExtension(blob.type)}`;
-
-						isLoading = false;
-					})
-					.catch(() => {
-						isLoading = false;
-						alert('画像の変換に失敗しました');
-					});
+					const nextUrl = URL.createObjectURL(blob);
+					if (convertedImageUrl) URL.revokeObjectURL(convertedImageUrl);
+					convertedImageUrl = nextUrl;
+					convertedImageName = `converted-image.${imageFileExtension(blob.type)}`;
+				} catch {
+					if (id === conversionId) alert('画像の変換に失敗しました');
+				} finally {
+					if (id === conversionId) isLoading = false;
+				}
 			};
 
 			img.onerror = () => {
+				if (id !== conversionId) return;
 				isLoading = false;
 				alert('無効なBase64画像データです');
 			};
@@ -204,19 +239,14 @@
 	}
 
 	function clearAll() {
+		cancelPendingConversion();
 		selectedFile = null;
 		imageDataUrl = '';
 		base64Input = '';
 
-		if (imagePreviewUrl) {
-			URL.revokeObjectURL(imagePreviewUrl);
-			imagePreviewUrl = null;
-		}
-
-		if (convertedImageUrl) {
-			URL.revokeObjectURL(convertedImageUrl);
-			convertedImageUrl = null;
-		}
+		revokeObjectUrls();
+		imagePreviewUrl = null;
+		convertedImageUrl = null;
 	}
 
 	async function copyToClipboard(text: string) {
@@ -246,7 +276,7 @@
 	<!-- タブ切り替え -->
 	<div class="mb-6 flex rounded-lg bg-gray-100 p-1">
 		<button
-			on:click={() => (activeTab = 'to-base64')}
+			on:click={() => selectTab('to-base64')}
 			class="flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors {activeTab ===
 			'to-base64'
 				? 'bg-white text-gray-900 shadow-sm'
@@ -255,7 +285,7 @@
 			画像 → Base64
 		</button>
 		<button
-			on:click={() => (activeTab = 'to-image')}
+			on:click={() => selectTab('to-image')}
 			class="flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors {activeTab ===
 			'to-image'
 				? 'bg-white text-gray-900 shadow-sm'
@@ -309,7 +339,7 @@
 					type="file"
 					accept="image/*"
 					on:change={handleFileSelect}
-					class="block"
+					class="block max-w-full"
 				/>
 			</div>
 
@@ -397,6 +427,7 @@
 				</div>
 				<textarea
 					bind:value={base64Input}
+					on:input={cancelPendingConversion}
 					class="h-32 w-full rounded border border-gray-300 p-2 font-mono text-xs"
 					placeholder="Base64文字列またはData URL（data:image/...）を貼り付けてください"
 				></textarea>
@@ -432,7 +463,7 @@
 	{/if}
 
 	<!-- 共通アクション -->
-	{#if selectedFile || base64Result || convertedImageUrl}
+	{#if selectedFile || base64Input || convertedImageUrl || isLoading}
 		<div class="mt-6 flex justify-center">
 			<button
 				on:click={clearAll}

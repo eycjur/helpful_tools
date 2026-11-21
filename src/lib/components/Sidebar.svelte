@@ -6,14 +6,24 @@
 	import { onMount } from 'svelte';
 	import { SvelteMap } from 'svelte/reactivity';
 
-	let { isOpen = $bindable(false) } = $props();
+	let { isOpen = $bindable(false), onDismiss }: { isOpen?: boolean; onDismiss: () => void } =
+		$props();
+
+	function dismiss() {
+		isOpen = false;
+		onDismiss();
+	}
 
 	type SidebarSize = 'compact' | 'normal' | 'spacious';
 	let sidebarSize = $state<SidebarSize>('spacious');
 	let searchQuery = $state('');
 	let searchInput: HTMLInputElement | undefined;
 
-	const currentPath = $derived($page.url.pathname);
+	const currentRoute = $derived($page.route.id);
+
+	$effect(() => {
+		if (isOpen) searchInput?.focus();
+	});
 
 	const filteredTools = $derived(
 		tools.filter(
@@ -38,8 +48,8 @@
 		}
 
 		function handleKeydown(event: KeyboardEvent) {
-			if (event.key === 'Escape') {
-				isOpen = false;
+			if (event.key === 'Escape' && isOpen) {
+				dismiss();
 				return;
 			}
 			const target = event.target;
@@ -50,7 +60,11 @@
 				!target.isContentEditable
 			) {
 				event.preventDefault();
-				searchInput?.focus();
+				if (searchInput && getComputedStyle(searchInput).visibility === 'hidden') {
+					isOpen = true;
+				} else {
+					searchInput?.focus();
+				}
 			}
 		}
 
@@ -92,8 +106,8 @@
 {#if isOpen}
 	<div
 		class="fixed inset-0 z-40 lg:hidden"
-		onclick={() => (isOpen = false)}
-		onkeydown={(e) => e.key === 'Escape' && (isOpen = false)}
+		onclick={dismiss}
+		onkeydown={(e) => ['Escape', 'Enter', ' '].includes(e.key) && dismiss()}
 		role="button"
 		tabindex="0"
 		aria-label="サイドバーを閉じる"
@@ -102,12 +116,13 @@
 
 <!-- Sidebar -->
 <aside
-	class="bg-opacity-95 lg:bg-opacity-100 fixed top-0 left-0 z-50 h-full transform bg-white shadow-lg transition-all duration-300 ease-in-out lg:static lg:translate-x-0 lg:shadow-none {sidebarSize ===
+	id="tool-sidebar"
+	class="bg-opacity-95 lg:bg-opacity-100 fixed top-0 left-0 z-50 h-full transform bg-white shadow-lg transition-[translate,width] duration-300 ease-in-out lg:static lg:translate-x-0 lg:shadow-none {sidebarSize ===
 	'compact'
 		? 'w-52'
 		: sidebarSize === 'normal'
 			? 'w-64'
-			: 'w-72'} {isOpen ? 'translate-x-0' : '-translate-x-full'}"
+			: 'w-72'} {isOpen ? 'translate-x-0' : 'invisible -translate-x-full lg:visible'}"
 >
 	<div class="flex h-full flex-col">
 		<!-- Header -->
@@ -141,7 +156,7 @@
 				</a>
 				<button
 					class="rounded p-1 hover:bg-gray-100 lg:hidden"
-					onclick={() => (isOpen = false)}
+					onclick={dismiss}
 					aria-label="サイドバーを閉じる"
 				>
 					<Icon icon="mdi:close" class="h-6 w-6" />
@@ -212,7 +227,7 @@
 						? 'p-2'
 						: sidebarSize === 'normal'
 							? 'p-3'
-							: 'p-4'} {currentPath === (base || '/') ? 'bg-blue-50 text-blue-700' : ''}"
+							: 'p-4'} {currentRoute === '/' ? 'bg-blue-50 text-blue-700' : ''}"
 					onclick={() => (isOpen = false)}
 				>
 					<Icon
@@ -293,7 +308,7 @@
 											? 'px-1 py-0.5'
 											: sidebarSize === 'normal'
 												? 'px-1.5 py-1'
-												: 'px-2 py-1.5'} {currentPath === toolPath
+												: 'px-2 py-1.5'} {currentRoute === `/tools/${tool.name}`
 											? 'bg-blue-50 text-blue-700'
 											: ''}"
 										onclick={() => (isOpen = false)}

@@ -44,4 +44,56 @@ describe('Markdown → Notion変換', () => {
 	it('CRLFを分割せずに改行を2倍にする', () => {
 		expect(markdownToNotion('前\r\n`a\r\nb`\r\n後')).toBe('前\r\n\r\n`a\r\nb`\r\n\r\n後');
 	});
+
+	it('コードフェンスの中にある短いバッククォート列で閉じない', () => {
+		const code = '````md\n```js\ncode\n```\n`````';
+		expect(markdownToNotion('前\n' + code + '\n後')).toBe('前\n\n' + code + '\n\n後');
+	});
+
+	it.each([
+		['引用', '> ', '> '],
+		['入れ子の引用', '> > ', '> > '],
+		['リストと同じ行から開始', '1.  ', '    '],
+		['リスト内の4空白インデント', '    ', '    ']
+	])('%sのコードと後続本文の改行を区別する', (_kind, openingPrefix, bodyPrefix) => {
+		const code = [
+			openingPrefix + '````md',
+			bodyPrefix + '```js',
+			bodyPrefix + 'code',
+			bodyPrefix + '```',
+			bodyPrefix + '`````'
+		].join('\n');
+		expect(markdownToNotion('前\n' + code + '\n後\n本文')).toBe('前\n\n' + code + '\n\n後\n\n本文');
+	});
+
+	it('引用内で閉じていないフェンスは引用が終わるところまで保持する', () => {
+		const code = '> ```js\n> code\n> more';
+		expect(markdownToNotion(code + '\n後\n本文')).toBe(code + '\n\n後\n\n本文');
+	});
+
+	it('チルダのコードフェンスと数式ブロック内の改行を保持する', () => {
+		const code = '~~~tex\r\n$$\r\nx = 1\r\n$$\r\n~~~';
+		const equation = '$$\r\n\\begin{aligned}\r\nx &= 1 \\\\\r\ny &= 2\r\n\\end{aligned}\r\n$$';
+		expect(markdownToNotion(code + '\r\n' + equation + '\r\n後')).toBe(
+			code + '\r\n\r\n' + equation + '\r\n\r\n後'
+		);
+	});
+
+	it('数式ブロックの閉じ忘れや本文のドル記号では通常の改行を変換する', () => {
+		expect(markdownToNotion('価格は $5\n$$\n後')).toBe('価格は $5\n\n$$\n\n後');
+	});
+
+	it('インラインコードの開始と終了でバッククォートの本数をそろえる', () => {
+		const code = '``a `b`\nc``';
+		expect(markdownToNotion('前 ' + code + '\n後')).toBe('前 ' + code + '\n\n後');
+	});
+
+	it('エスケープされたバッククォートをインラインコードの開始とみなさない', () => {
+		expect(markdownToNotion('前 \\`\n後`')).toBe('前 \\`\n\n後`');
+	});
+
+	it('閉じていないコードフェンスは入力の末尾まで保持する', () => {
+		const code = '```js\nconst x = `a`;\n';
+		expect(markdownToNotion('前\n' + code)).toBe('前\n\n' + code);
+	});
 });

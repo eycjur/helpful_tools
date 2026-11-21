@@ -149,7 +149,7 @@
 					bind:value={query}
 					on:keydown={handleKeydown}
 					placeholder="例: google.com, www.github.com, api.example.co.jp, 8.8.8.8"
-					class="flex-1 rounded border-gray-300 px-4 py-2 font-mono text-sm"
+					class="min-w-0 flex-1 rounded border-gray-300 px-4 py-2 font-mono text-sm"
 				/>
 				<button
 					on:click={performLookup}

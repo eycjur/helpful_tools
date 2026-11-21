@@ -248,7 +248,7 @@
 			type="file"
 			accept="image/*"
 			on:change={onFileInput}
-			class="block"
+			class="block max-w-full"
 		/>
 	</div>
 

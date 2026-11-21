@@ -96,7 +96,7 @@
 		<h2 class="mb-2 text-lg font-semibold">変換仕様</h2>
 		<ul class="space-y-1 text-sm text-gray-700">
 			<li>• 改行が2つの改行に変換されます（段落区切りがより明確になります）</li>
-			<li>• コードブロック（```または`で囲まれた部分）内の改行は保持されます</li>
+			<li>• バッククォートやチルダで囲まれたコードと、$$ で囲まれた数式内の改行は保持されます</li>
 			<li>• NotionではMarkdown形式の一部記法がそのまま利用できます</li>
 		</ul>
 	</div>

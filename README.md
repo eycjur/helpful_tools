@@ -57,7 +57,7 @@ npm run dev -- --open
 # プロダクションビルド
 npm run build
 
-# プロダクションビルドのプレビュー
+# プロダクションビルドのプレビュー（表示されたURLの /helpful_tools/ を開く）
 npm run preview
 
 # TypeScript型チェック

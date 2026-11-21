@@ -241,12 +241,12 @@ status: "experimental"`
 </script>
 
 <div class="mx-auto max-w-7xl">
-	<div class="mb-6 flex items-center justify-between">
+	<div class="mb-6 flex flex-wrap items-center justify-between gap-3">
 		<div class="flex items-center">
 			{#if tool?.icon}<Icon icon={tool.icon} class="mr-4 h-10 w-10" />{/if}
 			<h1 class="text-3xl font-bold">{tool?.nameJa}</h1>
 		</div>
-		<div class="flex gap-3">
+		<div class="flex flex-wrap gap-3">
 			<button
 				on:click={loadSample}
 				class="rounded bg-purple-600 px-4 py-2 text-white hover:bg-purple-700"

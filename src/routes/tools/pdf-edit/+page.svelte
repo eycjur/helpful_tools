@@ -345,6 +345,10 @@
 		errorMessage = '';
 	}
 
+	const hasFormsOrSignatures = $derived(
+		docs.some((doc) => doc.pages.some((p) => renderers.get(p.srcId)?.hasFormsOrSignatures))
+	);
+
 	const totalPages = $derived(docs.reduce((n, d) => n + d.pages.length, 0));
 </script>
 
@@ -398,6 +402,12 @@
 
 		{#if errorMessage}
 			<p class="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">{errorMessage}</p>
+		{/if}
+
+		{#if hasFormsOrSignatures}
+			<p class="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
+				フォームや電子署名を含むPDFがあります。書き出したPDFには、入力欄や検証可能な電子署名は引き継がれません。
+			</p>
 		{/if}
 
 		{#if docs.length > 0}

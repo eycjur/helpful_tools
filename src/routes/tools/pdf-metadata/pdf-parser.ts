@@ -3,6 +3,7 @@
  */
 
 import {
+	PDFAcroSignature,
 	PDFArray,
 	PDFDict,
 	PDFDocument,
@@ -167,8 +168,10 @@ async function readStructure(bytes: Uint8Array) {
 			const action = await readAction(obj);
 			if (action) recordAction(action, `obj:${ref.objectNumber} ${ref.generationNumber}`);
 		}
-		if (obj.lookup(PDFName.of('FT')) !== PDFName.of('Sig')) continue;
-		const sig = obj.lookup(PDFName.of('V'));
+	}
+	for (const [field, ref] of doc.catalog.getAcroForm()?.getAllFields() ?? []) {
+		if (!(field instanceof PDFAcroSignature)) continue;
+		const sig = field.V();
 		if (!(sig instanceof PDFDict)) continue;
 		const sub = sig.lookup(PDFName.of('SubFilter'));
 		const ranges = sig.lookup(PDFName.of('ByteRange'));
@@ -177,7 +180,7 @@ async function readStructure(bytes: Uint8Array) {
 				? ranges.asArray().map((v) => (v instanceof PDFNumber ? v.asNumber() : NaN))
 				: [];
 		signatures.push({
-			field: (!doc.isEncrypted && pdfText(obj.lookup(PDFName.of('T')))) || ref.toString(),
+			field: (!doc.isEncrypted && field.getFullyQualifiedName()) || ref.toString(),
 			subfilter: sub instanceof PDFName ? sub.decodeText() : null,
 			coversWholeDoc:
 				numbers.length === 4 &&

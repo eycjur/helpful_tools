@@ -137,7 +137,7 @@
 			<!-- Loading中に非表示になると、canvasRefが失われるので、else if節にしてはいけない -->
 			<canvas
 				bind:this={canvasRef}
-				class="max-w-xs rounded-lg border border-gray-300 {showXIcon &&
+				class="h-auto w-full max-w-xs rounded-lg border border-gray-300 {showXIcon &&
 				qrUrl &&
 				!errorMessage &&
 				!isLoading
@@ -159,7 +159,11 @@
 					<p class="text-gray-600">QRコードを生成中...</p>
 				</div>
 			{:else if qrUrl && !showXIcon}
-				<img src={qrUrl} alt="QRコード" class="max-w-xs rounded-lg border border-gray-300" />
+				<img
+					src={qrUrl}
+					alt="QRコード"
+					class="h-auto w-full max-w-xs rounded-lg border border-gray-300"
+				/>
 			{/if}
 
 			<!-- ダウンロードボタン -->

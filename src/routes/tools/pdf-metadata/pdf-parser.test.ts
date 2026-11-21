@@ -92,4 +92,28 @@ describe('PDFメタデータ - ユーティリティ', () => {
 			message: expect.stringContaining('PDFの構造の一部を解析できませんでした')
 		});
 	});
+
+	it('文書に登録された署名のみを表示し、空欄やページに残った署名辞書は除く', async () => {
+		const doc = await PDFDocument.create();
+		const page = doc.addPage();
+		const ctx = doc.context;
+		const signature = ctx.register(ctx.obj({ Type: 'Sig', SubFilter: 'adbe.pkcs7.detached' }));
+		const signed = ctx.register(ctx.obj({ FT: 'Sig', T: PDFString.of('signed'), V: signature }));
+		const blank = ctx.register(ctx.obj({ FT: 'Sig', T: PDFString.of('blank') }));
+		const orphan = ctx.register(
+			ctx.obj({
+				Type: 'Annot',
+				Subtype: 'Widget',
+				FT: 'Sig',
+				T: PDFString.of('orphan'),
+				V: signature,
+				Rect: [0, 0, 0, 0]
+			})
+		);
+		page.node.addAnnot(orphan);
+		doc.catalog.set(PDFName.of('AcroForm'), ctx.obj({ Fields: [signed, blank] }));
+		const bytes = await doc.save();
+		const report = await parsePDFNonRender(bytes.buffer as ArrayBuffer, 'fields.pdf', makeFindings);
+		expect(report.security.signatures.map((sig) => sig.field)).toEqual(['signed']);
+	});
 });

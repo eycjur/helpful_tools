@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import Page from './+page.svelte';
 
 const { exec } = vi.hoisted(() => ({ exec: vi.fn() }));
-vi.mock('@ffmpeg/util', () => ({ toBlobURL: vi.fn().mockResolvedValue('blob:core') }));
+vi.mock('../_shared/ffmpeg-core', () => ({ loadFfmpegCore: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@ffmpeg/ffmpeg', () => ({
 	FFmpeg: class {
 		loaded = true;
