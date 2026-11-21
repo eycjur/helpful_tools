@@ -35,4 +35,13 @@ describe('Markdown → Notion変換', () => {
 		const expected = 'Text __CODE_BLOCK__0__\n\n```\ncode\n```';
 		expect(markdownToNotion(input)).toBe(expected);
 	});
+
+	it('コード内のドル記号をそのまま保持する', () => {
+		const code = '```sh\necho "$& $$ $\'"\n```';
+		expect(markdownToNotion(`前\n${code}\n後`)).toBe(`前\n\n${code}\n\n後`);
+	});
+
+	it('CRLFを分割せずに改行を2倍にする', () => {
+		expect(markdownToNotion('前\r\n`a\r\nb`\r\n後')).toBe('前\r\n\r\n`a\r\nb`\r\n\r\n後');
+	});
 });

@@ -23,6 +23,8 @@
 
 	// メインの検索関数
 	async function performLookup() {
+		if (isLoading) return;
+		result = null;
 		if (!query.trim()) {
 			error = '検索するドメインまたはIPアドレスを入力してください';
 			return;
@@ -30,7 +32,6 @@
 
 		isLoading = true;
 		error = '';
-		result = null;
 
 		try {
 			result = await performSearch(query);
@@ -277,6 +278,9 @@
 						</p>
 					</div>
 				{/if}
+				{#if !result.isIP && result.dnsRecords.length === 0}
+					<p class="mt-3 text-sm text-gray-600">対象のDNSレコードが見つかりませんでした</p>
+				{/if}
 			</div>
 
 			<!-- ネットワーク情報（IPの場合） -->
@@ -510,12 +514,14 @@
 								<span class="font-medium text-gray-700">郵便番号:</span>
 								<span class="text-gray-900">{result.ipGeoInfo.postal}</span>
 							</div>
-							<div class="flex justify-between">
-								<span class="font-medium text-gray-700">緯度経度:</span>
-								<span class="font-mono text-gray-900"
-									>{result.ipGeoInfo.latitude}, {result.ipGeoInfo.longitude}</span
-								>
-							</div>
+							{#if result.ipGeoInfo.latitude !== null && result.ipGeoInfo.longitude !== null}
+								<div class="flex justify-between">
+									<span class="font-medium text-gray-700">緯度経度:</span>
+									<span class="font-mono text-gray-900"
+										>{result.ipGeoInfo.latitude}, {result.ipGeoInfo.longitude}</span
+									>
+								</div>
+							{/if}
 							<div class="flex justify-between">
 								<span class="font-medium text-gray-700">組織:</span>
 								<span class="text-sm text-gray-900">{result.ipGeoInfo.org}</span>
@@ -581,12 +587,14 @@
 								<span class="font-medium text-gray-700">郵便番号:</span>
 								<span class="text-gray-900">{result.rootIpGeoInfo.postal}</span>
 							</div>
-							<div class="flex justify-between">
-								<span class="font-medium text-gray-700">緯度経度:</span>
-								<span class="font-mono text-gray-900"
-									>{result.rootIpGeoInfo.latitude}, {result.rootIpGeoInfo.longitude}</span
-								>
-							</div>
+							{#if result.rootIpGeoInfo.latitude !== null && result.rootIpGeoInfo.longitude !== null}
+								<div class="flex justify-between">
+									<span class="font-medium text-gray-700">緯度経度:</span>
+									<span class="font-mono text-gray-900"
+										>{result.rootIpGeoInfo.latitude}, {result.rootIpGeoInfo.longitude}</span
+									>
+								</div>
+							{/if}
 							<div class="flex justify-between">
 								<span class="font-medium text-gray-700">組織:</span>
 								<span class="text-sm text-gray-900">{result.rootIpGeoInfo.org}</span>

@@ -225,7 +225,7 @@ export function isDomainName(input: string): boolean {
  */
 export function extractRootDomain(domain: string): string {
 	const parts = domain.toLowerCase().split('.');
-	if (parts.length <= 2) return domain;
+	if (parts.length <= 2) return parts.join('.');
 
 	const lastTwo = parts.slice(-2).join('.');
 	if (twoLevelTLDs.has(lastTwo)) {
@@ -263,6 +263,9 @@ export async function queryDNSOverHTTPS(domain: string, recordType: string): Pro
 
 		const data = await response.json();
 
+		if (data.Status === 3) return []; // NXDOMAIN
+		if (data.Status) throw new Error(`DNS query failed: Status ${data.Status}`);
+
 		if (data.Answer) {
 			return data.Answer.map(
 				(answer: { name: string; type: number; data: string; TTL: number }) => ({
@@ -277,7 +280,7 @@ export async function queryDNSOverHTTPS(domain: string, recordType: string): Pro
 		return [];
 	} catch (err) {
 		console.error(`DNS query error for ${recordType}:`, err);
-		return [];
+		throw new Error('DNS情報を取得できませんでした');
 	}
 }
 
@@ -318,10 +321,13 @@ export async function fetchIPGeolocation(ip: string): Promise<IPGeoInfo | null> 
 			country: data.country_name || 'Unknown',
 			countryCode: data.country_code || 'Unknown',
 			timezone: data.timezone || 'Unknown',
-			latitude: data.latitude || 0,
-			longitude: data.longitude || 0,
+			latitude: data.latitude ?? null,
+			longitude: data.longitude ?? null,
 			org: data.org || 'Unknown',
-			postal: data.postal || 'Unknown'
+			postal: data.postal || 'Unknown',
+			as: data.asn || undefined,
+			asname: data.org || undefined,
+			reverse: data.hostname || undefined
 		};
 	} catch (err) {
 		console.error('IP geolocation error:', err);
@@ -381,41 +387,36 @@ export async function fetchDomainInfo(domain: string): Promise<{
 	const dnsRecords: DNSRecord[] = [];
 
 	const recordTypes = ['A', 'AAAA', 'MX', 'NS', 'TXT', 'CNAME'];
-	const promises = recordTypes.map((type) => queryDNSOverHTTPS(domain, type));
-	const results = await Promise.all(promises);
+	const results = await Promise.allSettled(
+		recordTypes.map((type) => queryDNSOverHTTPS(domain, type))
+	);
+	if (results.every((result) => result.status === 'rejected')) {
+		throw new Error('DNS情報を取得できませんでした');
+	}
+	for (const result of results) {
+		if (result.status === 'fulfilled') dnsRecords.push(...result.value);
+	}
 
-	results.forEach((records) => dnsRecords.push(...records));
-
-	const aRecords = dnsRecords.filter((r) => r.type === 'A');
-	let resolvedIP: string | undefined;
+	let resolvedIP = (
+		dnsRecords.find((r) => r.type === 'A') ?? dnsRecords.find((r) => r.type === 'AAAA')
+	)?.data;
 	let ipGeoInfo: IPGeoInfo | undefined;
 
-	if (aRecords.length > 0) {
-		resolvedIP = aRecords[0].data;
-	} else {
-		const cnameRecords = dnsRecords.filter((r) => r.type === 'CNAME');
-		if (cnameRecords.length > 0) {
-			let targetDomain = cnameRecords[0].data.replace(/\.$/, '');
-			for (let i = 0; i < 3 && !resolvedIP; i++) {
-				const cnameARecords = await queryDNSOverHTTPS(targetDomain, 'A');
-				if (cnameARecords.length > 0) {
-					resolvedIP = cnameARecords[0].data;
-					dnsRecords.push(
-						...cnameARecords.map((r) => ({
-							...r,
-							name: `${r.name} (via CNAME)`
-						}))
-					);
-				} else {
-					const nextCname = await queryDNSOverHTTPS(targetDomain, 'CNAME');
-					if (nextCname.length > 0) {
-						targetDomain = nextCname[0].data.replace(/\.$/, '');
-					} else {
-						break;
-					}
-				}
-			}
-		}
+	let cname = dnsRecords.find((r) => r.type === 'CNAME');
+	for (let i = 0; i < 3 && !resolvedIP && cname; i++) {
+		const target = cname.data.replace(/\.$/, '');
+		const results = await Promise.allSettled(
+			['A', 'AAAA'].map((type) => queryDNSOverHTTPS(target, type))
+		);
+		const answers = results.flatMap((result) =>
+			result.status === 'fulfilled' ? result.value : []
+		);
+		const addresses = answers.filter((record) => record.type === 'A' || record.type === 'AAAA');
+		resolvedIP = addresses[0]?.data;
+		dnsRecords.push(
+			...addresses.map((record) => ({ ...record, name: `${record.name} (via CNAME)` }))
+		);
+		cname = answers.find((record) => record.type === 'CNAME');
 	}
 
 	if (resolvedIP) {
@@ -468,7 +469,9 @@ export function formatGeoInfoAsText(geoInfo: IPGeoInfo): string {
 	text += `都市: ${geoInfo.city}\n`;
 	text += `組織: ${geoInfo.org}\n`;
 	text += `タイムゾーン: ${geoInfo.timezone}\n`;
-	text += `緯度経度: ${geoInfo.latitude}, ${geoInfo.longitude}\n`;
+	if (geoInfo.latitude !== null && geoInfo.longitude !== null) {
+		text += `緯度経度: ${geoInfo.latitude}, ${geoInfo.longitude}\n`;
+	}
 	return text;
 }
 

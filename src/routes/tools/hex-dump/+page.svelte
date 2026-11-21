@@ -26,6 +26,7 @@
 	let hoveredByteIndex = $state<number | null>(null);
 	let hoveredByteInfo = $state<ByteInfo | null>(null);
 	let tooltipPosition = $state({ x: 0, y: 0 });
+	let latestRequest = 0;
 
 	// 設定
 	let bytesPerLine = $state(16);
@@ -98,7 +99,11 @@
 	}
 
 	async function generateHexDump() {
-		if (!file || isProcessing) return;
+		const currentFile = file;
+		if (!currentFile) return;
+		const request = ++latestRequest;
+		const limit = maxBytes;
+		const lineWidth = bytesPerLine;
 
 		try {
 			isProcessing = true;
@@ -106,9 +111,10 @@
 			hexLines = [];
 
 			// 必要な部分のみ読み込む（メモリ効率化）
-			const displayBytes = Math.min(file.size, maxBytes);
-			const blob = file.slice(0, displayBytes);
+			const displayBytes = Math.min(currentFile.size, limit);
+			const blob = currentFile.slice(0, displayBytes);
 			const buffer = await blob.arrayBuffer();
+			if (request !== latestRequest) return;
 			const bytes = new Uint8Array(buffer);
 
 			let output = '';
@@ -120,7 +126,7 @@
 				const offsetStr = offset.toString(16).padStart(8, '0');
 
 				// 現在の行のバイト数
-				const lineBytes = Math.min(bytesPerLine, displayBytes - offset);
+				const lineBytes = Math.min(lineWidth, displayBytes - offset);
 				const lineData = bytes.slice(offset, offset + lineBytes);
 
 				// 各バイトの情報を構築
@@ -150,7 +156,7 @@
 				}
 
 				// 16進数パートをパディング（bytesPerLineに満たない場合）
-				const hexCharsPerLine = bytesPerLine * 2 + Math.floor(bytesPerLine / 2) - 1;
+				const hexCharsPerLine = lineWidth * 2 + Math.floor(lineWidth / 2) - 1;
 				hexPart = hexPart.padEnd(hexCharsPerLine, ' ');
 
 				lines.push({
@@ -162,17 +168,18 @@
 				offset += lineBytes;
 			}
 
-			if (file.size > maxBytes) {
-				output += `\n... (残り ${file.size - maxBytes} バイトは省略されました)`;
+			if (currentFile.size > limit) {
+				output += `\n... (残り ${currentFile.size - limit} バイトは省略されました)`;
 			}
 
 			hexLines = lines;
 			hexDump = output;
 		} catch (e) {
+			if (request !== latestRequest) return;
 			console.error('Hexダンプ生成エラー:', e);
 			alert('Hexダンプの生成に失敗しました');
 		} finally {
-			isProcessing = false;
+			if (request === latestRequest) isProcessing = false;
 		}
 	}
 
@@ -192,6 +199,8 @@
 	}
 
 	function clear() {
+		latestRequest++;
+		isProcessing = false;
 		file = null;
 		hexDump = '';
 		hexLines = [];

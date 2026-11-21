@@ -49,7 +49,7 @@
 			imageUrl = null;
 		}
 	}
-	onDestroy(cleanup);
+	onDestroy(clearAll);
 
 	function formatFileSize(bytes: number): string {
 		if (bytes < 1024) return `${bytes} B`;
@@ -129,16 +129,10 @@
 	}
 
 	async function processImage(file: File) {
-		cleanup();
+		clearAll();
 		isLoading = true;
-		metadataSections = [];
-		provenance = { hasManifest: false, isAiGenerated: false };
-		provenanceAfterClean = null;
-		cleanedBlob = null;
-		cleanedMode = null;
-		warnings = [];
 		currentFile = file;
-		const myId = ++processId;
+		const myId = processId;
 
 		if (file.size > FILE_SIZE_WARNING_THRESHOLD) {
 			const sizeMB = Math.round(file.size / 1024 / 1024);
@@ -161,6 +155,7 @@
 				img.onerror = () => reject(new Error('画像の読み込みに失敗しました'));
 				img.src = url;
 			});
+			if (processId !== myId) return;
 
 			basicInfo = {
 				fileName: file.name,
@@ -186,9 +181,11 @@
 					translateValues: true,
 					mergeOutput: true
 				});
+				if (processId !== myId) return;
 
 				if (metadata) {
 					const gpsData = await exifr.gps(file);
+					if (processId !== myId) return;
 					if (gpsData) {
 						warnings = [
 							...warnings,
@@ -204,7 +201,7 @@
 							経度: gpsData.longitude
 						};
 						if (metadata.GPSAltitude !== undefined) gpsInfo['高度'] = `${metadata.GPSAltitude}m`;
-						if (gpsData.latitude && gpsData.longitude) {
+						if (Number.isFinite(gpsData.latitude) && Number.isFinite(gpsData.longitude)) {
 							gpsInfo['Google Maps'] =
 								`https://www.google.com/maps?q=${gpsData.latitude},${gpsData.longitude}`;
 						}
@@ -257,6 +254,7 @@
 					];
 				}
 			} catch (err) {
+				if (processId !== myId) return;
 				console.error('メタデータ取得エラー:', err);
 			}
 
@@ -275,6 +273,8 @@
 					isC2paLoading = false;
 				});
 		} catch (err) {
+			if (processId !== myId) return;
+			cleanup();
 			console.error('画像処理エラー:', err);
 			warnings = [
 				...warnings,
@@ -284,7 +284,7 @@
 				}
 			];
 		} finally {
-			isLoading = false;
+			if (processId === myId) isLoading = false;
 		}
 	}
 
@@ -304,6 +304,7 @@
 	}
 
 	function clearAll() {
+		processId++;
 		cleanup();
 		basicInfo = null;
 		currentFile = null;
@@ -314,65 +315,55 @@
 		cleanedBlob = null;
 		cleanedMode = null;
 		warnings = [];
+		isLoading = false;
+		isC2paLoading = false;
+		isRemovingC2pa = false;
+		isRemovingAll = false;
 	}
 
-	async function handleRemoveC2pa() {
-		if (!currentFile) return;
-		isRemovingC2pa = true;
+	async function handleRemove(mode: 'c2pa' | 'all') {
+		const file = currentFile;
+		if (!file || isRemovingC2pa || isRemovingAll) return;
+		const myId = processId;
+		isRemovingC2pa = mode === 'c2pa';
+		isRemovingAll = mode === 'all';
 		cleanedBlob = null;
 		cleanedMode = null;
 		provenanceAfterClean = null;
 		try {
-			const blob = await removeC2paMetadata(currentFile);
+			const blob = await (mode === 'c2pa'
+				? removeC2paMetadata(file)
+				: removeAllMetadataViaCanvas(file));
+			if (processId !== myId) return;
 			cleanedBlob = blob;
-			cleanedMode = 'c2pa';
+			cleanedMode = mode;
 			// 削除後の画像でC2PAを再確認
-			const cleanedFile = new File([blob], currentFile.name, { type: currentFile.type });
-			provenanceAfterClean = await loadC2paProvenance(cleanedFile);
+			const suffix = mode === 'c2pa' ? 'no_c2pa' : 'no_meta';
+			const name = getCleanFileName(file.name, suffix, blob.type);
+			const cleanedFile = new File([blob], name, { type: blob.type });
+			const result = await loadC2paProvenance(cleanedFile);
+			if (processId === myId) provenanceAfterClean = result;
 		} catch (err) {
+			if (processId !== myId) return;
 			warnings = [
 				...warnings,
 				{
-					message: err instanceof Error ? err.message : 'C2PAメタデータの削除に失敗しました',
+					message: err instanceof Error ? err.message : 'メタデータの削除に失敗しました',
 					type: 'error'
 				}
 			];
 		} finally {
-			isRemovingC2pa = false;
-		}
-	}
-
-	async function handleRemoveAll() {
-		if (!currentFile) return;
-		isRemovingAll = true;
-		cleanedBlob = null;
-		cleanedMode = null;
-		provenanceAfterClean = null;
-		try {
-			const blob = await removeAllMetadataViaCanvas(currentFile);
-			cleanedBlob = blob;
-			cleanedMode = 'all';
-			// 削除後の画像でC2PAを再確認
-			const ext = currentFile.name.split('.').pop() ?? 'jpg';
-			const cleanedFile = new File([blob], `cleaned.${ext}`, { type: currentFile.type });
-			provenanceAfterClean = await loadC2paProvenance(cleanedFile);
-		} catch (err) {
-			warnings = [
-				...warnings,
-				{
-					message: err instanceof Error ? err.message : '全メタデータの削除に失敗しました',
-					type: 'error'
-				}
-			];
-		} finally {
-			isRemovingAll = false;
+			if (processId === myId) {
+				isRemovingC2pa = false;
+				isRemovingAll = false;
+			}
 		}
 	}
 
 	function downloadCleanedFile() {
 		if (!cleanedBlob || !currentFile) return;
 		const suffix = cleanedMode === 'c2pa' ? 'no_c2pa' : 'no_meta';
-		const fileName = getCleanFileName(currentFile.name, suffix);
+		const fileName = getCleanFileName(currentFile.name, suffix, cleanedBlob.type);
 		const url = URL.createObjectURL(cleanedBlob);
 		const a = document.createElement('a');
 		a.href = url;
@@ -809,7 +800,7 @@
 							<li>• WebP等: Canvas再描画（全削除）</li>
 						</ul>
 						<button
-							on:click={handleRemoveC2pa}
+							on:click={() => handleRemove('c2pa')}
 							disabled={isRemovingC2pa || isRemovingAll}
 							class="w-full rounded bg-purple-600 px-4 py-2 text-sm text-white transition-colors hover:bg-purple-700 disabled:opacity-50"
 						>
@@ -836,7 +827,7 @@
 							<li>• C2PAマニフェスト</li>
 						</ul>
 						<button
-							on:click={handleRemoveAll}
+							on:click={() => handleRemove('all')}
 							disabled={isRemovingC2pa || isRemovingAll}
 							class="w-full rounded bg-red-600 px-4 py-2 text-sm text-white transition-colors hover:bg-red-700 disabled:opacity-50"
 						>

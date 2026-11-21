@@ -38,20 +38,22 @@
 		return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 	}
 
-	function formatDuration(seconds: number): string {
+	function formatDuration(seconds: number | null): string {
+		if (seconds === null) return '—';
 		if (seconds < 60) return `${seconds.toFixed(2)}秒`;
 		const minutes = Math.floor(seconds / 60);
 		const secs = seconds % 60;
 		return `${minutes}分${secs.toFixed(2)}秒`;
 	}
 
-	function formatTimestamp(timestamp: number): string {
+	function formatTimestamp(timestamp: number | null): string {
+		if (timestamp === null) return '—';
 		const date = new Date(timestamp * 1000);
 		return date.toLocaleString('ja-JP');
 	}
 
-	function calculateThroughput(totalBytes: number, durationSeconds: number): string {
-		if (durationSeconds === 0) return 'N/A';
+	function calculateThroughput(totalBytes: number, durationSeconds: number | null): string {
+		if (!durationSeconds) return 'N/A';
 		const bytesPerSecond = totalBytes / durationSeconds;
 		const bitsPerSecond = bytesPerSecond * 8;
 
@@ -127,7 +129,8 @@
 		expandedGroups = new SvelteSet<string>();
 	}
 
-	function formatPacketTime(timestamp: number, baseTime: number): string {
+	function formatPacketTime(timestamp: number | null, baseTime: number | null): string {
+		if (timestamp === null || baseTime === null) return '—';
 		const relative = timestamp - baseTime;
 		return relative.toFixed(6);
 	}
@@ -203,7 +206,8 @@
 			}
 
 			// ペイロード検索
-			if (searchQuery && packet.payload) {
+			if (searchQuery) {
+				if (!packet.payload) return false;
 				const text = new TextDecoder('utf-8', { fatal: false }).decode(packet.payload);
 
 				// ReDoS攻撃対策: 危険な正規表現パターンを検出
@@ -417,6 +421,11 @@
 		</div>
 
 		{#if selectedTab === 'statistics'}
+			{@const { captureStartTime, captureEndTime } = result.statistics}
+			{@const duration =
+				captureStartTime === null || captureEndTime === null
+					? null
+					: captureEndTime - captureStartTime}
 			<!-- ファイル情報 -->
 			<div class="mb-6 overflow-hidden rounded-lg border border-gray-200 bg-white">
 				<div class="border-b border-gray-200 bg-gray-50 px-4 py-3">
@@ -432,7 +441,7 @@
 							<dd class="mt-1 text-sm break-all text-gray-900">{fileName}</dd>
 						</div>
 						<div>
-							<dt class="text-sm font-medium text-gray-500">Pcapバージョン</dt>
+							<dt class="text-sm font-medium text-gray-500">{result.format} バージョン</dt>
 							<dd class="mt-1 text-sm text-gray-900">
 								{result.globalHeader.versionMajor}.{result.globalHeader.versionMinor}
 							</dd>
@@ -440,12 +449,18 @@
 						<div>
 							<dt class="text-sm font-medium text-gray-500">リンク層タイプ</dt>
 							<dd class="mt-1 text-sm text-gray-900">
-								{getLinkTypeName(result.globalHeader.network)}
+								{result.globalHeader.network === null
+									? '—'
+									: getLinkTypeName(result.globalHeader.network)}
 							</dd>
 						</div>
 						<div>
 							<dt class="text-sm font-medium text-gray-500">スナップ長</dt>
-							<dd class="mt-1 text-sm text-gray-900">{result.globalHeader.snapLen} bytes</dd>
+							<dd class="mt-1 text-sm text-gray-900">
+								{result.globalHeader.snapLen === null
+									? '—'
+									: `${result.globalHeader.snapLen} bytes`}
+							</dd>
 						</div>
 						<div>
 							<dt class="text-sm font-medium text-gray-500">エンディアン</dt>
@@ -488,9 +503,7 @@
 						<div>
 							<dt class="text-sm font-medium text-gray-500">キャプチャ期間</dt>
 							<dd class="mt-1 text-sm text-gray-900">
-								{formatDuration(
-									result.statistics.captureEndTime - result.statistics.captureStartTime
-								)}
+								{formatDuration(duration)}
 							</dd>
 						</div>
 						<div>
@@ -508,10 +521,7 @@
 						<div class="md:col-span-2">
 							<dt class="text-sm font-medium text-gray-500">平均スループット</dt>
 							<dd class="mt-1 text-sm text-gray-900">
-								{calculateThroughput(
-									result.statistics.totalBytes,
-									result.statistics.captureEndTime - result.statistics.captureStartTime
-								)}
+								{calculateThroughput(result.statistics.totalBytes, duration)}
 							</dd>
 						</div>
 					</dl>

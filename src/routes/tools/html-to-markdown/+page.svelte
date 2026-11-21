@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { tools } from '$lib/data/tools';
-	import { onMount } from 'svelte';
-	import TurndownService from 'turndown';
+	import { convertHtmlToMarkdown, getHtmlEditorSource } from '../_shared/html-to-markdown';
 	import Icon from '@iconify/svelte';
 
 	let HTMLEditor: HTMLDivElement;
@@ -9,44 +8,20 @@
 	let isNewLineAsParagraph = false;
 	let isPreserveLineBreaks = false;
 	let isIgnoreBoldInHeader = true;
-	let turndownService: TurndownService;
 
 	const tool = tools.find((t) => t.name === 'html-to-markdown');
 
 	function convertToMarkdown() {
-		if (!HTMLEditor || !turndownService) return;
+		if (!HTMLEditor) return;
 
-		const htmlContent = HTMLEditor.innerHTML;
-		if (!htmlContent.trim() || htmlContent === '<div><br></div>' || htmlContent === '<br>') {
-			markdownOutput = '';
-			return;
-		}
+		markdownOutput = convertHtmlToMarkdown(getHtmlEditorSource(HTMLEditor), {
+			newLineAsParagraph: isNewLineAsParagraph,
+			preserveLineBreaks: isPreserveLineBreaks,
+			ignoreBoldInHeader: isIgnoreBoldInHeader
+		});
 
-		// TurndownServiceを使ってHTML→Markdown変換
-		let markdown = turndownService.turndown(htmlContent);
-
-		// 改行処理（元の改行を保持するオプションがオフの場合のみ畳む）
-		if (!isPreserveLineBreaks && !isNewLineAsParagraph) {
-			markdown = markdown.replace(/\n\n+/g, '\n');
-		}
-
-		// 見出し内の太字を無視
-		if (isIgnoreBoldInHeader) {
-			markdown = markdown.replace(/^(#+) \*\*(.+?)\*\*$/gm, '$1 $2');
-		}
-
-		// 余分な空行を削除（元の改行を保持するオプションがオフの場合のみ）
-		if (!isPreserveLineBreaks) {
-			markdown = markdown.replace(/\n{3,}/g, '\n\n').trim();
-		} else {
-			markdown = markdown.trim();
-		}
-
-		markdownOutput = markdown;
-
-		// 自動コピー
-		if (markdown.trim()) {
-			navigator.clipboard.writeText(markdown).catch((err) => {
+		if (markdownOutput) {
+			navigator.clipboard?.writeText(markdownOutput).catch((err) => {
 				console.error('自動コピーに失敗しました: ', err);
 			});
 		}
@@ -70,78 +45,6 @@
 			markdownOutput = '';
 		}
 	}
-
-	onMount(() => {
-		// TurndownServiceの初期化
-		turndownService = new TurndownService({
-			headingStyle: 'atx',
-			codeBlockStyle: 'fenced',
-			hr: '---',
-			bulletListMarker: '-'
-		});
-
-		// カスタムルールの追加
-		turndownService.addRule('list', {
-			filter: ['li'],
-			replacement: function (content, node) {
-				const element = node as HTMLElement;
-				let prefix = '';
-				if (element.className === 'ql-indent-1') {
-					prefix = '    ';
-				} else if (element.className === 'ql-indent-2') {
-					prefix = '        ';
-				} else if (element.className === 'ql-indent-3') {
-					prefix = '            ';
-				}
-				if (element.getAttribute('data-list') === 'ordered') {
-					prefix += '1. ';
-				} else {
-					prefix += '- ';
-				}
-				return prefix + content + '\n';
-			}
-		});
-
-		turndownService.addRule('codeBlock', {
-			filter: function (node) {
-				const element = node as HTMLElement;
-				return element.className === 'ql-code-block-container';
-			},
-			replacement: function (content) {
-				return '\n```\n' + content + '```\n\n';
-			}
-		});
-
-		turndownService.addRule('table', {
-			filter: ['table'],
-			replacement: function (_content, node) {
-				const table = node as HTMLTableElement;
-				const header = table.querySelectorAll('tr')[0];
-				let row = '';
-				for (const th of header.querySelectorAll('td, th')) {
-					row += '| ' + th.textContent + ' ';
-				}
-				let result = '\n' + row + '|\n';
-
-				// ヘッダー行はカラム数がおかしい場合があるので、2行目のカラム数を参照する
-				const numColumns =
-					table.querySelectorAll('tr')[1]?.querySelectorAll('td, th').length ||
-					header.querySelectorAll('td, th').length;
-				result += '| --- '.repeat(numColumns) + '|\n';
-
-				for (const tr of Array.from(table.querySelectorAll('tr')).slice(1)) {
-					let row = '';
-					for (const td of tr.querySelectorAll('td, th')) {
-						row += '| ' + td.textContent + ' ';
-					}
-					result += row + '|\n';
-				}
-				return result + '\n';
-			}
-		});
-
-		convertToMarkdown();
-	});
 </script>
 
 <div class="mx-auto max-w-6xl">

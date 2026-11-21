@@ -2,6 +2,7 @@
 	import { tools } from '$lib/data/tools';
 	import Icon from '@iconify/svelte';
 	import { onDestroy } from 'svelte';
+	import { detectBase64ImageMimeType, imageFileExtension } from './image-format';
 
 	const tool = tools.find((t) => t.name === 'base64-converter');
 
@@ -9,6 +10,7 @@
 	let selectedFile: File | null = null;
 	let dragOver = false;
 	let imagePreviewUrl: string | null = null;
+	let imageDataUrl = '';
 	let base64Result = '';
 	let includeDataUrl = true;
 
@@ -112,21 +114,12 @@
 
 	function convertImageToBase64(file: File) {
 		isLoading = true;
+		imageDataUrl = '';
 		const reader = new FileReader();
 
-		reader.onload = (e) => {
-			const result = e.target?.result as string;
-			if (includeDataUrl) {
-				base64Result = result;
-			} else {
-				// Data URLプリフィックスを除去してBase64文字列のみにする
-				const base64Data = result.split(',')[1];
-				base64Result = base64Data;
-			}
+		reader.onload = () => {
+			imageDataUrl = reader.result as string;
 			isLoading = false;
-
-			// 自動コピー
-			copyToClipboard(base64Result);
 		};
 
 		reader.onerror = () => {
@@ -139,7 +132,8 @@
 
 	// Base64 → 画像 変換
 	function convertBase64ToImage() {
-		if (!base64Input.trim()) {
+		const input = base64Input.trim();
+		if (!input) {
 			alert('Base64文字列を入力してください');
 			return;
 		}
@@ -159,11 +153,11 @@
 			let dataUrl: string;
 
 			// Data URL形式かBase64文字列のみかを判定
-			if (base64Input.startsWith('data:image/')) {
-				dataUrl = base64Input;
+			if (input.startsWith('data:image/')) {
+				dataUrl = input;
 			} else {
-				// Base64文字列のみの場合、Data URLに変換（デフォルトでPNG）
-				dataUrl = `data:image/png;base64,${base64Input}`;
+				const mimeType = detectBase64ImageMimeType(input) ?? 'image/png';
+				dataUrl = `data:${mimeType};base64,${input}`;
 			}
 
 			// 画像の有効性を検証
@@ -178,16 +172,7 @@
 					.then((blob) => {
 						convertedImageUrl = URL.createObjectURL(blob);
 
-						// ファイル名を推定
-						const mimeType = blob.type;
-						const ext = mimeType.includes('jpeg')
-							? 'jpg'
-							: mimeType.includes('png')
-								? 'png'
-								: mimeType.includes('webp')
-									? 'webp'
-									: 'png';
-						convertedImageName = `converted-image.${ext}`;
+						convertedImageName = `converted-image.${imageFileExtension(blob.type)}`;
 
 						isLoading = false;
 					})
@@ -220,7 +205,7 @@
 
 	function clearAll() {
 		selectedFile = null;
-		base64Result = '';
+		imageDataUrl = '';
 		base64Input = '';
 
 		if (imagePreviewUrl) {
@@ -240,6 +225,13 @@
 		} catch (err) {
 			console.error('クリップボードへのコピーに失敗:', err);
 		}
+	}
+
+	$: {
+		base64Result = includeDataUrl
+			? imageDataUrl
+			: imageDataUrl.slice(imageDataUrl.indexOf(',') + 1);
+		if (base64Result) copyToClipboard(base64Result);
 	}
 </script>
 

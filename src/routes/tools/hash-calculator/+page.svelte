@@ -18,6 +18,7 @@
 	let dragOver = $state(false);
 	let copyFeedback = $state<{ [key: string]: boolean }>({});
 	let debounceTimer: ReturnType<typeof setTimeout>;
+	let latestRequest = 0;
 
 	const algorithms = ['MD5', 'SHA-1', 'SHA-256', 'SHA-384', 'SHA-512'];
 
@@ -62,7 +63,9 @@
 	}
 
 	async function calculateHashes() {
-		if (isCalculating) return;
+		const request = ++latestRequest;
+		const mode = inputMode;
+		const currentFile = file;
 
 		let data: ArrayBuffer | string;
 
@@ -70,11 +73,12 @@
 			isCalculating = true;
 			results = [];
 
-			if (inputMode === 'file') {
-				if (!file) return;
-				data = await file.arrayBuffer();
+			if (mode === 'file') {
+				if (!currentFile) return;
+				data = await currentFile.arrayBuffer();
+				if (request !== latestRequest) return;
 			} else {
-				if (!textInput.trim()) return;
+				if (!textInput) return;
 				data = textInput;
 			}
 
@@ -83,7 +87,7 @@
 			for (const algo of algorithms) {
 				let hash: string;
 
-				if (inputMode === 'text') {
+				if (mode === 'text') {
 					// テキストの場合はcrypto-jsを使用
 					const dataStr = data as string;
 					switch (algo) {
@@ -124,6 +128,7 @@
 							'SHA-512': 'SHA-512'
 						};
 						const hashBuffer = await crypto.subtle.digest(algoMap[algo], buffer);
+						if (request !== latestRequest) return;
 						hash = Array.from(new Uint8Array(hashBuffer))
 							.map((b) => b.toString(16).padStart(2, '0'))
 							.join('');
@@ -135,10 +140,11 @@
 
 			results = newResults;
 		} catch (e) {
+			if (request !== latestRequest) return;
 			console.error('ハッシュ計算エラー:', e);
 			alert('ハッシュの計算に失敗しました');
 		} finally {
-			isCalculating = false;
+			if (request === latestRequest) isCalculating = false;
 		}
 	}
 
@@ -156,6 +162,9 @@
 	}
 
 	function clear() {
+		clearTimeout(debounceTimer);
+		latestRequest++;
+		isCalculating = false;
 		file = null;
 		textInput = '';
 		results = [];

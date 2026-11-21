@@ -16,7 +16,6 @@
 	let results = $state<{ label: string; value: string }[]>([]);
 	let unixtimeError = $state('');
 
-	let datetimeInput = $state('');
 	let convertedUnixtime = $state<{ seconds: number; milliseconds: number } | null>(null);
 	let datetimeError = $state('');
 
@@ -43,7 +42,7 @@
 		convertFromUnixtime();
 	}
 
-	function convertFromDatetime() {
+	function convertFromDatetime(datetimeInput: string) {
 		datetimeError = '';
 		convertedUnixtime = null;
 
@@ -89,8 +88,11 @@
 					id="unixtime-input"
 					type="text"
 					inputmode="numeric"
-					bind:value={unixtimeInput}
-					oninput={convertFromUnixtime}
+					value={unixtimeInput}
+					oninput={(event) => {
+						unixtimeInput = event.currentTarget.value;
+						convertFromUnixtime();
+					}}
 					placeholder="1609459200"
 					class="w-full rounded-lg border border-gray-300 p-3 font-mono text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
 				/>
@@ -99,8 +101,11 @@
 				<label for="unit-select" class="mb-1 block text-sm font-medium text-gray-700">単位</label>
 				<select
 					id="unit-select"
-					bind:value={unit}
-					onchange={convertFromUnixtime}
+					value={unit}
+					onchange={(event) => {
+						unit = event.currentTarget.value === 'seconds' ? 'seconds' : 'milliseconds';
+						convertFromUnixtime();
+					}}
 					class="rounded-lg border border-gray-300 p-3 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
 				>
 					<option value="seconds">秒</option>
@@ -153,9 +158,8 @@
 		<input
 			id="datetime-input"
 			type="datetime-local"
-			step="1"
-			bind:value={datetimeInput}
-			oninput={convertFromDatetime}
+			step="0.001"
+			oninput={(event) => convertFromDatetime(event.currentTarget.value)}
 			class="w-full rounded-lg border border-gray-300 p-3 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
 		/>
 

@@ -11,16 +11,29 @@
 	let pdfUrl: string | null = null;
 	let report: PDFReport | null = null;
 	let isLoading = false;
+	let requestId = 0;
 	let dragOver = false;
 	let warnings: Array<{ message: string; type: 'warning' | 'error' }> = [];
 
 	function cleanup() {
+		requestId++;
 		if (pdfUrl) {
 			URL.revokeObjectURL(pdfUrl);
 			pdfUrl = null;
 		}
 	}
 	onDestroy(cleanup);
+
+	function externalHref(value: string) {
+		try {
+			const url = new URL(value);
+			return ['http:', 'https:', 'mailto:', 'ftp:', 'tel:'].includes(url.protocol)
+				? url.href
+				: undefined;
+		} catch {
+			return undefined;
+		}
+	}
 
 	function formatFileSize(bytes: number): string {
 		if (bytes < 1024) return `${bytes} B`;
@@ -78,6 +91,7 @@
 
 	async function processPDF(file: File) {
 		cleanup();
+		const id = requestId;
 		isLoading = true;
 		report = null;
 		warnings = [];
@@ -86,12 +100,11 @@
 			// PDFのArrayBufferを取得
 			const arrayBuffer = await file.arrayBuffer();
 
-			// URLを生成（プレビュー用）
-			const url = URL.createObjectURL(file);
-			pdfUrl = url;
-
-			// 新しいパーサーでPDF解析
-			report = await parsePDFNonRender(arrayBuffer, file.name, makeFindings);
+			if (id !== requestId) return;
+			const next = await parsePDFNonRender(arrayBuffer, file.name, makeFindings);
+			if (id !== requestId) return;
+			report = next;
+			pdfUrl = URL.createObjectURL(file);
 
 			// Findingから警告を生成
 			for (const finding of report.findings) {
@@ -114,6 +127,7 @@
 				}
 			}
 		} catch (err) {
+			if (id !== requestId) return;
 			console.error('PDF処理エラー:', err);
 			warnings = [
 				...warnings,
@@ -123,7 +137,7 @@
 				}
 			];
 		} finally {
-			isLoading = false;
+			if (id === requestId) isLoading = false;
 		}
 	}
 
@@ -349,7 +363,7 @@
 								<div>
 									<dt class="text-sm font-medium text-gray-500">SHA-256</dt>
 									<dd class="mt-1 font-mono text-xs break-all text-gray-900">
-										{report.metadata.xmp.rawSha256}
+										{report.metadata.xmp.rawSha256 ?? '取得できませんでした'}
 									</dd>
 								</div>
 								{#if report.metadata.xmp.summary}
@@ -372,7 +386,7 @@
 						<div>
 							<h3 class="mb-2 text-sm font-semibold text-gray-700">ドキュメントID</h3>
 							<dl class="space-y-2">
-								{#each report.metadata.documentIds as id (id)}
+								{#each report.metadata.documentIds as id, i (i)}
 									<div>
 										<dd class="font-mono text-xs break-all text-gray-900">{id}</dd>
 									</div>
@@ -400,7 +414,7 @@
 				</div>
 				<div class="p-4">
 					<div class="space-y-4">
-						{#each report.embedded.files as file (file.sha256)}
+						{#each report.embedded.files as file, i (i)}
 							<div class="rounded-lg border border-gray-200 p-3">
 								<div class="mb-2 flex items-center justify-between">
 									<span class="font-semibold text-gray-900">{file.name}</span>
@@ -448,7 +462,7 @@
 									<dt class="text-xs font-medium text-gray-500">URL</dt>
 									<dd class="mt-1 text-sm break-all text-gray-900">
 										<a
-											href={report.active.openAction.url}
+											href={externalHref(report.active.openAction.url)}
 											target="_blank"
 											rel="noopener noreferrer"
 											class="text-blue-600 hover:underline"
@@ -527,7 +541,7 @@
 									Document-level ({report.active.javascript.documentLevel.length})
 								</h4>
 								<div class="space-y-2">
-									{#each report.active.javascript.documentLevel as script (script.sha256)}
+									{#each report.active.javascript.documentLevel as script, i (i)}
 										<div class="rounded-lg border border-red-200 bg-red-50 p-3">
 											<div class="mb-2 flex items-center justify-between">
 												<span class="text-xs font-semibold text-red-800">{script.name}</span>
@@ -556,7 +570,7 @@
 									Actions ({report.active.javascript.actions.length})
 								</h4>
 								<div class="space-y-2">
-									{#each report.active.javascript.actions as script (script.sha256)}
+									{#each report.active.javascript.actions as script, i (i)}
 										<div class="rounded-lg border border-red-200 bg-red-50 p-3">
 											<div class="mb-2 flex items-center justify-between">
 												<span class="text-xs font-semibold text-red-800">{script.name}</span>
@@ -589,7 +603,7 @@
 							外部参照 ({report.active.externalRefs.length})
 						</h3>
 						<div class="space-y-2">
-							{#each report.active.externalRefs as ref (ref.where)}
+							{#each report.active.externalRefs as ref, i (i)}
 								<div class="rounded-lg border border-yellow-200 bg-yellow-50 p-3">
 									<div class="mb-2 flex items-center justify-between">
 										<span
@@ -602,7 +616,7 @@
 									{#if ref.url}
 										<div class="mt-2 text-sm break-all text-gray-900">
 											<a
-												href={ref.url}
+												href={externalHref(ref.url)}
 												target="_blank"
 												rel="noopener noreferrer"
 												class="text-blue-600 hover:underline"
@@ -693,12 +707,16 @@
 							<dt class="text-sm font-medium text-gray-500">署名</dt>
 							<dd class="mt-1">
 								<div class="space-y-2">
-									{#each report.security.signatures as sig (sig.field)}
+									{#each report.security.signatures as sig, i (i)}
 										<div class="rounded-lg border border-gray-200 p-2">
 											<div class="text-xs font-semibold text-gray-700">{sig.field}</div>
 											<div class="text-xs text-gray-600">{sig.subfilter}</div>
 											<div class="text-xs text-gray-600">
-												全文書カバー: {sig.coversWholeDoc ? 'Yes' : 'No'}
+												全文書カバー: {sig.coversWholeDoc === undefined
+													? '不明'
+													: sig.coversWholeDoc
+														? 'Yes'
+														: 'No'}
 											</div>
 										</div>
 									{/each}

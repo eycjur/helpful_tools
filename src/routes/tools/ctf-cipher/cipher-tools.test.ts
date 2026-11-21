@@ -72,6 +72,16 @@ describe('暗号解読 - コアロジック', () => {
 				}
 			}
 		});
+
+		it('上位ビットが立っている暗号文バイトも復号できる', () => {
+			const plaintext = 'The quick brown fox jumps over the lazy dog';
+			const encrypted = Array.from(plaintext, (char) =>
+				String.fromCharCode(char.charCodeAt(0) ^ 0xea)
+			).join('');
+			expect(decryptXOR(encrypted)).toContainEqual(
+				expect.objectContaining({ result: plaintext, detail: 'Key: 0xEA (234)' })
+			);
+		});
 	});
 
 	describe('Rail Fence cipher', () => {
@@ -151,6 +161,10 @@ describe('暗号解読 - コアロジック', () => {
 		it('文字列を逆順にできる', () => {
 			const result = decryptReverse('stressed');
 			expect(result.result).toBe('desserts');
+		});
+
+		it('サロゲートペアを壊さずに逆順にする', () => {
+			expect(decryptReverse('A😀B').result).toBe('B😀A');
 		});
 	});
 });

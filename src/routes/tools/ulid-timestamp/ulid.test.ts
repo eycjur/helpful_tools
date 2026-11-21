@@ -24,6 +24,16 @@ describe('decodeUlid', () => {
 		expect(result.timestampMs).toBe(0);
 	});
 
+	it('48ビットの上限を受け付け、上限を超えるタイムスタンプは拒否する', () => {
+		expect(decodeUlid(`7${'Z'.repeat(25)}`).timestampMs).toBe(2 ** 48 - 1);
+		expect(() => decodeUlid(`8${'0'.repeat(25)}`)).toThrow('範囲外');
+	});
+
+	it('大文字化するとCrockford Base32文字になるUnicode文字も拒否する', () => {
+		expect(() => decodeUlid(`${'0'.repeat(25)}ſ`)).toThrow('不正な文字');
+		expect(() => decodeUlid(`${'0'.repeat(24)}ß`)).toThrow('26文字');
+	});
+
 	it('26文字でない場合はエラーを投げる', () => {
 		expect(() => decodeUlid('01ARZ3NDEKTSV4RRFFQ69G5FA')).toThrow('26文字');
 		expect(() => decodeUlid('01ARZ3NDEKTSV4RRFFQ69G5FAVX')).toThrow('26文字');

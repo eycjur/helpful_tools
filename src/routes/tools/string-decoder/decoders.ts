@@ -3,6 +3,7 @@
  */
 
 import { toUnicode } from 'punycode';
+export { decodeHtmlEntities as decodeHTMLEntity } from '../_shared/html-entities';
 
 export function decodeURL(text: string): string {
 	try {
@@ -10,42 +11,6 @@ export function decodeURL(text: string): string {
 	} catch {
 		throw new Error('URLデコードに失敗');
 	}
-}
-
-export function decodeHTMLEntity(text: string): string {
-	let decoded = text;
-
-	// 数値文字参照（10進数）
-	decoded = decoded.replace(/&#(\d+);/g, (_, num) => String.fromCharCode(parseInt(num, 10)));
-
-	// 数値文字参照（16進数）
-	decoded = decoded.replace(/&#x([a-fA-F0-9]+);/g, (_, hex) =>
-		String.fromCharCode(parseInt(hex, 16))
-	);
-
-	// 名前付き文字参照
-	const entityMap: Record<string, string> = {
-		'&amp;': '&',
-		'&lt;': '<',
-		'&gt;': '>',
-		'&quot;': '"',
-		'&#39;': "'",
-		'&#x27;': "'",
-		'&apos;': "'",
-		'&#x2F;': '/',
-		'&#x60;': '`',
-		'&#x3D;': '=',
-		'&nbsp;': '\u00A0',
-		'&copy;': '©',
-		'&reg;': '®',
-		'&trade;': '™'
-	};
-
-	for (const [entity, char] of Object.entries(entityMap)) {
-		decoded = decoded.replaceAll(entity, char);
-	}
-
-	return decoded;
 }
 
 export function decodeBase64(text: string): string {
@@ -84,18 +49,21 @@ export function decodeOctalJS(text: string): string {
 
 export function decodeJSONString(text: string): string {
 	try {
-		return JSON.parse(text);
+		const value: unknown = JSON.parse(text);
+		if (typeof value === 'string') return value;
 	} catch {
-		throw new Error('JSON文字列のデコードに失敗');
+		// 構文エラーと文字列以外のJSONは同じメッセージを表示する。
 	}
+	throw new Error('JSON文字列のデコードに失敗');
 }
 
 export function decodePunycode(text: string): string {
 	try {
-		if (!text.startsWith('xn--')) {
+		const domain = text.trim().replace(/[\u3002\uff0e\uff61]/g, '.');
+		if (!/(?:^|\.)xn--[a-z0-9-]+(?:\.|$)/i.test(domain)) {
 			throw new Error('Punycode形式ではありません');
 		}
-		return toUnicode(text);
+		return toUnicode(domain.replace(/(^|\.)xn--/gi, '$1xn--'));
 	} catch {
 		throw new Error('Punycodeデコードに失敗');
 	}
@@ -125,26 +93,36 @@ export function decodeROT13(text: string): string {
 }
 
 export function decodeBinary(text: string): string {
-	const bytes = text.match(/[01]{8}/g);
-	if (!bytes) {
+	const bits = text.replace(/\s/g, '');
+	if (bits.length % 8 !== 0 || !/^[01]+$/.test(bits)) {
 		throw new Error('8ビット単位のバイナリではありません');
 	}
-	return bytes.map((b) => String.fromCharCode(parseInt(b, 2))).join('');
+	return bits.replace(/[01]{8}/g, (byte) => String.fromCharCode(parseInt(byte, 2)));
+}
+
+function decodeCharacterCodes(text: string, radix: number, pattern: RegExp): string {
+	return text
+		.trim()
+		.split(/\s+/)
+		.map((token) => {
+			if (!pattern.test(token)) throw new Error('不正な文字コードが含まれています');
+			const codePoint = parseInt(token, radix);
+			if (codePoint > 0x10ffff) throw new Error('Unicodeコードポイントの範囲外です');
+			return String.fromCodePoint(codePoint);
+		})
+		.join('');
 }
 
 export function decodeOctalNum(text: string): string {
-	const nums = text.trim().split(/\s+/);
-	return nums.map((n) => String.fromCharCode(parseInt(n, 8))).join('');
+	return decodeCharacterCodes(text, 8, /^\+?[0-7]+$/);
 }
 
 export function decodeDecimal(text: string): string {
-	const nums = text.trim().split(/\s+/);
-	return nums.map((n) => String.fromCharCode(parseInt(n, 10))).join('');
+	return decodeCharacterCodes(text, 10, /^\+?\d+$/);
 }
 
 export function decodeHexNum(text: string): string {
-	const nums = text.trim().split(/\s+/);
-	return nums.map((n) => String.fromCharCode(parseInt(n, 16))).join('');
+	return decodeCharacterCodes(text, 16, /^\+?(?:0x)?[0-9a-f]+$/i);
 }
 
 export function decodeMorse(text: string): string {
@@ -195,14 +173,25 @@ export function decodeMorse(text: string): string {
 }
 
 export function decodeQuotedPrintable(text: string): string {
-	return text
-		.replace(/=([A-F0-9]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
-		.replace(/=\r?\n/g, '');
+	const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
+	return text.replace(/=\r?\n/g, '').replace(/(?:=[A-F0-9]{2})+/g, (encoded) => {
+		const bytes = new Uint8Array(encoded.length / 3);
+		for (let i = 0; i < bytes.length; i++) {
+			const start = i * 3 + 1;
+			bytes[i] = parseInt(encoded.slice(start, start + 2), 16);
+		}
+
+		try {
+			return decoder.decode(bytes);
+		} catch {
+			throw new Error('Quoted-Printableに不正なUTF-8バイト列が含まれています');
+		}
+	});
 }
 
 export function decodeUUencode(text: string): string {
-	const lines = text.split('\n');
-	if (!lines[0]?.startsWith('begin ') || !lines[lines.length - 1]?.trim().startsWith('end')) {
+	const lines = text.trimEnd().split(/\r?\n/);
+	if (!lines[0]?.startsWith('begin ') || lines[lines.length - 1]?.trim() !== 'end') {
 		throw new Error('UUencode形式ではありません');
 	}
 
@@ -212,6 +201,9 @@ export function decodeUUencode(text: string): string {
 		if (!line) continue;
 
 		const length = (line.charCodeAt(0) - 32) & 0x3f;
+		if (!/^[ -`]+$/.test(line) || line.length - 1 < Math.ceil((length * 8) / 6)) {
+			throw new Error('不正なUUencodeデータが含まれています');
+		}
 		let bytes = '';
 
 		for (let j = 1; j < line.length; j++) {

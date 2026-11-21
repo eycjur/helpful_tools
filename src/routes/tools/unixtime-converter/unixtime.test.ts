@@ -58,4 +58,9 @@ describe('formatInTimeZone', () => {
 		const formatted = formatInTimeZone(date, 'Asia/Tokyo');
 		expect(formatted).toContain('09:00:00');
 	});
+
+	it('入力値のミリ秒をタイムゾーン変換後の表示にも保持する', () => {
+		const date = unixtimeToDate(1609459200123, 'milliseconds');
+		expect(formatInTimeZone(date, 'Asia/Tokyo')).toContain('09:00:00.123');
+	});
 });

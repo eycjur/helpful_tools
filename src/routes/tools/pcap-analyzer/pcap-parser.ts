@@ -1,7 +1,10 @@
 /**
  * Pcap/Pcapng ファイルパーサー
- * pcapファイルのバイナリ解析と統計情報抽出
+ * キャプチャファイルのバイナリ解析と統計情報抽出
  */
+
+const PCAPNG_MAGIC = 0x0a0d0d0a;
+const MAX_PACKETS = 1_000_000;
 
 export type PcapGlobalHeader = {
 	magicNumber: number;
@@ -9,14 +12,13 @@ export type PcapGlobalHeader = {
 	versionMinor: number;
 	thisZone: number;
 	sigFigs: number;
-	snapLen: number;
-	network: number;
+	snapLen: number | null;
+	network: number | null;
 	isLittleEndian: boolean;
 };
 
-export type PacketHeader = {
-	timestampSeconds: number;
-	timestampMicroseconds: number;
+type PacketHeader = {
+	timestamp: number | null;
 	capturedLength: number;
 	originalLength: number;
 };
@@ -77,7 +79,7 @@ export type DNSInfo = {
 
 export type ParsedPacket = {
 	index: number;
-	timestamp: number;
+	timestamp: number | null;
 	capturedLength: number;
 	originalLength: number;
 	ethernet?: EthernetFrame;
@@ -92,8 +94,8 @@ export type ParsedPacket = {
 export type PcapStatistics = {
 	totalPackets: number;
 	totalBytes: number;
-	captureStartTime: number;
-	captureEndTime: number;
+	captureStartTime: number | null;
+	captureEndTime: number | null;
 	averagePacketSize: number;
 	protocolDistribution: Record<string, number>;
 	sourceIps: Record<string, number>;
@@ -103,6 +105,7 @@ export type PcapStatistics = {
 };
 
 export type PcapAnalysisResult = {
+	format: 'pcap' | 'pcapng';
 	globalHeader: PcapGlobalHeader;
 	packets: ParsedPacket[];
 	statistics: PcapStatistics;
@@ -141,7 +144,7 @@ function parseGlobalHeader(buffer: ArrayBuffer): PcapGlobalHeader {
 		thisZone: view.getInt32(8, isLittleEndian),
 		sigFigs: view.getUint32(12, isLittleEndian),
 		snapLen: view.getUint32(16, isLittleEndian),
-		network: view.getUint32(20, isLittleEndian),
+		network: view.getUint32(20, isLittleEndian) & 0xffff,
 		isLittleEndian
 	};
 }
@@ -152,12 +155,13 @@ function parseGlobalHeader(buffer: ArrayBuffer): PcapGlobalHeader {
 function parsePacketHeader(
 	buffer: ArrayBuffer,
 	offset: number,
-	isLittleEndian: boolean
+	isLittleEndian: boolean,
+	timestampDivisor: number
 ): PacketHeader {
 	const view = new DataView(buffer, offset, 16);
 	return {
-		timestampSeconds: view.getUint32(0, isLittleEndian),
-		timestampMicroseconds: view.getUint32(4, isLittleEndian),
+		timestamp:
+			view.getUint32(0, isLittleEndian) + view.getUint32(4, isLittleEndian) / timestampDivisor,
 		capturedLength: view.getUint32(8, isLittleEndian),
 		originalLength: view.getUint32(12, isLittleEndian)
 	};
@@ -186,18 +190,29 @@ function parseIPv4Header(packetData: Uint8Array, offset: number): IPv4Header | n
 	const version = (versionIhl >> 4) & 0x0f;
 	const ihl = versionIhl & 0x0f;
 
-	if (version !== 4) return null;
+	const totalLength = (packetData[offset + 2]! << 8) | packetData[offset + 3]!;
+	const protocol = packetData[offset + 9]!;
+	// Windows LSOv2で分割前にキャプチャされたTCPパケットは全長が0になる。
+	const hasOffloadLength = totalLength === 0 && protocol === 6;
+	if (
+		version !== 4 ||
+		ihl < 5 ||
+		offset + ihl * 4 > packetData.length ||
+		(!hasOffloadLength && totalLength < ihl * 4)
+	) {
+		return null;
+	}
 
 	return {
 		version,
 		ihl,
 		tos: packetData[offset + 1]!,
-		totalLength: (packetData[offset + 2]! << 8) | packetData[offset + 3]!,
+		totalLength,
 		identification: (packetData[offset + 4]! << 8) | packetData[offset + 5]!,
 		flags: (packetData[offset + 6]! >> 5) & 0x07,
 		fragmentOffset: ((packetData[offset + 6]! & 0x1f) << 8) | packetData[offset + 7]!,
 		ttl: packetData[offset + 8]!,
-		protocol: packetData[offset + 9]!,
+		protocol,
 		headerChecksum: (packetData[offset + 10]! << 8) | packetData[offset + 11]!,
 		sourceIp: ipToString(packetData, offset + 12),
 		destinationIp: ipToString(packetData, offset + 16)
@@ -209,21 +224,16 @@ function parseIPv4Header(packetData: Uint8Array, offset: number): IPv4Header | n
  */
 function parseTCPHeader(packetData: Uint8Array, offset: number): TCPHeader | null {
 	if (packetData.length < offset + 20) return null;
+	const dataOffset = (packetData[offset + 12]! >> 4) & 0x0f;
+	if (dataOffset < 5 || packetData.length < offset + dataOffset * 4) return null;
+	const view = new DataView(packetData.buffer, packetData.byteOffset + offset, 20);
 
 	return {
 		sourcePort: (packetData[offset]! << 8) | packetData[offset + 1]!,
 		destinationPort: (packetData[offset + 2]! << 8) | packetData[offset + 3]!,
-		sequenceNumber:
-			(packetData[offset + 4]! << 24) |
-			(packetData[offset + 5]! << 16) |
-			(packetData[offset + 6]! << 8) |
-			packetData[offset + 7]!,
-		acknowledgmentNumber:
-			(packetData[offset + 8]! << 24) |
-			(packetData[offset + 9]! << 16) |
-			(packetData[offset + 10]! << 8) |
-			packetData[offset + 11]!,
-		dataOffset: (packetData[offset + 12]! >> 4) & 0x0f,
+		sequenceNumber: view.getUint32(4),
+		acknowledgmentNumber: view.getUint32(8),
+		dataOffset,
 		flags: packetData[offset + 13]!,
 		windowSize: (packetData[offset + 14]! << 8) | packetData[offset + 15]!,
 		checksum: (packetData[offset + 16]! << 8) | packetData[offset + 17]!,
@@ -236,11 +246,13 @@ function parseTCPHeader(packetData: Uint8Array, offset: number): TCPHeader | nul
  */
 function parseUDPHeader(packetData: Uint8Array, offset: number): UDPHeader | null {
 	if (packetData.length < offset + 8) return null;
+	const length = (packetData[offset + 4]! << 8) | packetData[offset + 5]!;
+	if (length < 8) return null;
 
 	return {
 		sourcePort: (packetData[offset]! << 8) | packetData[offset + 1]!,
 		destinationPort: (packetData[offset + 2]! << 8) | packetData[offset + 3]!,
-		length: (packetData[offset + 4]! << 8) | packetData[offset + 5]!,
+		length,
 		checksum: (packetData[offset + 6]! << 8) | packetData[offset + 7]!
 	};
 }
@@ -369,17 +381,19 @@ function parseDNS(payload: Uint8Array): DNSInfo | null {
 function parsePacketData(
 	packetData: Uint8Array,
 	index: number,
-	header: PacketHeader
+	header: PacketHeader,
+	linkType: number | null
 ): ParsedPacket {
 	const packet: ParsedPacket = {
 		index,
-		timestamp: header.timestampSeconds + header.timestampMicroseconds / 1000000,
+		timestamp: header.timestamp,
 		capturedLength: header.capturedLength,
 		originalLength: header.originalLength,
 		protocol: 'Other'
 	};
 
 	// Ethernetフレームを解析
+	if (linkType !== 1) return packet;
 	const ethernet = parseEthernetFrame(packetData);
 	if (!ethernet) return packet;
 
@@ -395,28 +409,33 @@ function parsePacketData(
 
 		packet.ipv4 = ipv4;
 		const transportOffset = ipOffset + ipv4.ihl * 4;
+		const ipData =
+			ipv4.totalLength === 0 ? packetData : packetData.subarray(0, ipOffset + ipv4.totalLength);
 
 		// プロトコル判定
 		if (ipv4.protocol === 6) {
 			// TCP
 			packet.protocol = 'TCP';
-			const tcp = parseTCPHeader(packetData, transportOffset);
+			if (ipv4.fragmentOffset !== 0) return packet;
+			const tcp = parseTCPHeader(ipData, transportOffset);
 			if (tcp) {
 				packet.tcp = tcp;
 				const payloadOffset = transportOffset + tcp.dataOffset * 4;
-				if (payloadOffset < packetData.length) {
-					packet.payload = packetData.slice(payloadOffset);
+				if (payloadOffset < ipData.length) {
+					packet.payload = ipData.slice(payloadOffset);
 				}
 			}
 		} else if (ipv4.protocol === 17) {
 			// UDP
 			packet.protocol = 'UDP';
-			const udp = parseUDPHeader(packetData, transportOffset);
+			if (ipv4.fragmentOffset !== 0) return packet;
+			const udp = parseUDPHeader(ipData, transportOffset);
 			if (udp) {
 				packet.udp = udp;
 				const payloadOffset = transportOffset + 8; // UDP header size
-				if (payloadOffset < packetData.length) {
-					packet.payload = packetData.slice(payloadOffset);
+				const payloadEnd = Math.min(ipData.length, transportOffset + udp.length);
+				if (payloadOffset < payloadEnd) {
+					packet.payload = ipData.slice(payloadOffset, payloadEnd);
 
 					// DNS解析（port 53）
 					if (udp.sourcePort === 53 || udp.destinationPort === 53) {
@@ -449,8 +468,8 @@ function calculateStatistics(packets: ParsedPacket[]): PcapStatistics {
 	const stats: PcapStatistics = {
 		totalPackets: packets.length,
 		totalBytes: 0,
-		captureStartTime: packets[0]?.timestamp ?? 0,
-		captureEndTime: packets[packets.length - 1]?.timestamp ?? 0,
+		captureStartTime: null,
+		captureEndTime: null,
 		averagePacketSize: 0,
 		protocolDistribution: {},
 		sourceIps: {},
@@ -461,6 +480,13 @@ function calculateStatistics(packets: ParsedPacket[]): PcapStatistics {
 
 	for (const packet of packets) {
 		stats.totalBytes += packet.capturedLength;
+		if (packet.timestamp !== null) {
+			stats.captureStartTime = Math.min(
+				stats.captureStartTime ?? packet.timestamp,
+				packet.timestamp
+			);
+			stats.captureEndTime = Math.max(stats.captureEndTime ?? packet.timestamp, packet.timestamp);
+		}
 
 		// プロトコル分布
 		stats.protocolDistribution[packet.protocol] =
@@ -495,7 +521,9 @@ function calculateStatistics(packets: ParsedPacket[]): PcapStatistics {
 /**
  * Pcapファイルを解析
  */
-export async function parsePcapFile(arrayBuffer: ArrayBuffer): Promise<PcapAnalysisResult> {
+function parseClassicPcap(arrayBuffer: ArrayBuffer): PcapAnalysisResult {
+	if (arrayBuffer.byteLength < 24)
+		throw new Error('無効なpcapファイル: ヘッダーが途中で終わっています');
 	// グローバルヘッダーを解析
 	const globalHeader = parseGlobalHeader(arrayBuffer);
 
@@ -510,13 +538,19 @@ export async function parsePcapFile(arrayBuffer: ArrayBuffer): Promise<PcapAnaly
 	}
 
 	const packets: ParsedPacket[] = [];
+	const isNanosecond =
+		globalHeader.magicNumber === 0xa1b23c4d || globalHeader.magicNumber === 0x4d3cb2a1;
+	const timestampDivisor = isNanosecond ? 1_000_000_000 : 1_000_000;
 	let offset = 24; // グローバルヘッダーサイズ
-	let packetIndex = 0;
-	const MAX_PACKETS = 1000000; // 最大パケット数制限
 
 	// パケットを順次解析
-	while (offset + 16 <= arrayBuffer.byteLength && packetIndex < MAX_PACKETS) {
-		const packetHeader = parsePacketHeader(arrayBuffer, offset, globalHeader.isLittleEndian);
+	while (offset + 16 <= arrayBuffer.byteLength && packets.length < MAX_PACKETS) {
+		const packetHeader = parsePacketHeader(
+			arrayBuffer,
+			offset,
+			globalHeader.isLittleEndian,
+			timestampDivisor
+		);
 		offset += 16;
 
 		if (offset + packetHeader.capturedLength > arrayBuffer.byteLength) {
@@ -524,7 +558,10 @@ export async function parsePcapFile(arrayBuffer: ArrayBuffer): Promise<PcapAnaly
 		}
 
 		// キャプチャ長の妥当性チェック
-		if (packetHeader.capturedLength > globalHeader.snapLen || packetHeader.capturedLength === 0) {
+		if (
+			packetHeader.capturedLength > (globalHeader.snapLen ?? 0) ||
+			packetHeader.capturedLength === 0
+		) {
 			console.warn(
 				`Invalid packet at offset ${offset}: capturedLength=${packetHeader.capturedLength}`
 			);
@@ -532,21 +569,168 @@ export async function parsePcapFile(arrayBuffer: ArrayBuffer): Promise<PcapAnaly
 		}
 
 		const packetData = new Uint8Array(arrayBuffer, offset, packetHeader.capturedLength);
-		const parsedPacket = parsePacketData(packetData, packetIndex, packetHeader);
+		const parsedPacket = parsePacketData(
+			packetData,
+			packets.length,
+			packetHeader,
+			globalHeader.network
+		);
 		packets.push(parsedPacket);
 
 		offset += packetHeader.capturedLength;
-		packetIndex++;
 	}
 
 	// 統計情報を計算
 	const statistics = calculateStatistics(packets);
 
 	return {
+		format: 'pcap',
 		globalHeader,
 		packets,
 		statistics
 	};
+}
+
+type PcapngInterface = {
+	linkType: number;
+	snapLen: number;
+	timestampUnit: number;
+	timestampOffset: number;
+};
+
+const pcapngError = '無効なpcapngファイル';
+const paddedLength = (length: number) => Math.ceil(length / 4) * 4;
+
+function parsePcapngInterface(view: DataView, littleEndian: boolean): PcapngInterface {
+	if (view.byteLength < 8) throw new Error(`${pcapngError}: インターフェース情報が不完全です`);
+	const info = {
+		linkType: view.getUint16(0, littleEndian),
+		snapLen: view.getUint32(4, littleEndian),
+		timestampUnit: 1e-6,
+		timestampOffset: 0
+	};
+
+	for (let offset = 8; offset + 4 <= view.byteLength; ) {
+		const code = view.getUint16(offset, littleEndian);
+		if (code === 0) break;
+		const size = view.getUint16(offset + 2, littleEndian);
+		const valueOffset = offset + 4;
+		offset = valueOffset + paddedLength(size);
+		if (offset > view.byteLength) throw new Error(`${pcapngError}: オプションの長さが不正です`);
+
+		if (code === 9 && size === 1) {
+			const resolution = view.getUint8(valueOffset);
+			info.timestampUnit = resolution < 128 ? 10 ** -resolution : 2 ** -(resolution - 128);
+		} else if (code === 14 && size === 8) {
+			info.timestampOffset = Number(view.getBigInt64(valueOffset, littleEndian));
+		}
+	}
+	return info;
+}
+
+function parsePcapng(buffer: ArrayBuffer): PcapAnalysisResult {
+	const view = new DataView(buffer);
+	const packets: ParsedPacket[] = [];
+	const linkTypes = new Set<number>();
+	const snapLengths = new Set<number>();
+	let globalHeader: PcapGlobalHeader | undefined;
+	let interfaces: PcapngInterface[] = [];
+	let littleEndian = true;
+
+	for (let offset = 0; offset < buffer.byteLength && packets.length < MAX_PACKETS; ) {
+		if (buffer.byteLength - offset < 12) throw new Error(`${pcapngError}: ブロックが不完全です`);
+		const isSectionHeader = view.getUint32(offset) === PCAPNG_MAGIC;
+		if (isSectionHeader) {
+			const byteOrder = view.getUint32(offset + 8);
+			if (byteOrder !== 0x1a2b3c4d && byteOrder !== 0x4d3c2b1a) {
+				throw new Error(`${pcapngError}: バイト順序マジックが不正です`);
+			}
+			littleEndian = byteOrder === 0x4d3c2b1a;
+		}
+
+		const type = view.getUint32(offset, littleEndian);
+		const length = view.getUint32(offset + 4, littleEndian);
+		const end = offset + length;
+		if (
+			length < 12 ||
+			length % 4 !== 0 ||
+			end > buffer.byteLength ||
+			view.getUint32(end - 4, littleEndian) !== length
+		) {
+			throw new Error(`${pcapngError}: ブロックの長さが不正です`);
+		}
+		const body = new DataView(buffer, offset + 8, length - 12);
+		offset = end;
+
+		if (isSectionHeader) {
+			if (body.byteLength < 16) throw new Error(`${pcapngError}: セクションヘッダーが不完全です`);
+			const versionMajor = body.getUint16(4, littleEndian);
+			const versionMinor = body.getUint16(6, littleEndian);
+			if (versionMajor !== 1) throw new Error(`${pcapngError}: 未対応のバージョンです`);
+			interfaces = [];
+			globalHeader ??= {
+				magicNumber: PCAPNG_MAGIC,
+				versionMajor,
+				versionMinor,
+				thisZone: 0,
+				sigFigs: 0,
+				network: null,
+				snapLen: null,
+				isLittleEndian: littleEndian
+			};
+		} else if (type === 1) {
+			const info = parsePcapngInterface(body, littleEndian);
+			interfaces.push(info);
+			linkTypes.add(info.linkType);
+			snapLengths.add(info.snapLen);
+		} else if (type === 2 || type === 3 || type === 6) {
+			// Packet Block / Simple Packet Block / Enhanced Packet Block
+			const simple = type === 3;
+			const dataOffset = simple ? 4 : 20;
+			if (body.byteLength < dataOffset) throw new Error(`${pcapngError}: パケット情報が不完全です`);
+			const interfaceId = simple
+				? 0
+				: type === 2
+					? body.getUint16(0, littleEndian)
+					: body.getUint32(0, littleEndian);
+			const info = interfaces[interfaceId];
+			if (!info) throw new Error(`${pcapngError}: パケットのインターフェースが定義されていません`);
+
+			const originalLength = body.getUint32(simple ? 0 : 16, littleEndian);
+			const capturedLength = simple
+				? Math.min(originalLength, info.snapLen || originalLength)
+				: body.getUint32(12, littleEndian);
+			if (dataOffset + paddedLength(capturedLength) > body.byteLength) {
+				throw new Error(`${pcapngError}: パケットの長さが不正です`);
+			}
+			let timestamp: number | null = null;
+			if (!simple) {
+				const high = body.getUint32(4, littleEndian);
+				const low = body.getUint32(8, littleEndian);
+				timestamp = (high * 2 ** 32 + low) * info.timestampUnit + info.timestampOffset;
+			}
+			const data = new Uint8Array(buffer, body.byteOffset + dataOffset, capturedLength);
+			packets.push(
+				parsePacketData(
+					data,
+					packets.length,
+					{ timestamp, capturedLength, originalLength },
+					info.linkType
+				)
+			);
+		}
+	}
+
+	if (!globalHeader) throw new Error(`${pcapngError}: セクションヘッダーがありません`);
+	if (linkTypes.size === 1) globalHeader.network = linkTypes.values().next().value ?? null;
+	if (snapLengths.size === 1) globalHeader.snapLen = snapLengths.values().next().value ?? null;
+	return { format: 'pcapng', globalHeader, packets, statistics: calculateStatistics(packets) };
+}
+
+export async function parsePcapFile(arrayBuffer: ArrayBuffer): Promise<PcapAnalysisResult> {
+	return arrayBuffer.byteLength >= 4 && new DataView(arrayBuffer).getUint32(0) === PCAPNG_MAGIC
+		? parsePcapng(arrayBuffer)
+		: parseClassicPcap(arrayBuffer);
 }
 
 /**

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { tools } from '$lib/data/tools';
 	import Icon from '@iconify/svelte';
+	import { findMatches } from './matches';
 
 	const tool = tools.find((t) => t.name === 'regex-tester');
 
@@ -9,15 +10,7 @@
 	let inputText = '';
 	let error: string | null = null;
 
-	type MatchInfo = {
-		index: number;
-		length: number;
-		text: string;
-		captures: string[];
-		groups?: Record<string, string>;
-	};
-
-	let matches: MatchInfo[] = [];
+	let matches: ReturnType<typeof findMatches> = [];
 	let highlightedHtml = '';
 
 	type Example = {
@@ -31,7 +24,7 @@
 		{
 			label: 'メールアドレス',
 			pattern: '^[\\w.%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$',
-			flags: { g: false, i: true, m: false, s: false, u: true },
+			flags: { g: true, i: true, m: true, u: true },
 			sample: 'contact@example.com\ninfo@test.co.jp\nNG: name@domain'
 		},
 		{
@@ -131,39 +124,10 @@
 			return;
 		}
 
-		// 走査
-		const ranges: Array<{ start: number; end: number }> = [];
-		if (re.global) {
-			let m: RegExpExecArray | null;
-			while ((m = re.exec(inputText)) !== null) {
-				const text = m[0];
-				const idx = m.index;
-				matches.push({
-					index: idx,
-					length: text.length,
-					text,
-					captures: m.slice(1),
-					groups: m.groups ?? undefined
-				});
-				if (text.length > 0) ranges.push({ start: idx, end: idx + text.length });
-				// 無限ループ対策（ゼロ幅一致）
-				if (text.length === 0) re.lastIndex++;
-			}
-		} else {
-			const m = re.exec(inputText);
-			if (m) {
-				const text = m[0];
-				const idx = m.index;
-				matches.push({
-					index: idx,
-					length: text.length,
-					text,
-					captures: m.slice(1),
-					groups: m.groups ?? undefined
-				});
-				if (text.length > 0) ranges.push({ start: idx, end: idx + text.length });
-			}
-		}
+		matches = findMatches(re, inputText);
+		const ranges = matches
+			.filter(({ text }) => text.length > 0)
+			.map(({ index, text }) => ({ start: index, end: index + text.length }));
 
 		// ハイライトHTML生成
 		if (!ranges.length) {

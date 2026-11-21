@@ -1,16 +1,7 @@
 <script lang="ts">
 	import Icon from '@iconify/svelte';
 
-	// JSON値の型定義
-	type JsonValue = string | number | boolean | null | JsonObject | JsonArray;
-	type JsonObject = { [key: string]: JsonValue };
-	type JsonArray = JsonValue[];
-
-	// Pythonオブジェクトの型定義
-	type PythonObject = { __class__: string; [key: string]: JsonValue };
-
-	// 全体のデータ型
-	type DataValue = JsonValue | PythonObject;
+	import { isPythonObject, type DataValue, type PythonObject } from './structured-data';
 
 	export let data: DataValue;
 	export let depth = 0;
@@ -88,12 +79,12 @@
 	function getType(value: DataValue): string {
 		if (value === null) return 'null';
 		if (Array.isArray(value)) return 'array';
-		if (typeof value === 'object' && value !== null && '__class__' in value) return 'python-object';
+		if (isPythonObject(value)) return 'python-object';
 		return typeof value;
 	}
 
 	function formatValue(value: DataValue): string {
-		if (typeof value === 'string') return `"${value}"`;
+		if (typeof value === 'string') return JSON.stringify(value);
 		return String(value);
 	}
 
@@ -105,14 +96,14 @@
 			data &&
 			typeof data === 'object' &&
 			!Array.isArray(data) &&
-			!('__class__' in data)
+			!isPythonObject(data)
 		) {
 			return Object.keys(data).length;
 		}
 		if (type === 'array' && Array.isArray(data)) {
 			return data.length;
 		}
-		if (type === 'python-object' && data && typeof data === 'object' && '__class__' in data) {
+		if (type === 'python-object' && data && typeof data === 'object' && isPythonObject(data)) {
 			return Object.keys(data).length - 1;
 		}
 		return 0;
@@ -137,7 +128,7 @@
 				role="button"
 				tabindex="0"
 			>
-				"{keyName}":
+				{JSON.stringify(keyName.toString())}:
 
 				<!-- Tooltip for key -->
 				{#if showKeyTooltip && path}
@@ -227,7 +218,7 @@
 							isLastItem={index === data.length - 1}
 						/>
 					{/each}
-				{:else if type === 'python-object' && data && typeof data === 'object' && '__class__' in data}
+				{:else if type === 'python-object' && data && typeof data === 'object' && isPythonObject(data)}
 					{#each Object.entries(data).filter(([key]) => key !== '__class__') as [key, value], index (key)}
 						<svelte:self
 							data={value}
@@ -239,14 +230,14 @@
 								Object.entries(data).filter(([key]) => key !== '__class__').length - 1}
 						/>
 					{/each}
-				{:else if type === 'object' && data && typeof data === 'object' && !Array.isArray(data) && !('__class__' in data)}
+				{:else if type === 'object' && data && typeof data === 'object' && !Array.isArray(data) && !isPythonObject(data)}
 					{#each Object.entries(data) as [key, value], index (key)}
 						<svelte:self
 							data={value}
 							depth={depth + 1}
 							{maxDepth}
 							keyName={key}
-							path={path ? `${path}["${key}"]` : `["${key}"]`}
+							path={`${path}[${JSON.stringify(key)}]`}
 							isLastItem={index === Object.entries(data).length - 1}
 						/>
 					{/each}
@@ -277,7 +268,7 @@
 				role="button"
 				tabindex="0"
 			>
-				"{keyName}":
+				{JSON.stringify(keyName.toString())}:
 
 				<!-- Tooltip for key -->
 				{#if showKeyTooltip && path}

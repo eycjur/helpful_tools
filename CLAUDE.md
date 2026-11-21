@@ -6,12 +6,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 「困った時のツール集」は、日常的に使える便利ツール集のWebアプリケーションです。
 
-### 提供ツール（8カテゴリ、39ツール）
+### 提供ツール（8カテゴリ、37ツール）
 
 - **生成AI**: HTML/リッチテキスト → Markdown変換（AI活用）
 - **文字・テキスト処理**: 正規表現テスター、文字数カウンタ、HTML/URLエンコーダ、エンコード文字列デコーダ、記号検索
-- **データ変換**: 構造化データビューアー、Base64⇄画像変換、表の転置、Notion/Slack/LaTeX変換
-- **画像・メディア**: 画像形式変換、画像メタデータ表示、PDFメタデータ・セキュリティ情報、動画圧縮、動画→音声変換
+- **データ変換**: 構造化データビューアー、Base64⇄画像変換、表の転置、Notion/LaTeX変換
+- **画像・メディア**: 画像形式変換、画像メタデータ表示、PDFメタデータ・セキュリティ情報、動画圧縮、動画→音声変換、動画逆再生
 - **PDF操作**: PDF編集（結合・分割・ページ操作）、PDF圧縮
 - **QRコード**: 汎用QR、XプロフィールQR
 - **開発・比較ツール**: コード整形、Diffチェッカー、curlビルダー、クリップボード検査、Pythonコード解析、ULIDタイムスタンプ抽出、Unixtime変換、JWTデコーダ
@@ -207,12 +207,12 @@ src/routes/tools/pcap-analyzer/
 
 **`src/lib/` と `tools/<name>/` の使い分け**:
 
-- **`src/lib/`**: 複数のツールで共有するコード（例: `tools.ts`）
+- **`src/lib/`**: サイト全体で使うコード（例: ツール一覧の定義、サイドバー）。ツールの変換・解析処理は置かない。
 - **`src/lib/components/`**: **全画面で共通のコンポーネントのみ**（例: `Sidebar.svelte`）
   - ⚠️ **重要**: 特定のツールでのみ使用するコンポーネントは `src/lib/components/` に置かないこと
   - 1つのツールでしか使わないコンポーネントは、そのツールのディレクトリに配置
 - **`tools/<name>/`**: そのツール専用のコード（例: pcap-parser.ts, PacketFilterPanel.svelte, JsonViewer.svelte）
-  - 将来的に他のツールでも使う可能性がある場合のみ `src/lib/` に移動
+- **`tools/_shared/`**: 複数ツールが実際に使う変換・解析処理とそのテスト。将来の共用を見込んだ移動はしない。
 
 **大規模ツールのリファクタリング優先度**:
 
@@ -296,12 +296,6 @@ src/routes/tools/ctf-cipher/
 - **転置**: 行の長さが異なる表は空セルで正規化してから転置。出力は TSV（タブ区切り）で Excel 等へ貼り付け可能
 - **自動コピー**: 転置結果を `navigator.clipboard.writeText` で自動コピー
 
-#### Markdown → Slack（新規ツール）
-
-- **@slackfmt/core使用**: MarkdownをSlack内部のQuill Delta JSON（`slack/texty`）に変換。GFM相当の記法（太字・リスト・リンク・コードブロック等）に対応
-- **クリップボード書き込み**: 非同期Clipboard APIはカスタムMIME非対応のため、`document.execCommand('copy')`と`clipboardData.setData('slack/texty', delta)`で書き込み。入力のデバウンス（300ms）後に自動コピー
-- **プレビュー**: `quillDeltaToMarkdown`でSlack向けプレーンテキストを表示。実際の貼り付けはリッチテキスト形式
-
 #### 暗号解読
 
 - **Brute forceアプローチ**: Caesar cipher（26パターン）、XOR single-byte（255パターン）など、全パターンを試行して信頼度順にソート
@@ -356,7 +350,7 @@ src/routes/tools/ctf-cipher/
 #### 正規表現テスター（新規）
 
 - **正規表現エンジン**: ブラウザのJavaScript RegExpを使用（`u`フラグ既定ON）。
-- **ゼロ幅一致対策**: `g`フラグ時、`m[0].length === 0` の場合に `lastIndex++` で無限ループ回避。
+- **ゼロ幅一致対策**: `g`フラグ時は`matchAll()`を使い、`u`フラグ有効時もUnicodeの文字境界に従って次の一致へ進む。
 - **ハイライト**: 一致範囲のみ `<mark>` で着色。オーバーラップは未対応（先着順）。
 
 #### 画像形式変換（新規ツール）
@@ -391,12 +385,13 @@ src/routes/tools/ctf-cipher/
 
 #### エンコード文字列デコーダ（新規ツール）
 
-- **対応形式**: 20種類以上のエンコード形式をサポート（URL、HTML Entity、Base64、Unicode、16進数、8進数、Punycode、ROT13、Morse Code等）
+- **対応形式**: 手動選択は19種類（URL、HTML Entity、Base64、Unicode、16進数、8進数、Punycode、ROT13、Morse Code等）。自動検出では対応形式の候補を提示する。
 - **自動検出機能**: 正規表現パターンマッチングで入力からエンコード形式を自動推定、信頼度スコア付きで複数候補を提示
 - **入力サイズ制限**: DoS攻撃対策として10MBの入力サイズ制限を実施、超過時はエラーメッセージを表示
 - **非推奨API回避**: `String.prototype.substr()`を`substring()`に置き換え、将来のブラウザ互換性を確保
 - **エラーハンドリング**: `instanceof Error`による型安全なエラー処理、各デコード関数で適切な例外スロー
-- **パフォーマンス**: `replaceAll()`を使用してRegExpオブジェクト生成を回避、HTMLエンティティデコードを高速化
+- **HTML文字参照**: ブラウザのHTML解析を使い、文字参照を1段だけデコードする。HTML/URLエンコーダと共通の処理を使う。
+- **Quoted-Printable**: UTF-8として復号し、形式名にも明記する。不正なバイト列はエラーにし、メールの文字セット指定は扱わない。
 
 #### 動画→音声変換（新規ツール）
 
@@ -422,14 +417,14 @@ src/routes/tools/ctf-cipher/
 
 - **pdfjs-dist使用**: Mozilla開発の`pdfjs-dist`ライブラリ（v4.0.379以降）でPDF解析。WebWorkerを使用して非同期処理を実現。
 - **見た目と無関係な要素にフォーカス**: レンダリング結果に影響しない要素（メタデータ、埋め込みファイル、アクティブ要素、セキュリティ、フォーム）を抽出。
-- **包括的な解析**: `/Info`辞書、XMPメタデータ、ドキュメントID、埋め込みファイル（`/Names/EmbeddedFiles`）、OpenAction、Additional Actions、JavaScript、外部参照（URI/Launch/GoToR）、フォーム情報（AcroForm/XFA）、セキュリティ情報（暗号化/署名/権限）を網羅的に抽出。
-- **Finding機能**: ルールベースで検出結果を重要度（high/medium/low）付きで分類。OpenActionのJavaScript/Launch、実行可能ファイルの埋め込み、JavaScript検出などを自動検出。
+- **解析対象**: `/Info`辞書、XMP、文書ID、添付、OpenAction、Additional Actions、JavaScript、外部参照、フォーム、暗号化・署名・権限を表示。PDF.jsの公開APIと、pdf-libによる間接参照・オブジェクトストリームの解析を併用する。
+- **Finding機能**: JavaScript・添付をhigh、暗号化・外部参照をmediumとして分類。署名の暗号学的検証は行わない。
 - **SHA-256ハッシュ計算**: Web Crypto APIの`crypto.subtle.digest()`を使用して、JavaScriptコードや埋め込みファイルのハッシュ値を計算。同一性確認や追跡に有用。
 - **非同期処理**: `parsePDFNonRender()`は`async`関数で、pdfjs-distの非同期API（`getDocument()`, `getMetadata()`, `getAttachments()`など）を適切に処理。
 - **型安全性**: `PDFReport`インターフェースで構造化されたレポート形式を定義。`Finding`型で検出結果の重要度とコードを管理。
-- **後方互換性**: 既存の`parsePDF()`関数と`PDFInfo`型を維持し、レガシーコードとの互換性を確保。
-- **型アサーション**: pdf.jsの内部プロパティ（`_pdfInfo`、`openAction`、`additionalActions`など）へのアクセスには型アサーション（`as unknown as`）を使用。
+- **元データの保持**: PDF.jsのWorkerには`bytes.slice()`を渡し、解析元のバッファを保持する。ファイルサイズ・ハッシュ・pdf-libによる構造解析は元データを使う。
 - **CDN経由Worker**: pdf.jsのWebWorkerはunpkg CDNから動的読み込み（`pdf.worker.min.mjs`）。バージョンは`pdfjsLib.version`で自動取得。
+- **部分的な解析失敗**: 構造を解析できない場合は`INCOMPLETE_STRUCTURE`のFindingを追加し、検出結果が不完全な可能性を表示する。
 
 #### PDF操作（新規ツール）
 
@@ -452,6 +447,7 @@ src/routes/tools/ctf-cipher/
 #### Pcap解析（新規ツール）
 
 - **自作バイナリパーサー**: pcap/pcapngファイルのバイナリ解析を`DataView`で実装。マジックナンバー（0xa1b2c3d4）でエンディアン判定し、ビッグ/リトルエンディアン両対応。
+- **時刻とリンク層**: pcapのマイクロ秒・ナノ秒、pcapngのインターフェースごとの時刻単位とオフセットを扱う。時刻なしのパケットは不明として表示する。Windows LSOv2の全長0のTCPは、記録されたフレーム内で解析する。
 - **階層的プロトコル解析**: Ethernet（14バイト）→ IPv4（可変長）→ TCP/UDP（可変長）と段階的にヘッダーをデコード。各層で必要なバイト数を検証して不完全パケットでもクラッシュしない設計。
 - **統計情報の効率的集計**: パケット配列を1回走査でプロトコル分布・IPアドレス分布・ポート分布をすべて計算。`Record<string|number, number>`型でカウント集計。
 - **パケットビューア機能**: タブ切り替えで統計表示とパケット一覧を切り替え。プロトコル・IP・ポート・ペイロード検索の柔軟なフィルタリング。
@@ -505,7 +501,7 @@ src/routes/tools/ctf-cipher/
 
 **テストカバレッジ**:
 
-- 17ツール、テスト（pdf-edit, pdf-compress, csv-to-latex, diff-checker, x-qrcode-generator, ctf-cipher, string-decoder, character-counter, markdown-to-notion, markdown-to-slack, clipboard-table-transpose, pcap-analyzer, whois-lookup, pdf-metadata, ulid-timestamp, unixtime-converter, jwt-decoder）
+- ツールの純粋関数と、入力・設定変更・非同期処理を確かめるコンポーネントテストを配置。ツール間で共用する処理のテストは`tools/_shared/`に置く。
 - コアロジックに絞った実用的なテスト戦略
 - 外部依存やブラウザAPIに依存する部分は除外
 

@@ -1,6 +1,12 @@
 <script lang="ts">
 	import { tools } from '$lib/data/tools';
 	import Icon from '@iconify/svelte';
+	import { onDestroy } from 'svelte';
+	import { fetchQrBlob, getQrCodeUrl, loadQrImage } from '../_shared/qrcode';
+
+	const tool = tools.find((t) => t.name === 'qrcode-generator');
+	const MAX_INPUT_LENGTH = 2000;
+	const MAX_LOGO_SIZE = 5 * 1024 * 1024;
 	let input = '';
 	let qrUrl = '';
 	let logoFile: File | null = null;
@@ -8,163 +14,111 @@
 	let canvasRef: HTMLCanvasElement;
 	let isLoading = false;
 	let errorMessage = '';
+	let logoError = '';
+	let generationId = 0;
 
-	// 入力サイズ制限（2000文字）
-	const MAX_INPUT_LENGTH = 2000;
+	onDestroy(() => {
+		generationId++;
+		logoFile = null;
+	});
 
-	$: {
-		if (input.length > MAX_INPUT_LENGTH) {
-			input = input.slice(0, MAX_INPUT_LENGTH);
-			errorMessage = `入力は${MAX_INPUT_LENGTH}文字以内にしてください。`;
-		}
-		qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=600x600&ecc=H&margin=6&data=${encodeURIComponent(input)}`;
-	}
+	$: generateQR(input, logoDataUrl, canvasRef);
 
-	// Reset loading and error when input changes
-	$: if (input) {
-		isLoading = true;
+	async function generateQR(text: string, logo: string, canvas: HTMLCanvasElement) {
+		const id = ++generationId;
+		qrUrl = '';
 		errorMessage = '';
-	}
+		isLoading = false;
+		if (!text) return;
+		if (Array.from(text).length > MAX_INPUT_LENGTH) {
+			errorMessage = `入力は${MAX_INPUT_LENGTH}文字以内にしてください。`;
+			return;
+		}
+		if (!canvas) return;
 
-	// Handle QR generation when input changes
-	$: if (input && !logoDataUrl) {
-		// For non-logo QR codes, preload the image to detect when it's ready
-		const img = new Image();
-		img.onload = () => {
-			isLoading = false;
-		};
-		img.onerror = () => {
-			isLoading = false;
-			errorMessage = 'QRコードの生成に失敗しました。';
-		};
-		img.src = qrUrl;
+		isLoading = true;
+		const url = getQrCodeUrl(text);
+		try {
+			const image = await loadQrImage(url, !!logo);
+			if (id !== generationId) return;
+			if (logo) {
+				let logoImage: HTMLImageElement;
+				try {
+					logoImage = await loadQrImage(logo);
+				} catch {
+					throw new Error('ロゴ画像の読み込みに失敗しました。');
+				}
+				if (id !== generationId) return;
+				const ctx = canvas.getContext('2d');
+				if (!ctx) throw new Error('QRコードの生成に失敗しました。');
+				canvas.width = 600;
+				canvas.height = 600;
+				ctx.drawImage(image, 0, 0, 600, 600);
+				ctx.fillStyle = 'white';
+				ctx.fillRect(245, 245, 110, 110);
+				ctx.drawImage(logoImage, 250, 250, 100, 100);
+			}
+			qrUrl = url;
+		} catch (error) {
+			if (id === generationId) {
+				errorMessage = error instanceof Error ? error.message : 'QRコードの生成に失敗しました。';
+			}
+		} finally {
+			if (id === generationId) isLoading = false;
+		}
 	}
-
-	const tool = tools.find((t) => t.name === 'qrcode-generator');
 
 	function handleLogoUpload(event: Event) {
 		const target = event.target as HTMLInputElement;
-		if (target.files && target.files[0]) {
-			const file = target.files[0];
-
-			// ファイルサイズ制限（5MB）
-			const MAX_LOGO_SIZE = 5 * 1024 * 1024; // 5MB
-			if (file.size > MAX_LOGO_SIZE) {
-				errorMessage = `ロゴ画像は${MAX_LOGO_SIZE / 1024 / 1024}MB以下にしてください。`;
-				target.value = '';
-				return;
-			}
-
-			logoFile = file;
-			const reader = new FileReader();
-			reader.onload = (e) => {
-				const result = e.target?.result;
-				if (typeof result === 'string') {
-					logoDataUrl = result;
-				}
-			};
-			reader.readAsDataURL(logoFile);
+		const file = target.files?.[0];
+		if (!file) return;
+		logoError = '';
+		if (file.size > MAX_LOGO_SIZE) {
+			logoError = 'ロゴ画像は5MB以下にしてください。';
+			target.value = '';
+			return;
 		}
+
+		logoFile = file;
+		const reader = new FileReader();
+		reader.onload = () => {
+			if (logoFile === file && typeof reader.result === 'string') logoDataUrl = reader.result;
+		};
+		reader.onerror = () => {
+			if (logoFile === file) logoError = 'ロゴ画像の読み込みに失敗しました。';
+		};
+		reader.readAsDataURL(file);
 	}
 
 	function removeLogo() {
 		logoFile = null;
 		logoDataUrl = '';
-		// Reset file input
+		logoError = '';
 		const fileInput = document.getElementById('logo');
-		if (fileInput && fileInput instanceof HTMLInputElement) {
-			fileInput.value = '';
-		}
+		if (fileInput instanceof HTMLInputElement) fileInput.value = '';
 	}
 
-	function generateQRWithLogo() {
-		if (!input || !logoDataUrl || !canvasRef) return;
-
-		// isLoading is already set to true by the reactive statement above
-		const canvas = canvasRef;
-		const ctx = canvas.getContext('2d');
-		if (!ctx) {
-			isLoading = false;
-			return;
-		}
-
-		const qrImg = new Image();
-		qrImg.crossOrigin = 'anonymous';
-		qrImg.onload = () => {
-			canvas.width = 600;
-			canvas.height = 600;
-
-			// Draw QR code
-			ctx.drawImage(qrImg, 0, 0, 600, 600);
-
-			// Draw logo
-			const logoImg = new Image();
-			logoImg.onload = () => {
-				const logoSize = 100;
-				const x = (600 - logoSize) / 2;
-				const y = (600 - logoSize) / 2;
-
-				// Draw white background for logo
-				ctx.fillStyle = 'white';
-				ctx.fillRect(x - 5, y - 5, logoSize + 10, logoSize + 10);
-
-				// Draw logo
-				ctx.drawImage(logoImg, x, y, logoSize, logoSize);
-				isLoading = false;
-			};
-			logoImg.onerror = () => {
-				isLoading = false;
-				errorMessage = 'ロゴ画像の読み込みに失敗しました。';
-			};
-			logoImg.src = logoDataUrl;
-		};
-		qrImg.onerror = () => {
-			isLoading = false;
-			errorMessage = 'QRコードの生成に失敗しました。';
-		};
-		qrImg.src = qrUrl;
-	}
-
-	$: if (input && logoDataUrl) {
-		generateQRWithLogo();
-	}
-
-	// QRコードをダウンロード
 	async function downloadQRCode() {
-		if (!input) return;
-
+		if (!qrUrl || isLoading) return;
+		const id = generationId;
+		let blobUrl: string | undefined;
 		try {
-			let dataUrl: string;
-			let filename: string;
-
-			if (logoDataUrl && canvasRef) {
-				// ロゴ付きの場合: canvasからダウンロード
-				dataUrl = canvasRef.toDataURL('image/png');
-				filename = 'qrcode-with-logo.png';
-			} else {
-				// ロゴなしの場合: 外部APIの画像をfetchしてダウンロード
-				const response = await fetch(qrUrl);
-				const blob = await response.blob();
-				dataUrl = URL.createObjectURL(blob);
-				filename = 'qrcode.png';
-
-				// ダウンロード後にURLを解放
-				const link = document.createElement('a');
-				link.href = dataUrl;
-				link.download = filename;
-				link.click();
-				URL.revokeObjectURL(dataUrl);
-				return;
-			}
-
-			// canvasの場合のダウンロード
 			const link = document.createElement('a');
-			link.href = dataUrl;
-			link.download = filename;
+			if (logoDataUrl) {
+				link.href = canvasRef.toDataURL('image/png');
+				link.download = 'qrcode-with-logo.png';
+			} else {
+				const blob = await fetchQrBlob(qrUrl);
+				if (id !== generationId) return;
+				blobUrl = URL.createObjectURL(blob);
+				link.href = blobUrl;
+				link.download = 'qrcode.png';
+			}
 			link.click();
-		} catch (error) {
-			console.error('ダウンロードに失敗しました:', error);
-			errorMessage = 'ダウンロードに失敗しました。';
+		} catch {
+			if (id === generationId) errorMessage = 'ダウンロードに失敗しました。';
+		} finally {
+			if (blobUrl) URL.revokeObjectURL(blobUrl);
 		}
 	}
 </script>
@@ -192,7 +146,7 @@
 				on:change={handleLogoUpload}
 				class="flex-1 rounded-lg border border-gray-300 p-2"
 			/>
-			{#if logoDataUrl}
+			{#if logoFile}
 				<button
 					on:click={removeLogo}
 					class="rounded-lg bg-red-500 px-3 py-2 text-white transition-colors hover:bg-red-600"
@@ -202,6 +156,9 @@
 				</button>
 			{/if}
 		</div>
+		{#if logoError}
+			<p role="alert" class="mt-1 text-sm text-red-700">{logoError}</p>
+		{/if}
 		{#if logoDataUrl}
 			<p class="mt-1 text-xs text-gray-500">
 				QRコード上に重ねることで、まれに誤読される可能性があります
@@ -214,7 +171,10 @@
 		<div class="flex flex-col items-center">
 			<canvas
 				bind:this={canvasRef}
-				class="max-w-xs rounded-lg border border-gray-300 {logoDataUrl && !isLoading
+				class="max-w-xs rounded-lg border border-gray-300 {logoDataUrl &&
+				qrUrl &&
+				!errorMessage &&
+				!isLoading
 					? ''
 					: 'hidden'}"
 			></canvas>
@@ -232,12 +192,12 @@
 					<div class="mb-4 h-12 w-12 animate-spin rounded-full border-b-2 border-blue-600"></div>
 					<p class="text-gray-600">QRコードを生成中...</p>
 				</div>
-			{:else if !logoDataUrl}
+			{:else if qrUrl && !logoDataUrl}
 				<img src={qrUrl} alt="QRコード" class="max-w-xs rounded-lg border border-gray-300" />
 			{/if}
 
 			<!-- ダウンロードボタン -->
-			{#if !isLoading && !errorMessage}
+			{#if qrUrl && !isLoading && !errorMessage}
 				<button
 					on:click={downloadQRCode}
 					class="mt-4 flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-white transition-colors hover:bg-green-700"

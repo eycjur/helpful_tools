@@ -66,8 +66,11 @@
 	<label for="jwt-input" class="mb-2 block text-sm font-medium text-gray-700">JWT</label>
 	<textarea
 		id="jwt-input"
-		bind:value={input}
-		oninput={decode}
+		value={input}
+		oninput={(event) => {
+			input = event.currentTarget.value;
+			decode();
+		}}
 		placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9. ..."
 		class="w-full rounded-lg border border-gray-300 p-4 font-mono text-sm break-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
 		rows="4"

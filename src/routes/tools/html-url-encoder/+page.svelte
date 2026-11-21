@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { tools } from '$lib/data/tools';
+	import { decodeHtmlEntities } from '../_shared/html-entities';
 	import Icon from '@iconify/svelte';
 
 	const tool = tools.find((t) => t.name === 'html-url-encoder');
@@ -22,37 +23,9 @@
 		'/': '&#x2F;'
 	};
 
-	const htmlDecodeMap: Record<string, string> = {
-		'&amp;': '&',
-		'&lt;': '<',
-		'&gt;': '>',
-		'&quot;': '"',
-		'&#39;': "'",
-		'&#x27;': "'",
-		'&#x2F;': '/',
-		'&#x60;': '`',
-		'&#x3D;': '='
-	};
-
 	// HTMLエンコード関数
 	function encodeHtml(text: string): string {
 		return text.replace(/[&<>"'/]/g, (match) => htmlEntityMap[match] || match);
-	}
-
-	// HTMLデコード関数
-	function decodeHtml(text: string): string {
-		// 数値文字参照のデコード
-		let decoded = text.replace(/&#(\d+);/g, (_, num) => String.fromCharCode(parseInt(num, 10)));
-		decoded = decoded.replace(/&#x([a-fA-F0-9]+);/g, (_, hex) =>
-			String.fromCharCode(parseInt(hex, 16))
-		);
-
-		// 文字実体参照のデコード
-		for (const [entity, char] of Object.entries(htmlDecodeMap)) {
-			decoded = decoded.replace(new RegExp(entity, 'g'), char);
-		}
-
-		return decoded;
 	}
 
 	// URLエンコード関数
@@ -73,31 +46,24 @@
 		}
 	}
 
-	// エンコード処理
-	function encode() {
-		try {
-			if (activeTab === 'html') {
-				outputText = encodeHtml(inputText);
-			} else if (activeTab === 'url') {
-				outputText = encodeUrl(inputText);
-			}
-			copyToClipboard(outputText);
-		} catch (error) {
-			alert((error as Error).message);
-		}
-	}
+	const MAX_INPUT_SIZE = 10 * 1024 * 1024;
 
-	// デコード処理
-	function decode() {
+	function convert(direction: 'encode' | 'decode', preview = false) {
 		try {
-			if (activeTab === 'html') {
-				outputText = decodeHtml(inputText);
-			} else if (activeTab === 'url') {
-				outputText = decodeUrl(inputText);
+			if (inputText.length > MAX_INPUT_SIZE) {
+				throw new Error(`入力が大きすぎます（最大: ${MAX_INPUT_SIZE / 1024 / 1024}MB）`);
 			}
-			copyToClipboard(outputText);
+
+			if (activeTab === 'html') {
+				outputText = direction === 'encode' ? encodeHtml(inputText) : decodeHtmlEntities(inputText);
+			} else {
+				outputText = direction === 'encode' ? encodeUrl(inputText) : decodeUrl(inputText);
+			}
+			if (!preview) copyToClipboard(outputText);
 		} catch (error) {
-			alert((error as Error).message);
+			const message = (error as Error).message;
+			if (preview) outputText = `エラー: ${message}`;
+			else alert(message);
 		}
 	}
 
@@ -124,29 +90,6 @@
 		}
 	}
 
-	// リアルタイム変換（エンコード）
-	$: if (inputText !== undefined) {
-		if (inputText) {
-			// 入力サイズ制限（10MB）
-			const MAX_INPUT_SIZE = 10 * 1024 * 1024; // 10MB
-			if (inputText.length > MAX_INPUT_SIZE) {
-				outputText = `エラー: 入力が大きすぎます（最大: ${MAX_INPUT_SIZE / 1024 / 1024}MB）`;
-			} else {
-				try {
-					if (activeTab === 'html') {
-						outputText = encodeHtml(inputText);
-					} else if (activeTab === 'url') {
-						outputText = encodeUrl(inputText);
-					}
-				} catch (error) {
-					outputText = `エラー: ${(error as Error).message}`;
-				}
-			}
-		} else {
-			outputText = '';
-		}
-	}
-
 	// サンプルテキスト
 	const sampleTexts: Record<ConversionType, { input: string; description: string }> = {
 		html: {
@@ -160,8 +103,8 @@
 	};
 
 	function loadSample() {
-		const sample = sampleTexts[activeTab];
-		inputText = sample.input;
+		inputText = sampleTexts[activeTab].input;
+		convert('encode', true);
 	}
 </script>
 
@@ -209,7 +152,7 @@
 			サンプル読み込み
 		</button>
 		<button
-			on:click={encode}
+			on:click={() => convert('encode')}
 			disabled={!inputText}
 			class="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:opacity-50"
 		>
@@ -217,7 +160,7 @@
 			エンコード
 		</button>
 		<button
-			on:click={decode}
+			on:click={() => convert('decode')}
 			disabled={!inputText}
 			class="rounded bg-green-600 px-4 py-2 text-white hover:bg-green-700 disabled:opacity-50"
 		>
@@ -250,6 +193,7 @@
 			</div>
 			<textarea
 				bind:value={inputText}
+				on:input={() => convert('encode', true)}
 				placeholder={activeTab === 'html'
 					? 'HTML文字列を入力してください（例: <div class="test">Hello & "World"!</div>）'
 					: 'URL文字列を入力してください（例: https://example.com/search?q=Hello World）'}

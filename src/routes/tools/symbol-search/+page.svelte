@@ -15,16 +15,17 @@
 		const q = query.trim().toLowerCase();
 		if (!q) return symbols;
 
-		const normalizedQuery = q.replace(/ー/g, '').replace(/\u3000/g, ' ');
-		const queryChars = normalizedQuery.split(/\s+/).filter(Boolean);
+		const keywords = q.split(/\s+/).map((keyword) => keyword.replaceAll('ー', '') || keyword);
 
 		return symbols.filter((entry) => {
-			const searchTarget = [entry.name, entry.symbol, ...entry.keywords]
+			const searchTarget = [entry.name, ...entry.keywords]
 				.join(' ')
 				.toLowerCase()
-				.replace(/ー/g, '');
+				.replaceAll('ー', '');
 
-			return queryChars.every((char) => searchTarget.includes(char));
+			return keywords.every(
+				(keyword) => entry.symbol.toLowerCase().includes(keyword) || searchTarget.includes(keyword)
+			);
 		});
 	}
 

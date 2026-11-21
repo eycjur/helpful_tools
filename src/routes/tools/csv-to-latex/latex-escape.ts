@@ -1,27 +1,25 @@
-/**
- * LaTeX特殊文字をエスケープする
- *
- * バックスラッシュを一時的なプレースホルダー（Private Use Area）に置換することで、
- * 二重エスケープを防ぐ
- */
+const LATEX_ESCAPE: Record<string, string> = {
+	'\\': '\\textbackslash{}',
+	$: '\\$',
+	'&': '\\&',
+	'%': '\\%',
+	'#': '\\#',
+	'^': '\\textasciicircum{}',
+	_: '\\_',
+	'{': '\\{',
+	'}': '\\}',
+	'~': '\\textasciitilde{}'
+};
+
 export function escapeLatex(text: string): string {
-	// バックスラッシュを一時的なプレースホルダーに置換
-	// Private Use Area（U+E000）を使用して衝突を回避
-	const BACKSLASH_PLACEHOLDER = '\uE000';
+	return text.replace(/[\\$&%#^_{}~]/g, (character) => LATEX_ESCAPE[character]);
+}
+
+export function formatLatexCell(text: string): string {
+	const lines = text.split(/\r\n|\r|\n/);
+	if (lines.length === 1) return escapeLatex(text);
 
 	return (
-		text
-			.replace(/\\/g, BACKSLASH_PLACEHOLDER)
-			.replace(/\$/g, '\\$')
-			.replace(/&/g, '\\&')
-			.replace(/%/g, '\\%')
-			.replace(/#/g, '\\#')
-			.replace(/\^/g, '\\textasciicircum{}')
-			.replace(/_/g, '\\_')
-			.replace(/\{/g, '\\{')
-			.replace(/\}/g, '\\}')
-			.replace(/~/g, '\\textasciitilde{}')
-			// 最後にプレースホルダーを\textbackslash{}に変換
-			.replace(new RegExp(BACKSLASH_PLACEHOLDER, 'g'), '\\textbackslash{}')
+		'\\shortstack[l]{' + lines.map((line) => '\\strut ' + escapeLatex(line)).join(' \\\\ ') + '}'
 	);
 }

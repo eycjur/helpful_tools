@@ -13,8 +13,8 @@
 		country: string;
 		countryCode: string;
 		timezone: string;
-		latitude: number;
-		longitude: number;
+		latitude: number | null;
+		longitude: number | null;
 		org: string;
 		postal: string;
 	}
@@ -138,16 +138,17 @@
 			const response = await fetch('https://ipapi.co/json/');
 			if (!response.ok) throw new Error('IP情報の取得に失敗しました');
 			const data = await response.json();
+			if (data.error || !data.ip) throw new Error('IP情報の取得に失敗しました');
 
 			return {
-				ip: data.ip || 'Unknown',
+				ip: data.ip,
 				city: data.city || 'Unknown',
 				region: data.region || 'Unknown',
 				country: data.country_name || 'Unknown',
 				countryCode: data.country_code || 'Unknown',
 				timezone: data.timezone || 'Unknown',
-				latitude: data.latitude || 0,
-				longitude: data.longitude || 0,
+				latitude: data.latitude ?? null,
+				longitude: data.longitude ?? null,
 				org: data.org || 'Unknown',
 				postal: data.postal || 'Unknown'
 			};
@@ -203,7 +204,9 @@
 			result += `都市: ${ipInfo.city}\n`;
 			result += `郵便番号: ${ipInfo.postal}\n`;
 			result += `タイムゾーン: ${ipInfo.timezone}\n`;
-			result += `緯度経度: ${ipInfo.latitude}, ${ipInfo.longitude}\n`;
+			if (ipInfo.latitude !== null && ipInfo.longitude !== null) {
+				result += `緯度経度: ${ipInfo.latitude}, ${ipInfo.longitude}\n`;
+			}
 			result += `プロバイダ: ${ipInfo.org}\n\n`;
 		}
 
@@ -334,10 +337,12 @@
 						<span class="font-medium text-gray-700">タイムゾーン:</span>
 						<span class="text-gray-900">{ipInfo.timezone}</span>
 					</div>
-					<div class="flex justify-between">
-						<span class="font-medium text-gray-700">緯度経度:</span>
-						<span class="font-mono text-gray-900">{ipInfo.latitude}, {ipInfo.longitude}</span>
-					</div>
+					{#if ipInfo.latitude !== null && ipInfo.longitude !== null}
+						<div class="flex justify-between">
+							<span class="font-medium text-gray-700">緯度経度:</span>
+							<span class="font-mono text-gray-900">{ipInfo.latitude}, {ipInfo.longitude}</span>
+						</div>
+					{/if}
 					<div class="flex justify-between">
 						<span class="font-medium text-gray-700">プロバイダ:</span>
 						<span class="text-sm text-gray-900">{ipInfo.org}</span>

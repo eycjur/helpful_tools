@@ -60,7 +60,7 @@
 	}
 
 	function copyToClipboard(content: string) {
-		if (content.trim()) {
+		if (content) {
 			navigator.clipboard.writeText(content).catch((err) => {
 				console.error('コピーに失敗しました: ', err);
 			});
@@ -103,7 +103,7 @@
 
 	{#if hasRead && clipboardData.length > 0}
 		<div class="mb-6 grid grid-cols-2 gap-6">
-			{#each clipboardData as data (data.type)}
+			{#each clipboardData as data (data)}
 				<div class="rounded-lg border border-gray-300 p-4">
 					<div class="mb-3 flex items-center justify-between">
 						<h3 class="text-lg font-semibold text-gray-800">{data.type}</h3>

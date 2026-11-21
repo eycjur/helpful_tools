@@ -46,6 +46,17 @@ describe('エンコード文字列デコーダ - コアロジック', () => {
 		it('数値文字参照（16進数）をデコードできる', () => {
 			expect(decodeHTMLEntity('&#x48;&#x65;&#x6C;&#x6C;&#x6F;')).toBe('Hello');
 		});
+
+		it('補助平面の数値参照と名前付き参照をデコードする', () => {
+			expect(decodeHTMLEntity('&#128512; &#X1F600; &hearts;')).toBe('😀 😀 ♥');
+			expect(decodeHTMLEntity('&#0; &#x110000;')).toBe('� �');
+		});
+
+		it('文字参照は一段だけデコードし、タグと改行は文字のまま保持する', () => {
+			expect(decodeHTMLEntity('<b>&amp;lt; &#38;lt;</b>\r\n&lt;b&gt;')).toBe(
+				'<b>&lt; &lt;</b>\r\n<b>'
+			);
+		});
 	});
 
 	describe('Base64 decode', () => {
@@ -105,11 +116,19 @@ describe('エンコード文字列デコーダ - コアロジック', () => {
 		it('無効なJSONはエラーになる', () => {
 			expect(() => decodeJSONString('"unterminated')).toThrow();
 		});
+
+		it.each(['{}', '[]', 'null', 'false', '42'])('文字列以外のJSON（%s）はエラーになる', (json) => {
+			expect(() => decodeJSONString(json)).toThrow('JSON文字列のデコードに失敗');
+		});
 	});
 
 	describe('Punycode decode', () => {
 		it('Punycodeをデコードできる', () => {
 			expect(decodePunycode('xn--bcher-kva')).toBe('bücher');
+		});
+
+		it('通常のラベルや大文字の接頭辞を含むドメインをデコードする', () => {
+			expect(decodePunycode('www.XN--bcher-kva.de')).toBe('www.bücher.de');
 		});
 
 		it('Punycode形式でない場合はエラー', () => {
@@ -166,10 +185,13 @@ describe('エンコード文字列デコーダ - コアロジック', () => {
 	describe('Binary/Decimal/Hex/Octal num decode', () => {
 		it('8ビット2進数をデコードできる', () => {
 			expect(decodeBinary('0100100001101001')).toBe('Hi');
+			expect(decodeBinary('01001000 01101001')).toBe('Hi');
 		});
 
 		it('無効な2進数はエラー', () => {
 			expect(() => decodeBinary('101')).toThrow();
+			expect(() => decodeBinary('01001000 0110x')).toThrow();
+			expect(() => decodeBinary('01001000 1')).toThrow();
 		});
 
 		it('10進数をデコードできる', () => {
@@ -183,6 +205,19 @@ describe('エンコード文字列デコーダ - コアロジック', () => {
 		it('8進数をデコードできる', () => {
 			expect(decodeOctalNum('141 142')).toBe('ab');
 		});
+
+		it('補助平面の文字コードをデコードする', () => {
+			expect(decodeDecimal('128512')).toBe('😀');
+			expect(decodeHexNum('0x1f600')).toBe('😀');
+			expect(decodeOctalNum('373000')).toBe('😀');
+		});
+
+		it('数字の後ろに不正な文字がある場合や範囲外の値はエラーになる', () => {
+			expect(() => decodeDecimal('65x')).toThrow();
+			expect(() => decodeHexNum('41g')).toThrow();
+			expect(() => decodeOctalNum('108')).toThrow();
+			expect(() => decodeHexNum('110000')).toThrow();
+		});
 	});
 
 	describe('Quoted-Printable decode', () => {
@@ -192,6 +227,22 @@ describe('エンコード文字列デコーダ - コアロジック', () => {
 
 		it('soft line breakを除去できる', () => {
 			expect(decodeQuotedPrintable('Hello=\nWorld')).toBe('HelloWorld');
+		});
+
+		it('エンコードされた等号の直後の改行は保持する', () => {
+			expect(decodeQuotedPrintable('x=3D\r\ny')).toBe('x=\r\ny');
+		});
+
+		it('UTF-8の日本語や絵文字をデコードし、元からある文字は保持する', () => {
+			expect(decodeQuotedPrintable('日本語:=E3=81=82 =F0=9F=98=80')).toBe('日本語:あ 😀');
+		});
+
+		it('ソフト改行で分かれたUTF-8のバイト列をデコードする', () => {
+			expect(decodeQuotedPrintable('=E3=\r\n=81=82')).toBe('あ');
+		});
+
+		it.each(['=FF', '=E3=81'])('不正なUTF-8（%s）はエラーになる', (input) => {
+			expect(() => decodeQuotedPrintable(input)).toThrow('UTF-8');
 		});
 	});
 
@@ -203,6 +254,14 @@ describe('エンコード文字列デコーダ - コアロジック', () => {
 
 		it('UUencode形式でない場合はエラー', () => {
 			expect(() => decodeUUencode('not uuencode')).toThrow();
+		});
+
+		it('末尾に改行があるUUencodeをデコードする', () => {
+			expect(decodeUUencode('begin 644 cat.txt\r\n#0V%T\r\n`\r\nend\r\n')).toBe('Cat');
+		});
+
+		it('途切れたデータ行はエラーになる', () => {
+			expect(() => decodeUUencode('begin 644 cat.txt\n#0V\n`\nend')).toThrow();
 		});
 	});
 });

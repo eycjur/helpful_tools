@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { escapeLatex } from './latex-escape';
+import { escapeLatex, formatLatexCell } from './latex-escape';
 
 describe('escapeLatex', () => {
 	describe('基本的な特殊文字のエスケープ', () => {
@@ -24,8 +24,7 @@ describe('escapeLatex', () => {
 		});
 
 		it('キャレットをエスケープする', () => {
-			// 注: {}もエスケープされるため、\textasciicircum\{\}になる
-			expect(escapeLatex('^')).toBe('\\textasciicircum\\{\\}');
+			expect(escapeLatex('^')).toBe('\\textasciicircum{}');
 		});
 
 		it('アンダースコアをエスケープする', () => {
@@ -41,7 +40,6 @@ describe('escapeLatex', () => {
 		});
 
 		it('チルダをエスケープする', () => {
-			// 注: チルダは{}のエスケープ後に置換されるため、{}はエスケープされない
 			expect(escapeLatex('~')).toBe('\\textasciitilde{}');
 		});
 	});
@@ -57,9 +55,8 @@ describe('escapeLatex', () => {
 
 		it('すべての特殊文字を含む文字列を正しくエスケープする', () => {
 			const input = 'test\\value$price&name%rate#id^exp_key{obj}~approx';
-			// 注: ^の{}はエスケープされるが、~の{}はエスケープされない（置換順序の違い）
 			const expected =
-				'test\\textbackslash{}value\\$price\\&name\\%rate\\#id\\textasciicircum\\{\\}exp\\_key\\{obj\\}\\textasciitilde{}approx';
+				'test\\textbackslash{}value\\$price\\&name\\%rate\\#id\\textasciicircum{}exp\\_key\\{obj\\}\\textasciitilde{}approx';
 			expect(escapeLatex(input)).toBe(expected);
 		});
 
@@ -77,7 +74,7 @@ describe('escapeLatex', () => {
 	describe('実用的なケース', () => {
 		it('数式を含むテキストをエスケープする', () => {
 			expect(escapeLatex('x^2 + y^2 = z^2')).toBe(
-				'x\\textasciicircum\\{\\}2 + y\\textasciicircum\\{\\}2 = z\\textasciicircum\\{\\}2'
+				'x\\textasciicircum{}2 + y\\textasciicircum{}2 = z\\textasciicircum{}2'
 			);
 		});
 
@@ -111,6 +108,10 @@ describe('escapeLatex', () => {
 			expect(escapeLatex('Hello\tWorld\n')).toBe('Hello\tWorld\n');
 		});
 
+		it('私用領域の文字をそのまま保持する', () => {
+			expect(escapeLatex('\uE000')).toBe('\uE000');
+		});
+
 		it('Unicode文字を含む文字列を処理する', () => {
 			expect(escapeLatex('日本語$価格')).toBe('日本語\\$価格');
 		});
@@ -132,5 +133,17 @@ describe('escapeLatex', () => {
 			expect(result).not.toContain('\\documentclass');
 			expect(result).not.toContain('\\begin');
 		});
+	});
+});
+
+describe('formatLatexCell', () => {
+	it('1行のセルは特殊文字だけを変換する', () => {
+		expect(formatLatexCell('A&B')).toBe('A\\&B');
+	});
+
+	it('空行を含む複数行を同じセルに保持し、角括弧を行間の指定と区別する', () => {
+		expect(formatLatexCell('A&B\r\n\r\n[1]')).toBe(
+			'\\shortstack[l]{\\strut A\\&B \\\\ \\strut  \\\\ \\strut [1]}'
+		);
 	});
 });

@@ -21,6 +21,11 @@ describe('エンコード自動検出', () => {
 		expect(htmlResult?.result).toBe('<div>Hello</div>');
 	});
 
+	it('大文字Xの数値文字参照と数字を含む名前付き参照を検出する', () => {
+		const hit = autoDetect('&#X1F600; &frac12;').find((r) => r.format === 'HTMLエンティティ');
+		expect(hit?.result).toBe('😀 ½');
+	});
+
 	it('Base64エンコードを自動検出できる', () => {
 		const encoded = 'SGVsbG8gV29ybGQ=';
 		const results = autoDetect(encoded);
@@ -99,10 +104,10 @@ describe('エンコード自動検出', () => {
 	});
 
 	it('Punycodeを検出できる', () => {
-		const encoded = 'xn--bcher-kva';
+		const encoded = 'www.xn--bcher-kva.de';
 		const results = autoDetect(encoded);
 		const hit = results.find((r) => r.format === 'Punycode');
-		expect(hit?.result).toBe('bücher');
+		expect(hit?.result).toBe('www.bücher.de');
 	});
 
 	it('2進数を検出できる', () => {
@@ -110,6 +115,10 @@ describe('エンコード自動検出', () => {
 		const results = autoDetect(encoded);
 		const hit = results.find((r) => r.format === '2進数');
 		expect(hit?.result).toBe('Hi');
+	});
+
+	it('8ビット単位で終わらない2進数は検出しない', () => {
+		expect(autoDetect('01001000 1').some((r) => r.format === '2進数')).toBe(false);
 	});
 
 	it('10進数を検出できる', () => {
@@ -133,10 +142,14 @@ describe('エンコード自動検出', () => {
 		expect(hit?.result).toBe('HELLO');
 	});
 
-	it('Quoted-Printableを検出できる', () => {
-		const encoded = 'Hello=20World=21';
+	it('UTF-8のQuoted-Printableを検出できる', () => {
+		const encoded = '=E3=81=82';
 		const results = autoDetect(encoded);
-		const hit = results.find((r) => r.format === 'Quoted-Printable');
-		expect(hit?.result).toBe('Hello World!');
+		const hit = results.find((r) => r.format === 'Quoted-Printable (UTF-8)');
+		expect(hit?.result).toBe('あ');
+	});
+
+	it('不正なUTF-8バイト列はQuoted-Printableの候補に含めない', () => {
+		expect(autoDetect('=FF').some((r) => r.format === 'Quoted-Printable (UTF-8)')).toBe(false);
 	});
 });

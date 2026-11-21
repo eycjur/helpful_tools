@@ -16,8 +16,8 @@ export interface IPGeoInfo {
 	country: string;
 	countryCode: string;
 	timezone: string;
-	latitude: number;
-	longitude: number;
+	latitude: number | null;
+	longitude: number | null;
 	org: string;
 	postal: string;
 	// 拡張フィールド

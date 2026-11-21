@@ -2,7 +2,6 @@
 	import { tools } from '$lib/data/tools';
 	import Icon from '@iconify/svelte';
 	import { onMount, onDestroy } from 'svelte';
-	import { browser } from '$app/environment';
 	import type { FFmpeg as FFmpegType } from '@ffmpeg/ffmpeg';
 
 	const tool = tools.find((t) => t.name === 'video-to-audio');
@@ -21,6 +20,7 @@
 	let originalFile: File | null = $state(null);
 	let originalVideoUrl: string | null = $state(null);
 	let convertedAudioUrl: string | null = $state(null);
+	let convertedFormat = $state('');
 	let originalVideoEl: HTMLVideoElement | undefined = $state(undefined);
 
 	// 変換設定
@@ -68,8 +68,6 @@
 
 	// FFmpegの読み込み
 	async function loadFFmpeg() {
-		if (!browser) return;
-
 		isLoading = true;
 		errorMessage = '';
 
@@ -157,6 +155,7 @@
 	}
 
 	function processFile(file: File) {
+		if (isConverting) return;
 		if (!file.type.startsWith('video/')) {
 			errorMessage = '動画ファイルを選択してください';
 			return;
@@ -186,6 +185,7 @@
 
 	// 音声変換処理
 	async function convertToAudio() {
+		if (isConverting) return;
 		if (!ffmpeg || !ffmpeg.loaded || !originalFile) {
 			errorMessage = 'FFmpegが読み込まれていないか、ファイルが選択されていません';
 			return;
@@ -195,6 +195,8 @@
 		conversionProgress = 0;
 		progressMessage = '変換を準備しています...';
 		errorMessage = '';
+		if (convertedAudioUrl) URL.revokeObjectURL(convertedAudioUrl);
+		convertedAudioUrl = null;
 
 		let inputFileName = '';
 		let outputFileName = '';
@@ -214,20 +216,21 @@
 			const ffmpegArgs = buildFFmpegArgs(inputFileName, outputFileName);
 
 			// 変換実行
-			await ffmpeg.exec(ffmpegArgs);
+			const exitCode = await ffmpeg.exec(ffmpegArgs);
+			if (exitCode !== 0) {
+				throw new Error('音声トラックがないか、指定した設定で変換できませんでした');
+			}
 
 			// 結果を読み込み
 			const outputData = await ffmpeg.readFile(outputFileName);
 
 			// 型安全な処理（FFmpegはバイナリに対してUint8Arrayを返す）
-			if (!(outputData instanceof Uint8Array)) {
+			if (!(outputData instanceof Uint8Array) || outputData.length === 0) {
 				throw new Error('FFmpegから予期しない出力形式が返されました');
 			}
 
 			const blob = new Blob([outputData], { type: getMimeType(outputFormat) });
-			if (convertedAudioUrl) {
-				URL.revokeObjectURL(convertedAudioUrl);
-			}
+			convertedFormat = outputFormat;
 			convertedAudioUrl = URL.createObjectURL(blob);
 
 			conversionProgress = 100;
@@ -351,7 +354,7 @@
 		if (!convertedAudioUrl || !originalFile) return;
 
 		const baseName = originalFile.name.replace(/\.[^.]+$/, '');
-		const extension = getOutputExtension(outputFormat);
+		const extension = getOutputExtension(convertedFormat);
 
 		const a = document.createElement('a');
 		a.href = convertedAudioUrl;
@@ -427,8 +430,9 @@
 	<div class="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
 		<!-- 出力形式 -->
 		<div class="rounded-lg border border-gray-200 bg-white p-4">
-			<h3 class="mb-3 font-medium text-gray-900">出力形式</h3>
+			<label for="audio-output-format" class="mb-3 block font-medium text-gray-900">出力形式</label>
 			<select
+				id="audio-output-format"
 				bind:value={outputFormat}
 				disabled={isConverting}
 				class="w-full rounded border border-gray-300 px-3 py-2"
@@ -506,6 +510,7 @@
 		<div class="flex flex-col items-center gap-3">
 			<button
 				type="button"
+				disabled={isConverting}
 				class="rounded-lg bg-blue-600 px-6 py-3 font-medium text-white transition-colors hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:outline-none"
 			>
 				<Icon icon="mdi:folder-open" class="mr-2 inline h-5 w-5" />
@@ -517,6 +522,7 @@
 			id="video-file-input"
 			type="file"
 			accept="video/*"
+			disabled={isConverting}
 			onchange={handleFileSelect}
 			class="hidden"
 		/>
@@ -602,7 +608,7 @@
 									class="inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-sm text-green-800"
 								>
 									<Icon icon="mdi:check" class="mr-1 h-4 w-4" />
-									{outputFormats.find((f) => f.value === outputFormat)?.label} 形式で変換完了
+									{outputFormats.find((f) => f.value === convertedFormat)?.label} 形式で変換完了
 								</span>
 							</div>
 						</div>

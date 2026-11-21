@@ -177,8 +177,12 @@ export async function removeC2paMetadata(file: File): Promise<Blob> {
 	}
 }
 
-export function getCleanFileName(originalName: string, suffix: string): string {
+export function getCleanFileName(originalName: string, suffix: string, mimeType: string): string {
 	const dotIdx = originalName.lastIndexOf('.');
-	if (dotIdx === -1) return `${originalName}_${suffix}`;
-	return `${originalName.substring(0, dotIdx)}_${suffix}${originalName.substring(dotIdx)}`;
+	const stem = dotIdx > 0 ? originalName.slice(0, dotIdx) : originalName;
+	const originalExt = dotIdx > 0 ? originalName.slice(dotIdx) : '';
+	const extension = mimeType === 'image/jpeg' ? 'jpg' : mimeType.slice('image/'.length);
+	const originalType = originalExt.toLowerCase() === '.jpeg' ? '.jpg' : originalExt.toLowerCase();
+	const outputExt = originalType === `.${extension}` ? originalExt : `.${extension}`;
+	return `${stem}_${suffix}${outputExt}`;
 }

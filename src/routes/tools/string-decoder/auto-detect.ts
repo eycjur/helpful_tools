@@ -47,7 +47,7 @@ export function autoDetect(text: string): DecodeResult[] {
 	}
 
 	// HTMLエンティティ検出
-	if (/&(#\d+|#x[0-9a-fA-F]+|[a-z]+);/.test(text)) {
+	if (/&(?:#\d+|#x[0-9a-f]+|[a-z][a-z0-9]*);/i.test(text)) {
 		try {
 			const decoded = decodeHTMLEntity(text);
 			if (decoded !== text) {
@@ -171,7 +171,7 @@ export function autoDetect(text: string): DecodeResult[] {
 	}
 
 	// Punycode検出
-	if (/^xn--[a-z0-9-]+$/i.test(text.trim())) {
+	if (/xn--/i.test(text)) {
 		try {
 			const decoded = decodePunycode(text.trim());
 			if (decoded !== text.trim()) {
@@ -201,9 +201,9 @@ export function autoDetect(text: string): DecodeResult[] {
 	}
 
 	// 2進数検出
-	if (/^[01\s]+$/.test(text.trim()) && /[01]{8}/.test(text)) {
+	if (/^[01\s]+$/.test(text.trim())) {
 		try {
-			const decoded = decodeBinary(text.replace(/\s/g, ''));
+			const decoded = decodeBinary(text);
 			results.push({
 				format: '2進数',
 				result: decoded,
@@ -269,7 +269,7 @@ export function autoDetect(text: string): DecodeResult[] {
 			const decoded = decodeQuotedPrintable(text);
 			if (decoded !== text) {
 				results.push({
-					format: 'Quoted-Printable',
+					format: 'Quoted-Printable (UTF-8)',
 					result: decoded,
 					confidence: 85
 				});

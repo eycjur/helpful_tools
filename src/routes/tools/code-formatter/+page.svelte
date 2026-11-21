@@ -2,6 +2,7 @@
 	import { tools } from '$lib/data/tools';
 	import Icon from '@iconify/svelte';
 	import { diffLines, diffChars } from 'diff';
+	import { formatCode } from './format-code';
 
 	const tool = tools.find((t) => t.name === 'code-formatter');
 
@@ -27,83 +28,8 @@
 	let convertTabsToSpaces = true;
 	let tabSize = 4;
 
-	function formatCode() {
-		if (!inputCode.trim()) {
-			outputCode = '';
-			resetStats();
-			return;
-		}
-
-		const lines = inputCode.split('\n');
-		const processedLines: string[] = [];
-		let emptyLinesCount = 0;
-		let trailingSpacesCount = 0;
-		let tabsConvertedCount = 0;
-		let totalSpacesCount = 0;
-
-		for (let i = 0; i < lines.length; i++) {
-			let line = lines[i];
-
-			// タブをスペースに変換
-			if (convertTabsToSpaces && line.includes('\t')) {
-				const tabCount = (line.match(/\t/g) || []).length;
-				if (tabCount > 0) {
-					tabsConvertedCount++;
-					line = line.replace(/\t/g, ' '.repeat(tabSize));
-				}
-			}
-
-			// 空白行の空白削除
-			if (removeEmptyLineSpaces && line.trim() === '') {
-				if (line.length > 0) {
-					emptyLinesCount++;
-					totalSpacesCount += line.length;
-					line = '';
-				}
-			}
-			// 行末尾空白削除（空白行でない場合）
-			else if (removeTrailingSpaces) {
-				const trimmedLine = line.replace(/\s+$/, '');
-				const removedSpaces = line.length - trimmedLine.length;
-				if (removedSpaces > 0) {
-					trailingSpacesCount++;
-					totalSpacesCount += removedSpaces;
-					line = trimmedLine;
-				}
-			}
-
-			processedLines.push(line);
-		}
-
-		outputCode = processedLines.join('\n');
-		stats = {
-			emptyLinesWithSpaces: emptyLinesCount,
-			trailingSpacesRemoved: trailingSpacesCount,
-			tabsConverted: tabsConvertedCount,
-			totalSpacesRemoved: totalSpacesCount,
-			linesProcessed: lines.length
-		};
-
-		// 自動コピー
-		if (outputCode !== inputCode) {
-			copyToClipboard(outputCode);
-		}
-	}
-
-	function resetStats() {
-		stats = {
-			emptyLinesWithSpaces: 0,
-			trailingSpacesRemoved: 0,
-			tabsConverted: 0,
-			totalSpacesRemoved: 0,
-			linesProcessed: 0
-		};
-	}
-
 	function clearAll() {
 		inputCode = '';
-		outputCode = '';
-		resetStats();
 	}
 
 	async function copyToClipboard(text: string) {
@@ -119,7 +45,6 @@
 			.readText()
 			.then((text) => {
 				inputCode = text;
-				formatCode();
 			})
 			.catch((err) => {
 				console.error('クリップボードからの取得に失敗:', err);
@@ -127,20 +52,29 @@
 	}
 
 	// 入力が変更されたときに自動実行
-	$: if (inputCode !== undefined) {
-		formatCode();
+	$: {
+		const formatted = formatCode(inputCode, {
+			removeEmptyLineSpaces,
+			removeTrailingSpaces,
+			convertTabsToSpaces,
+			tabSize
+		});
+		outputCode = formatted.output;
+		stats = formatted.stats;
+		if (outputCode !== inputCode) void copyToClipboard(outputCode);
 	}
 
-	$: if (inputCode !== undefined || outputCode !== undefined) {
-		diffPreview = getDiffPreview();
-	}
+	$: diffPreview = getDiffPreview(inputCode, outputCode);
 
-	function getDiffPreview(): {
+	function getDiffPreview(
+		input: string,
+		output: string
+	): {
 		added: DiffPreviewLine[];
 		removed: DiffPreviewLine[];
 		changed: number;
 	} {
-		if (!inputCode || !outputCode || inputCode === outputCode) {
+		if (!input || input === output) {
 			return { added: [], removed: [], changed: 0 };
 		}
 
@@ -148,7 +82,7 @@
 		const added: DiffPreviewLine[] = [];
 		let changed = 0;
 
-		const lineDiffs = diffLines(inputCode, outputCode);
+		const lineDiffs = diffLines(input, output);
 		let leftLineNumber = 1;
 		let rightLineNumber = 1;
 
@@ -391,7 +325,7 @@
 	</div>
 
 	<!-- 変更差分プレビュー -->
-	{#if inputCode && outputCode && inputCode !== outputCode}
+	{#if inputCode && inputCode !== outputCode}
 		<div class="mt-4 rounded-lg border border-gray-200 bg-white p-4">
 			<h3 class="mb-3 font-medium text-gray-900">
 				変更概要 ({diffPreview.changed} 行が変更されました)

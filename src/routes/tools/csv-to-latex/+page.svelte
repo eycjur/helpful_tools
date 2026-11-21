@@ -1,81 +1,18 @@
 <script lang="ts">
+	import { parsePlainTable } from '../_shared/delimited-table';
 	import { tools } from '$lib/data/tools';
 	import Icon from '@iconify/svelte';
-	import { escapeLatex } from './latex-escape';
+	import { formatLatexCell } from './latex-escape';
 
 	let inputData = '';
 	let latexOutput = '';
-	let delimiter = 'auto'; // 'auto', 'comma', 'tab'
-	let headerRow = true;
 
 	const tool = tools.find((t) => t.name === 'csv-to-latex');
-
-	function detectDelimiter(text: string): string {
-		const lines = text.trim().split('\n');
-		if (lines.length === 0) return 'comma';
-
-		const firstLine = lines[0];
-		const commaCount = (firstLine.match(/,/g) || []).length;
-		const tabCount = (firstLine.match(/\t/g) || []).length;
-
-		// If there are tabs and more tabs than commas, assume tab-separated
-		if (tabCount > 0 && tabCount >= commaCount) {
-			return 'tab';
-		}
-		// Otherwise assume comma-separated
-		return 'comma';
-	}
-
-	function parseCSV(text: string, delimiter: string): string[][] {
-		if (!text.trim()) return [];
-
-		const lines = text.trim().split('\n');
-		const result: string[][] = [];
-		const sep = delimiter === 'tab' ? '\t' : ',';
-
-		for (const line of lines) {
-			if (delimiter === 'comma') {
-				// Simple CSV parsing - handles quoted fields
-				const row: string[] = [];
-				let current = '';
-				let inQuotes = false;
-
-				for (let i = 0; i < line.length; i++) {
-					const char = line[i];
-
-					if (char === '"') {
-						if (inQuotes && line[i + 1] === '"') {
-							// Escaped quote
-							current += '"';
-							i++; // Skip next quote
-						} else {
-							// Toggle quote state
-							inQuotes = !inQuotes;
-						}
-					} else if (char === ',' && !inQuotes) {
-						// End of field
-						row.push(current.trim());
-						current = '';
-					} else {
-						current += char;
-					}
-				}
-				// Add the last field
-				row.push(current.trim());
-				result.push(row);
-			} else {
-				// Tab-separated - simple split
-				result.push(line.split(sep).map((cell) => cell.trim()));
-			}
-		}
-
-		return result;
-	}
 
 	function generateLatexTable(data: string[][]): string {
 		if (data.length === 0) return '';
 
-		const maxCols = Math.max(...data.map((row) => row.length));
+		const maxCols = data.reduce((max, row) => Math.max(max, row.length), 0);
 		if (maxCols === 0) return '';
 
 		// Column specification
@@ -99,13 +36,13 @@
 			}
 
 			// Escape LaTeX special characters
-			const escapedRow = paddedRow.map((cell) => escapeLatex(cell));
+			const escapedRow = paddedRow.map(formatLatexCell);
 
 			// Join with & and add line ending
 			latex += escapedRow.join(' & ') + ' \\\\\n';
 
 			// Add horizontal line after header row or at the end
-			if ((headerRow && i === 0) || i === data.length - 1) {
+			if (i === 0 || i === data.length - 1) {
 				latex += '\\hline\n';
 			}
 		}
@@ -117,32 +54,13 @@
 		return latex;
 	}
 
-	function convertToLatex() {
-		if (!inputData.trim()) {
-			latexOutput = '';
-			return;
-		}
-
-		// Determine delimiter
-		const actualDelimiter = delimiter === 'auto' ? detectDelimiter(inputData) : delimiter;
-
-		// Parse CSV/TSV
-		const data = parseCSV(inputData, actualDelimiter);
-
-		// Generate LaTeX
-		const latex = generateLatexTable(data);
-		latexOutput = latex;
-
-		// Auto-copy to clipboard
-		if (latex.trim()) {
-			navigator.clipboard.writeText(latex).catch((err) => {
+	function convertToLatex(input: string) {
+		latexOutput = generateLatexTable(parsePlainTable(input));
+		if (latexOutput) {
+			navigator.clipboard?.writeText(latexOutput).catch((err) => {
 				console.error('自動コピーに失敗しました: ', err);
 			});
 		}
-	}
-
-	function handleInput() {
-		convertToLatex();
 	}
 
 	function clearInput() {
@@ -150,8 +68,7 @@
 		latexOutput = '';
 	}
 
-	// Watch for changes in options
-	$: if (inputData) convertToLatex();
+	$: convertToLatex(inputData);
 </script>
 
 <div class="mx-auto max-w-6xl">
@@ -174,7 +91,6 @@
 			</div>
 			<textarea
 				bind:value={inputData}
-				on:input={handleInput}
 				rows="20"
 				placeholder="CSV/TSVデータを入力してください..."
 				class="min-h-96 flex-1 resize-none rounded-lg border border-gray-300 p-3 font-mono text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 focus:outline-none"

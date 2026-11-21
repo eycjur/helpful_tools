@@ -13,6 +13,7 @@
 	let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 
 	function applyTranspose(plain: string, html?: string) {
+		clearTimeout(debounceTimer);
 		errorMessage = '';
 		const parsed = parseTableFromClipboard(plain, html);
 		if (!parsed || parsed.rows.length === 0) {
@@ -23,8 +24,7 @@
 			return;
 		}
 
-		const maxCols = Math.max(...parsed.rows.map((r) => r.length), 0);
-		if (parsed.rows.length === 1 && maxCols <= 1) {
+		if (parsed.rows.length === 1 && parsed.rows[0].length <= 1) {
 			errorMessage = '転置するには2行以上、または2列以上の表が必要です';
 			outputText = '';
 			return;
@@ -64,7 +64,7 @@
 				plain = await navigator.clipboard.readText();
 			}
 
-			if (!plain.trim() && !html?.trim()) {
+			if (!plain.trim() && !plain.includes('\t') && !html?.trim()) {
 				errorMessage = 'クリップボードに表データがありません';
 				return;
 			}

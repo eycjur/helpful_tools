@@ -2,7 +2,6 @@
 	import { tools } from '$lib/data/tools';
 	import Icon from '@iconify/svelte';
 	import { onMount, onDestroy } from 'svelte';
-	import { browser } from '$app/environment';
 	import type { FFmpeg as FFmpegType } from '@ffmpeg/ffmpeg';
 
 	const tool = tools.find((t) => t.name === 'video-reverse');
@@ -34,6 +33,8 @@
 		const args = [
 			'-i',
 			inputFile,
+			'-map',
+			'0:V:0',
 			'-vf',
 			'reverse',
 			'-c:v',
@@ -44,7 +45,7 @@
 			'23'
 		];
 		if (includeAudio) {
-			args.push('-af', 'areverse', '-c:a', 'aac', '-b:a', '192k');
+			args.push('-map', '0:a:0', '-af', 'areverse', '-c:a', 'aac', '-b:a', '192k');
 		} else {
 			args.push('-an');
 		}
@@ -53,8 +54,6 @@
 	}
 
 	async function loadFFmpeg() {
-		if (!browser) return;
-
 		isLoading = true;
 		errorMessage = '';
 
@@ -136,6 +135,7 @@
 	}
 
 	function processFile(file: File) {
+		if (isConverting) return;
 		if (!file.type.startsWith('video/')) {
 			errorMessage = '動画ファイルを選択してください';
 			return;
@@ -161,6 +161,7 @@
 	}
 
 	async function convertReverse() {
+		if (isConverting) return;
 		if (!ffmpeg?.loaded || !originalFile) {
 			errorMessage = 'FFmpegが読み込まれていないか、ファイルが選択されていません';
 			return;
@@ -171,6 +172,8 @@
 		progressMessage = '変換を準備しています...';
 		errorMessage = '';
 		usedAudioReverse = false;
+		if (reversedVideoUrl) URL.revokeObjectURL(reversedVideoUrl);
+		reversedVideoUrl = null;
 
 		let inputFileName = '';
 
@@ -185,7 +188,8 @@
 			for (const includeAudio of [true, false]) {
 				try {
 					await ffmpeg.deleteFile(OUTPUT_FILE_NAME).catch(() => {});
-					await ffmpeg.exec(buildReverseArgs(inputFileName, includeAudio));
+					const exitCode = await ffmpeg.exec(buildReverseArgs(inputFileName, includeAudio));
+					if (exitCode !== 0) throw new Error('動画を読み込めないか、対応していない形式です');
 					usedAudioReverse = includeAudio;
 					lastError = null;
 					break;
@@ -202,12 +206,11 @@
 			}
 
 			const outputData = await ffmpeg.readFile(OUTPUT_FILE_NAME);
-			if (!(outputData instanceof Uint8Array)) {
+			if (!(outputData instanceof Uint8Array) || outputData.length === 0) {
 				throw new Error('FFmpegから予期しない出力形式が返されました');
 			}
 
 			const blob = new Blob([outputData], { type: 'video/mp4' });
-			if (reversedVideoUrl) URL.revokeObjectURL(reversedVideoUrl);
 			reversedVideoUrl = URL.createObjectURL(blob);
 
 			conversionProgress = 100;
@@ -351,6 +354,7 @@
 		<p class="mb-4 text-sm text-gray-600">ドラッグ&ドロップ、またはクリックで選択</p>
 		<button
 			type="button"
+			disabled={isConverting}
 			class="rounded-lg bg-blue-600 px-6 py-3 font-medium text-white transition-colors hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:outline-none"
 		>
 			<Icon icon="mdi:folder-open" class="mr-2 inline h-5 w-5" />
@@ -361,6 +365,7 @@
 			id="reverse-video-input"
 			type="file"
 			accept="video/*"
+			disabled={isConverting}
 			onchange={handleFileSelect}
 			class="hidden"
 		/>

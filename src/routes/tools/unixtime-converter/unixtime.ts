@@ -45,6 +45,7 @@ export function formatInTimeZone(date: Date, timeZone: string): string {
 		hour: '2-digit',
 		minute: '2-digit',
 		second: '2-digit',
+		fractionalSecondDigits: date.getUTCMilliseconds() ? 3 : undefined,
 		hour12: false,
 		timeZoneName: 'short'
 	}).format(date);

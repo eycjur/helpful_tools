@@ -16,7 +16,7 @@
 	}
 
 	let headers: Header[] = [
-		{ key: 'Content-Type', value: 'application/json', enabled: true },
+		{ key: 'Content-Type', value: 'application/json', enabled: false },
 		{ key: 'User-Agent', value: 'curl/7.68.0', enabled: false }
 	];
 
@@ -46,6 +46,7 @@
 	let verbose = false;
 	let timeout = 0;
 	let insecure = false;
+	$: isHead = method === 'HEAD' || headRequest;
 
 	// 生成されたコマンド
 	let generatedCommand = '';
@@ -79,67 +80,69 @@
 			return 'curl # URLを入力してください';
 		}
 
-		let command = 'curl';
 		const parts: string[] = [];
+		let body = '';
+		if (!isHead) {
+			if (bodyType === 'json' && jsonBody.trim()) {
+				body = jsonBody;
+			} else if (bodyType === 'raw') {
+				body = rawBody;
+			} else if (bodyType === 'form') {
+				const fields = formData.filter((f) => f.enabled && f.key.trim());
+				body = new URLSearchParams(fields.map((f) => [f.key, f.value])).toString();
+			}
+		}
 
 		// HTTP メソッド
-		if (method !== 'GET') {
+		if (isHead) {
+			parts.push('-I');
+		} else if (method !== 'GET' || body) {
 			parts.push(`-X ${method}`);
 		}
 
 		// ヘッダー
 		const enabledHeaders = headers.filter((h) => h.enabled && h.key.trim() && h.value.trim());
+		if (
+			body &&
+			bodyType === 'json' &&
+			!enabledHeaders.some((h) => h.key.trim().toLowerCase() === 'content-type')
+		) {
+			parts.push("-H 'Content-Type: application/json'");
+		}
 		enabledHeaders.forEach((header) => {
-			parts.push(`-H "${escapeQuotes(header.key)}: ${escapeQuotes(header.value)}"`);
+			parts.push(`-H ${shellQuote(`${header.key}: ${header.value}`)}`);
 		});
 
 		// 認証
 		if (authType === 'basic' && username.trim() && password.trim()) {
-			parts.push(`-u "${escapeQuotes(username)}:${escapeQuotes(password)}"`);
+			parts.push(`-u ${shellQuote(`${username}:${password}`)}`);
 		} else if (authType === 'bearer' && bearerToken.trim()) {
-			parts.push(`-H "Authorization: Bearer ${escapeQuotes(bearerToken)}"`);
+			parts.push(`-H ${shellQuote(`Authorization: Bearer ${bearerToken}`)}`);
 		}
 
 		// リクエストボディ
-		if (bodyType === 'json' && jsonBody.trim()) {
-			parts.push(`-d '${escapeSingleQuotes(jsonBody.trim())}'`);
-		} else if (bodyType === 'raw' && rawBody.trim()) {
-			parts.push(`-d '${escapeSingleQuotes(rawBody.trim())}'`);
-		} else if (bodyType === 'form') {
-			const enabledFormData = formData.filter((f) => f.enabled && f.key.trim());
-			enabledFormData.forEach((form) => {
-				parts.push(`-d "${escapeQuotes(form.key)}=${escapeQuotes(form.value)}"`);
-			});
-		}
+		if (body) parts.push(`--data-raw ${shellQuote(body)}`);
 
 		// 追加オプション
 		if (followRedirects) parts.push('-L');
-		if (includeHeaders) parts.push('-i');
-		if (headRequest) parts.push('-I');
+		if (includeHeaders && !isHead) parts.push('-i');
 		if (verbose) parts.push('-v');
 		if (insecure) parts.push('-k');
 		if (timeout > 0) parts.push(`--max-time ${timeout}`);
 
 		// URL（最後に追加）
-		parts.push(`"${escapeQuotes(url.trim())}"`);
+		parts.push(`--url ${shellQuote(url.trim())}`);
 
 		// コマンド組み立て（長い場合は複数行に）
 		if (parts.join(' ').length > 80) {
-			return `${command} \\\n  ${parts.join(' \\\n  ')}`;
+			return `curl \\\n  ${parts.join(' \\\n  ')}`;
 		} else {
-			return `${command} ${parts.join(' ')}`;
+			return `curl ${parts.join(' ')}`;
 		}
 	}
 
-	// ダブルクォートをエスケープ（ダブルクォートで囲む場合用）
-	function escapeQuotes(str: string): string {
-		return str.replace(/"/g, '\\"');
-	}
-
-	// シングルクォートをエスケープ（シングルクォートで囲む場合用）
-	// シェルでは 'text' 内の ' は '\'' でエスケープする
-	function escapeSingleQuotes(str: string): string {
-		return str.replace(/'/g, "'\\''");
+	function shellQuote(value: string): string {
+		return `'${value.replaceAll("'", "'\\''")}'`;
 	}
 
 	// リアルタイム更新（依存する変数の変更を検知）
@@ -159,7 +162,7 @@
 			formData,
 			followRedirects,
 			includeHeaders,
-			headRequest,
+			isHead,
 			verbose,
 			insecure,
 			timeout
@@ -181,7 +184,7 @@
 		url = '';
 		method = 'GET';
 		headers = [
-			{ key: 'Content-Type', value: 'application/json', enabled: true },
+			{ key: 'Content-Type', value: 'application/json', enabled: false },
 			{ key: 'User-Agent', value: 'curl/7.68.0', enabled: false }
 		];
 		bodyType = 'none';
@@ -247,10 +250,8 @@
 			name: 'HEADリクエスト（ヘッダー情報取得）',
 			setup: () => {
 				url = 'https://httpbin.org/json';
-				method = 'GET';
+				method = 'HEAD';
 				bodyType = 'none';
-				headRequest = true;
-				includeHeaders = true;
 				headers = [{ key: 'User-Agent', value: 'curl/7.68.0', enabled: true }];
 			}
 		}
@@ -414,6 +415,7 @@
 						{#each ['none', 'json', 'form', 'raw'] as type (type)}
 							<button
 								on:click={() => (bodyType = type as typeof bodyType)}
+								disabled={isHead}
 								class="rounded px-3 py-1 text-sm transition-colors {bodyType === type
 									? 'bg-white text-gray-900 shadow-sm'
 									: 'text-gray-600 hover:text-gray-900'}"
@@ -430,7 +432,7 @@
 					</div>
 				</div>
 
-				{#if bodyType === 'json'}
+				{#if !isHead && bodyType === 'json'}
 					<div>
 						<div class="mb-2 flex justify-between">
 							<label for="json-body-textarea" class="text-sm text-gray-600">JSON データ</label>
@@ -447,7 +449,7 @@
 							class="h-32 w-full rounded border-gray-300 p-3 font-mono text-sm"
 						></textarea>
 					</div>
-				{:else if bodyType === 'form'}
+				{:else if !isHead && bodyType === 'form'}
 					<div class="space-y-2">
 						<div class="mb-2 flex justify-between">
 							<span class="text-sm text-gray-600">フォームデータ</span>
@@ -482,7 +484,7 @@
 							</div>
 						{/each}
 					</div>
-				{:else if bodyType === 'raw'}
+				{:else if !isHead && bodyType === 'raw'}
 					<div>
 						<label for="raw-body-textarea" class="mb-2 block text-sm text-gray-600"
 							>Raw データ</label

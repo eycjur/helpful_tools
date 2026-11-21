@@ -2,8 +2,8 @@
 	import { onDestroy } from 'svelte';
 	import { tools } from '$lib/data/tools';
 	import Icon from '@iconify/svelte';
-	import { assemblePdf } from '$lib/pdf-ops';
-	import { createPdfPageRenderer } from '$lib/pdf-first-page-image';
+	import { assemblePdf } from './pdf-ops';
+	import { createPdfPageRenderer } from './pdf-first-page-image';
 	import {
 		movePages,
 		removePages,

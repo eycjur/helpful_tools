@@ -38,6 +38,10 @@
 		}
 
 		function handleKeydown(event: KeyboardEvent) {
+			if (event.key === 'Escape') {
+				isOpen = false;
+				return;
+			}
 			const target = event.target;
 			if (!(target instanceof HTMLElement)) return;
 			if (

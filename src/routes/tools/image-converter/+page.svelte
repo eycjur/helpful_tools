@@ -6,19 +6,13 @@
 	type LoadedItem = {
 		id: number;
 		file: File;
-		name: string;
-		type: string;
 		src: string;
-		width: number;
-		height: number;
 	};
 
 	type ResultItem = {
 		name: string;
-		blob: Blob;
 		url: string;
 		mime: string;
-		fallback?: boolean;
 	};
 
 	const tool = tools.find((t) => t.name === 'image-converter');
@@ -27,6 +21,7 @@
 	let items: LoadedItem[] = [];
 	let results: ResultItem[] = [];
 	let isConverting = false;
+	let error = '';
 	let dragOver = false;
 
 	// 設定
@@ -47,13 +42,16 @@
 	function revokeResultUrls() {
 		for (const r of results) URL.revokeObjectURL(r.url);
 	}
-	onDestroy(revokeAll);
+	onDestroy(clearAll);
 
 	function addFiles(fileList: FileList | File[]) {
 		const arr = Array.from(fileList);
 		// 画像ファイルの先頭1件のみ受け付ける
 		const f = arr.find((x) => x.type.startsWith('image/'));
-		if (!f) return;
+		if (!f) {
+			error = '画像ファイルを選択してください';
+			return;
+		}
 
 		// 既存のアイテム／結果をクリア（URLも解放）
 		clearAll();
@@ -62,26 +60,10 @@
 		const it: LoadedItem = {
 			id: 1,
 			file: f,
-			name: f.name,
-			type: f.type,
-			src,
-			width: 0,
-			height: 0
+			src
 		};
 		items = [it];
-
-		// 画像の寸法を非同期で取得
-		const img = new Image();
-		img.onload = () => {
-			it.width = img.naturalWidth;
-			it.height = img.naturalHeight;
-		};
-		img.src = it.src;
-
-		// 取り込み後に自動変換
-		queueMicrotask(() => {
-			convertAll();
-		});
+		void convertAll();
 	}
 
 	function onFileInput(e: Event) {
@@ -101,6 +83,8 @@
 		revokeAll();
 		items = [];
 		results = [];
+		isConverting = false;
+		error = '';
 	}
 
 	function drawToCanvas(
@@ -126,13 +110,11 @@
 		return canvas;
 	}
 
-	async function encodeCanvas(
-		canvas: HTMLCanvasElement,
-		mime: string,
-		q: number
-	): Promise<{ blob: Blob; mime: string; fallback?: boolean }> {
+	async function encodeCanvas(canvas: HTMLCanvasElement, mime: string, q: number): Promise<Blob> {
 		const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, mime, q));
-		if (blob) return { blob, mime };
+		if (blob?.type === mime) return blob;
+		if (blob)
+			throw new Error(`お使いのブラウザでは${extByMime(mime).toUpperCase()}に変換できません`);
 		throw new Error('エンコードに失敗しました');
 	}
 
@@ -147,53 +129,52 @@
 	}
 
 	async function convertAll() {
-		if (!items.length || isConverting) return;
+		const [item] = items;
+		if (!item || isConverting) return;
+		const conversionItems = items;
+		const base = item.file.name.replace(/\.[^.]+$/, '');
 		isConverting = true;
+		error = '';
 		revokeResultUrls();
 		results = [];
 		const targetFormats: Array<'png' | 'jpeg' | 'webp'> = ['png', 'jpeg', 'webp'];
+		let bitmap: ImageBitmap | undefined;
 		try {
-			for (const it of items) {
-				// 画像の読み込み（描画元を用意）
-				let bitmap: ImageBitmap | null = null;
-				try {
-					bitmap = await createImageBitmap(it.file);
-				} catch {
-					bitmap = null; // createImageBitmap非対応
-				}
-				let width = it.width || (bitmap ? bitmap.width : 0);
-				let height = it.height || (bitmap ? bitmap.height : 0);
-				let imgEl: HTMLImageElement | null = null;
-				if (!width || !height || !bitmap) {
-					// bitmapがない、または寸法が未取得ならImage経由で寸法・描画元を用意
-					imgEl = new Image();
-					await new Promise<void>((resolve, reject) => {
-						imgEl!.onload = () => resolve();
-						imgEl!.onerror = () => reject(new Error('画像の読み込みに失敗'));
-						imgEl!.src = it.src;
-					});
-					width = imgEl.naturalWidth;
-					height = imgEl.naturalHeight;
-				}
-				const size = { width, height };
+			let img: ImageBitmap | HTMLImageElement;
+			let size: { width: number; height: number };
+			try {
+				bitmap = await createImageBitmap(item.file);
+				img = bitmap;
+				size = { width: bitmap.width, height: bitmap.height };
+			} catch {
+				if (items !== conversionItems) return;
+				const image = new Image();
+				await new Promise<void>((resolve, reject) => {
+					image.onload = () => resolve();
+					image.onerror = () => reject(new Error('画像の読み込みに失敗しました'));
+					image.src = item.src;
+				});
+				img = image;
+				size = { width: image.naturalWidth, height: image.naturalHeight };
+			}
+			if (items !== conversionItems) return;
 
-				for (const fmt of targetFormats) {
-					const mime = mimeByFormat[fmt];
-					const canvas = drawToCanvas(bitmap ?? (imgEl as HTMLImageElement), mime, size);
-					const { blob, mime: outMime, fallback } = await encodeCanvas(canvas, mime, quality);
-					const ext = extByMime(outMime);
-					const base = it.name.replace(/\.[^.]+$/, '');
-					const outName = `${base}.${ext}`;
-					const url = URL.createObjectURL(blob);
-					results = [...results, { name: outName, blob, url, mime: outMime, fallback }];
-				}
-
-				bitmap?.close?.();
+			for (const fmt of targetFormats) {
+				const mime = mimeByFormat[fmt];
+				const canvas = drawToCanvas(img, mime, size);
+				const blob = await encodeCanvas(canvas, mime, quality);
+				if (items !== conversionItems) return;
+				const name = `${base}.${extByMime(mime)}`;
+				const url = URL.createObjectURL(blob);
+				results = [...results, { name, url, mime }];
 			}
 		} catch (e) {
-			console.error(e);
+			if (items === conversionItems) {
+				error = e instanceof Error ? e.message : '画像の変換に失敗しました';
+			}
 		} finally {
-			isConverting = false;
+			bitmap?.close();
+			if (items === conversionItems) isConverting = false;
 		}
 	}
 
@@ -270,6 +251,10 @@
 			class="block"
 		/>
 	</div>
+
+	{#if error}
+		<p role="alert" class="mb-4 text-sm text-red-600">{error}</p>
+	{/if}
 
 	{#if items.length}
 		<div class="mb-4 flex items-center justify-end gap-2">

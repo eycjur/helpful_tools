@@ -3,6 +3,7 @@
 	import Icon from '@iconify/svelte';
 	import { onMount, onDestroy } from 'svelte';
 	import { browser } from '$app/environment';
+	import { calculateAspectRatioConstrainedSize } from './video-size';
 
 	const tool = tools.find((t) => t.name === 'video-compressor');
 
@@ -10,6 +11,10 @@
 	let originalFile: File | null = null;
 	let originalVideoUrl: string | null = null;
 	let compressedVideoUrl: string | null = null;
+	let compressedFileName = '';
+	let compression: AbortController | null = null;
+	let audioCapture: { context: AudioContext; source: MediaElementAudioSourceNode } | null = null;
+	let videoError = '';
 	let originalVideoEl: HTMLVideoElement;
 	let hiddenCanvas: HTMLCanvasElement;
 	let isCompressing = false;
@@ -82,7 +87,7 @@
 		if (compressedVideoUrl) URL.revokeObjectURL(compressedVideoUrl);
 	}
 
-	onDestroy(revokeObjectUrls);
+	onDestroy(clearAll);
 
 	// ファイル処理
 	function handleFileSelect(e: Event) {
@@ -134,13 +139,6 @@
 
 		originalFile = file;
 		originalVideoUrl = URL.createObjectURL(file);
-
-		// 動画情報を取得
-		setTimeout(() => {
-			if (originalVideoEl && originalVideoEl.readyState >= 1) {
-				updateOriginalStats();
-			}
-		}, 100);
 	}
 
 	function updateOriginalStats() {
@@ -151,7 +149,10 @@
 			duration: originalVideoEl.duration,
 			width: originalVideoEl.videoWidth,
 			height: originalVideoEl.videoHeight,
-			bitrate: Math.round((originalFile.size * 8) / originalVideoEl.duration)
+			bitrate:
+				originalVideoEl.duration > 0
+					? Math.round((originalFile.size * 8) / originalVideoEl.duration)
+					: 0
 		};
 
 		// 圧縮設定の自動調整（アスペクト比を維持、4K対応）
@@ -165,160 +166,157 @@
 		compressionSettings.maxHeight = autoMaxHeight;
 	}
 
-	// アスペクト比を維持しながら最大サイズ制限を適用する関数
-	function calculateAspectRatioConstrainedSize(
-		originalWidth: number,
-		originalHeight: number,
-		maxWidth: number,
-		maxHeight: number
-	): { width: number; height: number } {
-		if (originalWidth <= 0 || originalHeight <= 0) {
-			return { width: maxWidth, height: maxHeight };
-		}
-
-		const aspectRatio = originalWidth / originalHeight;
-
-		// 幅制限とアスペクト比から高さを計算
-		let targetWidth = Math.min(originalWidth, maxWidth);
-		let targetHeight = targetWidth / aspectRatio;
-
-		// 高さが制限を超える場合は高さベースで再計算
-		if (targetHeight > maxHeight) {
-			targetHeight = Math.min(originalHeight, maxHeight);
-			targetWidth = targetHeight * aspectRatio;
-		}
-
-		// 8の倍数に調整（動画エンコーディングの最適化）
-		return {
-			width: Math.round(targetWidth / 8) * 8,
-			height: Math.round(targetHeight / 8) * 8
-		};
-	}
-
 	// 動画圧縮処理
 	async function compressVideo() {
-		if (!originalFile || !originalVideoEl) return;
+		const file = originalFile;
+		const video = originalVideoEl;
+		const { width, height } = originalStats;
+		if (!file || !video || !width || !height || isCompressing) return;
 
+		const { maxWidth, maxHeight, mimeType, videoBitsPerSecond, audioBitsPerSecond } =
+			compressionSettings;
+		if (
+			!Number.isInteger(maxWidth) ||
+			maxWidth < 1 ||
+			maxWidth > 7680 ||
+			!Number.isInteger(maxHeight) ||
+			maxHeight < 1 ||
+			maxHeight > 4320
+		) {
+			alert('最大幅は1〜7680、最大高さは1〜4320の整数を入力してください');
+			return;
+		}
+
+		const controller = new AbortController();
+		compression = controller;
 		isCompressing = true;
 		compressionProgress = 0;
+		if (compressedVideoUrl) URL.revokeObjectURL(compressedVideoUrl);
+		compressedVideoUrl = null;
 
+		let videoStream: MediaStream | undefined;
+		let audioDestination: MediaStreamAudioDestinationNode | undefined;
+		let audioSource: MediaElementAudioSourceNode | undefined;
+		let recorder: MediaRecorder | undefined;
+		let frame = 0;
 		try {
-			// キャンバスの設定（アスペクト比を維持）
-			const canvas = hiddenCanvas;
 			const { width: targetWidth, height: targetHeight } = calculateAspectRatioConstrainedSize(
-				originalStats.width,
-				originalStats.height,
-				compressionSettings.maxWidth,
-				compressionSettings.maxHeight
+				width,
+				height,
+				maxWidth,
+				maxHeight
 			);
-
+			const canvas = hiddenCanvas;
 			canvas.width = targetWidth;
 			canvas.height = targetHeight;
-
 			const ctx = canvas.getContext('2d');
-			if (!ctx) throw new Error('Canvas context not available');
-
-			// MediaStream取得（映像）
-			const videoStream = canvas.captureStream(30); // 30fps
-
-			// 元動画から音声トラックを取得して追加
-			// 注意: captureStream()はHTMLMediaElementのメソッドで、一部のブラウザでは利用不可
-			let audioContext: AudioContext | null = null;
-			let audioSource: MediaElementAudioSourceNode | null = null;
-			let audioDestination: MediaStreamAudioDestinationNode | null = null;
+			if (!ctx) throw new Error('Canvasの初期化に失敗しました');
+			videoStream = canvas.captureStream(30);
 
 			try {
-				// AudioContext経由で音声を取得（より広いブラウザサポート）
-				audioContext = new AudioContext();
-				audioSource = audioContext.createMediaElementSource(originalVideoEl);
-				audioDestination = audioContext.createMediaStreamDestination();
-
-				// 音声をMediaStreamDestinationに接続（録音用）
-				audioSource.connect(audioDestination);
-				// スピーカーにも接続（再生音を聞けるように）
-				audioSource.connect(audioContext.destination);
-
-				// 音声トラックを映像ストリームに追加
-				const audioTracks = audioDestination.stream.getAudioTracks();
-				if (audioTracks.length > 0) {
-					videoStream.addTrack(audioTracks[0]);
-				}
-			} catch (audioError) {
-				// 音声取得に失敗した場合は映像のみで続行（CORS制約等）
-				console.warn('音声トラックの取得に失敗しました。映像のみで圧縮を続行します:', audioError);
-			}
-
-			// MediaRecorder設定
-			const recordOptions = {
-				mimeType: compressionSettings.mimeType,
-				videoBitsPerSecond: compressionSettings.videoBitsPerSecond,
-				audioBitsPerSecond: compressionSettings.audioBitsPerSecond
-			};
-
-			const recorder = new MediaRecorder(videoStream, recordOptions);
-			const chunks: Blob[] = [];
-
-			recorder.ondataavailable = (event) => {
-				if (event.data.size > 0) {
-					chunks.push(event.data);
-				}
-			};
-
-			recorder.onstop = () => {
-				const blob = new Blob(chunks, { type: compressionSettings.mimeType });
-				if (compressedVideoUrl) URL.revokeObjectURL(compressedVideoUrl);
-				compressedVideoUrl = URL.createObjectURL(blob);
-
-				// 圧縮後の統計情報
-				compressedStats = {
-					size: blob.size,
-					duration: originalStats.duration,
-					width: targetWidth,
-					height: targetHeight,
-					bitrate: Math.round((blob.size * 8) / originalStats.duration)
-				};
-
-				isCompressing = false;
-				compressionProgress = 100;
-			};
-
-			// 録画開始
-			recorder.start();
-
-			// 元動画を再生してキャンバスに描画
-			originalVideoEl.currentTime = 0;
-			await originalVideoEl.play();
-
-			const drawFrame = () => {
-				if (isCompressing && !originalVideoEl.paused && !originalVideoEl.ended) {
-					ctx.drawImage(originalVideoEl, 0, 0, targetWidth, targetHeight);
-
-					// 進捗更新
-					compressionProgress = Math.round(
-						(originalVideoEl.currentTime / originalVideoEl.duration) * 100
-					);
-
-					requestAnimationFrame(drawFrame);
-				} else {
-					// 録画終了
-					recorder.stop();
-					originalVideoEl.pause();
-
-					// ストリームのクリーンアップ
-					videoStream.getTracks().forEach((track) => track.stop());
-
-					// AudioContextのクリーンアップ
-					if (audioContext && audioContext.state !== 'closed') {
-						audioContext.close().catch(console.error);
+				// 同じvideo要素には1つのAudioSourceNodeだけを作り、各録画で使い回す。
+				if (!audioCapture) {
+					const context = new AudioContext();
+					try {
+						const source = context.createMediaElementSource(video);
+						source.connect(context.destination);
+						audioCapture = { context, source };
+					} catch (error) {
+						void context.close().catch(console.error);
+						throw error;
 					}
 				}
-			};
+				audioSource = audioCapture.source;
+				audioDestination = audioCapture.context.createMediaStreamDestination();
+				audioSource.connect(audioDestination);
+				const [track] = audioDestination.stream.getAudioTracks();
+				if (track) videoStream.addTrack(track);
+			} catch (error) {
+				console.warn('音声トラックの取得に失敗しました。映像のみで圧縮を続行します:', error);
+			}
 
-			drawFrame();
+			const activeRecorder = new MediaRecorder(videoStream, {
+				mimeType,
+				videoBitsPerSecond,
+				audioBitsPerSecond
+			});
+			recorder = activeRecorder;
+			const chunks: Blob[] = [];
+			const recording = new Promise<Blob>((resolve, reject) => {
+				activeRecorder.ondataavailable = ({ data }) => {
+					if (data.size > 0) chunks.push(data);
+				};
+				activeRecorder.onstop = () =>
+					resolve(new Blob(chunks, { type: chunks[0]?.type || activeRecorder.mimeType }));
+				activeRecorder.onerror = () => reject(new Error('録画に失敗しました'));
+				controller.signal.addEventListener('abort', () => reject(controller.signal.reason), {
+					once: true
+				});
+
+				const drawFrame = () => {
+					if (video.ended) {
+						if (activeRecorder.state !== 'inactive') activeRecorder.stop();
+						return;
+					}
+					if (video.paused) {
+						reject(new Error('元動画の再生が停止しました'));
+						return;
+					}
+					ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
+					if (Number.isFinite(video.duration) && video.duration > 0) {
+						compressionProgress = Math.min(
+							99,
+							Math.round((video.currentTime / video.duration) * 100)
+						);
+					}
+					frame = requestAnimationFrame(drawFrame);
+				};
+
+				activeRecorder.start();
+				video.currentTime = 0;
+				video
+					.play()
+					.then(() => {
+						if (!controller.signal.aborted) drawFrame();
+					})
+					.catch(reject);
+			});
+
+			const blob = await recording;
+			if (controller.signal.aborted) return;
+			if (!blob.size) throw new Error('録画データを取得できませんでした');
+			const type = blob.type.split(';')[0];
+			const extension = type === 'video/mpeg' ? 'mpeg' : type === 'video/mp4' ? 'mp4' : 'webm';
+			const baseName = file.name.replace(/\.[^.]+$/, '');
+			compressedFileName = `${baseName}_compressed.${extension}`;
+			compressedVideoUrl = URL.createObjectURL(blob);
+			const duration = Number.isFinite(video.duration) ? video.duration : video.currentTime;
+			compressedStats = {
+				size: blob.size,
+				duration,
+				width: targetWidth,
+				height: targetHeight,
+				bitrate: duration > 0 ? Math.round((blob.size * 8) / duration) : 0
+			};
+			compressionProgress = 100;
 		} catch (error) {
-			console.error('Compression failed:', error);
-			alert('圧縮に失敗しました: ' + (error as Error).message);
-			isCompressing = false;
+			if (!controller.signal.aborted) {
+				alert('圧縮に失敗しました: ' + (error instanceof Error ? error.message : String(error)));
+			}
+		} finally {
+			cancelAnimationFrame(frame);
+			if (recorder && recorder.state !== 'inactive') recorder.stop();
+			video.pause();
+			videoStream?.getTracks().forEach((track) => track.stop());
+			if (audioDestination) {
+				if (audioSource && audioCapture?.source === audioSource)
+					audioSource.disconnect(audioDestination);
+				audioDestination.stream.getTracks().forEach((track) => track.stop());
+			}
+			if (compression === controller) {
+				compression = null;
+				isCompressing = false;
+			}
 		}
 	}
 
@@ -327,30 +325,19 @@
 
 		const a = document.createElement('a');
 		a.href = compressedVideoUrl;
-		a.download = getCompressedFileName();
+		a.download = compressedFileName;
 		a.click();
 	}
 
-	function getCompressedFileName(): string {
-		if (!originalFile) return 'compressed.webm';
-
-		const baseName = originalFile.name.replace(/\.[^.]+$/, '');
-		let extension = 'webm';
-
-		if (
-			compressionSettings.mimeType.includes('mp4') ||
-			compressionSettings.mimeType.includes('mpeg')
-		) {
-			extension = 'mp4';
-		} else if (compressionSettings.mimeType.includes('webm')) {
-			extension = 'webm';
-		}
-
-		return `${baseName}_compressed.${extension}`;
-	}
-
 	function clearAll() {
+		compression?.abort();
+		compression = null;
+		if (audioCapture) {
+			void audioCapture.context.close().catch(console.error);
+			audioCapture = null;
+		}
 		revokeObjectUrls();
+		videoError = '';
 		originalFile = null;
 		originalVideoUrl = null;
 		compressedVideoUrl = null;
@@ -379,7 +366,7 @@
 	}
 
 	function formatDuration(seconds: number): string {
-		if (isNaN(seconds)) return '0:00';
+		if (!Number.isFinite(seconds)) return '—';
 		const mins = Math.floor(seconds / 60);
 		const secs = Math.floor(seconds % 60);
 		return `${mins}:${secs.toString().padStart(2, '0')}`;
@@ -392,7 +379,13 @@
 
 	// 想定される圧縮後のファイルサイズを計算（解像度変更を考慮）
 	function calculateEstimatedSize(): number {
-		if (!originalStats.duration || !originalStats.width || !originalStats.height) return 0;
+		if (
+			!Number.isFinite(originalStats.duration) ||
+			originalStats.duration <= 0 ||
+			!originalStats.width ||
+			!originalStats.height
+		)
+			return 0;
 
 		// 解像度変更による影響を計算（アスペクト比を維持）
 		const { width: targetWidth, height: targetHeight } = calculateAspectRatioConstrainedSize(
@@ -475,9 +468,9 @@
 						id="max-width-input"
 						type="number"
 						bind:value={compressionSettings.maxWidth}
-						min="320"
+						min="1"
 						max="7680"
-						step="8"
+						step="1"
 						class="mt-1 w-full rounded border border-gray-300 px-3 py-2"
 					/>
 				</div>
@@ -489,9 +482,9 @@
 						id="max-height-input"
 						type="number"
 						bind:value={compressionSettings.maxHeight}
-						min="240"
+						min="1"
 						max="4320"
-						step="8"
+						step="1"
 						class="mt-1 w-full rounded border border-gray-300 px-3 py-2"
 					/>
 				</div>
@@ -586,7 +579,7 @@
 	</div>
 
 	<!-- 想定容量表示 -->
-	{#if originalStats.duration > 0}
+	{#if Number.isFinite(originalStats.duration) && originalStats.duration > 0}
 		{@const estimatedSize = calculateEstimatedSize()}
 		{@const estimatedReduction = calculateEstimatedReduction()}
 		<div class="mb-6 rounded-lg border border-blue-200 bg-blue-50 p-4">
@@ -620,7 +613,10 @@
 			<div class="flex items-center justify-center gap-4">
 				<button
 					on:click={compressVideo}
-					disabled={isCompressing || !availableMimeTypes.length}
+					disabled={isCompressing ||
+						!availableMimeTypes.length ||
+						!originalStats.width ||
+						!!videoError}
 					class="rounded bg-blue-600 px-6 py-3 text-white hover:bg-blue-700 disabled:opacity-50"
 				>
 					{#if isCompressing}
@@ -646,14 +642,20 @@
 				<!-- 元動画 -->
 				<div class="rounded-lg border border-gray-200 bg-white p-4">
 					<h3 class="mb-3 font-medium text-gray-900">元動画</h3>
-					<!-- svelte-ignore a11y-media-has-caption -->
-					<video
-						bind:this={originalVideoEl}
-						src={originalVideoUrl}
-						controls
-						on:loadedmetadata={onVideoLoaded}
-						class="w-full rounded bg-gray-100"
-					></video>
+					{#key originalVideoUrl}
+						<!-- svelte-ignore a11y-media-has-caption -->
+						<video
+							bind:this={originalVideoEl}
+							src={originalVideoUrl}
+							controls={!isCompressing}
+							on:loadedmetadata={onVideoLoaded}
+							on:error={() => (videoError = '動画を読み込めませんでした')}
+							class="w-full rounded bg-gray-100"
+						></video>
+					{/key}
+					{#if videoError}
+						<p role="alert" class="mt-2 text-sm text-red-600">{videoError}</p>
+					{/if}
 
 					{#if originalStats.size > 0}
 						<div class="mt-3 grid grid-cols-2 gap-3 text-sm">

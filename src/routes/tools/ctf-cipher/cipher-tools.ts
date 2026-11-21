@@ -91,7 +91,11 @@ export function decryptAtbash(text: string): DecryptResult {
  */
 export function decryptXOR(text: string): DecryptResult[] {
 	const results: DecryptResult[] = [];
-	const bytes = new TextEncoder().encode(text);
+	// 入力の U+0000〜U+00FF はそれぞれ1バイトの暗号文として扱う。
+	for (let index = 0; index < text.length; index++) {
+		if (text.charCodeAt(index) > 0xff) return results;
+	}
+	const bytes = Uint8Array.from(text, (char) => char.charCodeAt(0));
 	const decoder = new TextDecoder('utf-8', { fatal: true });
 
 	for (let key = 1; key < 256; key++) {
@@ -172,7 +176,7 @@ export function decryptBase64Multi(text: string): DecryptResult[] {
  * Reverse（逆順）
  */
 export function decryptReverse(text: string): DecryptResult {
-	const reversed = text.split('').reverse().join('');
+	const reversed = Array.from(text).reverse().join('');
 
 	return applyCipherBonus({
 		cipher: 'Reverse',

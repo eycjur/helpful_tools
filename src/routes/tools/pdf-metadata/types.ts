@@ -22,7 +22,7 @@ export type PDFReport = {
 		infoDict: Record<string, unknown>;
 		xmp: null | {
 			parseStatus: 'ok' | 'fail';
-			rawSha256: string;
+			rawSha256: string | null;
 			summary?: Record<string, unknown>;
 		};
 		documentIds: string[] | null;
@@ -93,20 +93,4 @@ export type PDFReport = {
 		} | null;
 	};
 	findings: Finding[];
-};
-
-export type ParsedValue =
-	| { type: 'literal'; value: string }
-	| { type: 'hex'; value: Uint8Array }
-	| { type: 'name'; value: string }
-	| { type: 'number'; value: number }
-	| { type: 'array'; value: string }
-	| { type: 'dict'; value: string }
-	| { type: 'null' }
-	| { type: 'unknown'; value: string };
-
-export type RawObject = {
-	objNum: number;
-	genNum: number;
-	body: string;
 };

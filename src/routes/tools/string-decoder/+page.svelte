@@ -91,7 +91,7 @@
 		punycode: {
 			label: 'Punycode',
 			description: '国際化ドメイン名',
-			example: 'xn--wgv71a119e → 日本'
+			example: 'xn--wgv71a119e → 日本語'
 		},
 		base58: {
 			label: 'Base58',
@@ -129,9 +129,9 @@
 			example: '.... . .-.. .-.. --- → HELLO'
 		},
 		'quoted-printable': {
-			label: 'Quoted-Printable',
+			label: 'Quoted-Printable (UTF-8)',
 			description: 'メール用エンコード',
-			example: 'Hello=20World → Hello World'
+			example: '=E3=81=82 → あ'
 		},
 		uuencode: {
 			label: 'UUencode',
@@ -209,7 +209,7 @@
 						result = decodeROT13(inputText);
 						break;
 					case 'binary':
-						result = decodeBinary(inputText.replace(/\s/g, ''));
+						result = decodeBinary(inputText);
 						break;
 					case 'octal-num':
 						result = decodeOctalNum(inputText);
@@ -453,7 +453,7 @@
 			<h3 class="font-medium text-gray-900">使い方</h3>
 		</div>
 		<div class="space-y-2 text-sm text-gray-600">
-			<p>• <strong>自動検出モード</strong>: 入力から20種類以上のエンコード形式を自動推定</p>
+			<p>• <strong>自動検出モード</strong>: 入力に合うエンコード形式の候補を表示</p>
 			<p>• <strong>手動選択モード</strong>: 特定のエンコード形式を指定してデコード</p>
 			<p>• <strong>複数候補表示</strong>: 自動検出時は信頼度順に複数の候補を表示</p>
 			<p>• <strong>自動コピー</strong>: 最も信頼度の高い結果を自動的にクリップボードにコピー</p>
@@ -464,7 +464,7 @@
 	<div class="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
 		<div class="mb-2 flex items-center">
 			<Icon icon="mdi:format-list-bulleted" class="mr-2 h-5 w-5 text-blue-600" />
-			<h3 class="font-medium text-blue-900">対応エンコード形式（20種類）</h3>
+			<h3 class="font-medium text-blue-900">対応エンコード形式（19種類）</h3>
 		</div>
 		<div class="grid gap-2 text-sm text-blue-700 md:grid-cols-2 lg:grid-cols-3">
 			{#each Object.entries(formatInfo).filter(([key]) => key !== 'auto') as [key, info] (key)}

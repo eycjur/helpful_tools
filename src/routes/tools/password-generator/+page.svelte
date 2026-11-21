@@ -5,7 +5,9 @@
 	const tool = tools.find((t) => t.name === 'password-generator');
 
 	// 設定
-	let length = 16;
+	let length: number | undefined = 16;
+	const minLength = 4;
+	const maxLength = 20;
 	const count = 5; // 固定
 	let includeUppercase = true;
 	let includeLowercase = true;
@@ -41,7 +43,7 @@
 	}
 
 	// 暗号学的に安全な乱数でパスワードを生成
-	function generatePassword(): string {
+	function generatePassword(passwordLength: number): string {
 		// 使用する文字セットを準備（紛らわしい文字を除外）
 		const charsets: string[] = [];
 		if (includeUppercase) charsets.push(filterAmbiguous(uppercaseChars));
@@ -63,7 +65,7 @@
 		}
 
 		// 残りの文字をランダムに埋める
-		const remainingLength = length - requiredChars.length;
+		const remainingLength = passwordLength - requiredChars.length;
 		const remainingChars: string[] = [];
 		for (let i = 0; i < remainingLength; i++) {
 			remainingChars.push(getRandomChar(allChars));
@@ -84,16 +86,24 @@
 	}
 
 	// 複数のパスワードを生成
-	function generatePasswords() {
+	function isValidLength(value: number | undefined): value is number {
+		return (
+			value !== undefined && Number.isInteger(value) && value >= minLength && value <= maxLength
+		);
+	}
+
+	function generatePasswords(passwordLength: number | undefined) {
 		passwords = [];
+		copiedIndex = null;
+		if (noCharsetSelected || !isValidLength(passwordLength)) return;
+
 		for (let i = 0; i < count; i++) {
-			const pwd = generatePassword();
+			const pwd = generatePassword(passwordLength);
 			if (pwd) {
 				passwords.push(pwd);
 			}
 		}
 		passwords = passwords; // リアクティビティをトリガー
-		copiedIndex = null;
 	}
 
 	// パスワードの強度を計算（エントロピー）
@@ -149,19 +159,20 @@
 	// 文字種が1つも選択されていない場合の警告
 	$: noCharsetSelected =
 		!includeUppercase && !includeLowercase && !includeNumbers && !includeSymbols;
+	$: invalidLength = !isValidLength(length);
 
 	// 設定変更時に自動生成
-	$: if (!noCharsetSelected) {
+	$: {
 		// 依存する変数を明示的に参照
 		void [
-			length,
+			noCharsetSelected,
 			includeUppercase,
 			includeLowercase,
 			includeNumbers,
 			includeSymbols,
 			excludeAmbiguous
 		];
-		generatePasswords();
+		generatePasswords(length);
 	}
 </script>
 
@@ -183,15 +194,17 @@
 					type="range"
 					id="length"
 					bind:value={length}
-					min="4"
-					max="20"
+					min={minLength}
+					max={maxLength}
 					class="h-1.5 flex-1 cursor-pointer appearance-none rounded-lg bg-gray-200"
 				/>
 				<input
 					type="number"
 					bind:value={length}
-					min="4"
-					max="20"
+					min={minLength}
+					max={maxLength}
+					aria-label="パスワードの長さ"
+					aria-invalid={invalidLength}
 					class="w-14 rounded border border-gray-300 px-1 py-0.5 text-center font-mono text-sm"
 				/>
 			</div>
@@ -230,11 +243,17 @@
 				少なくとも1つの文字種を選択してください
 			</div>
 		{/if}
+		{#if invalidLength}
+			<div class="mb-2 rounded border border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-700">
+				<Icon icon="mdi:alert-circle" class="mr-1 inline h-3.5 w-3.5" />
+				長さは{minLength}〜{maxLength}の整数を入力してください
+			</div>
+		{/if}
 
 		<!-- 再生成ボタン -->
 		<button
-			on:click={generatePasswords}
-			disabled={noCharsetSelected}
+			on:click={() => generatePasswords(length)}
+			disabled={noCharsetSelected || invalidLength}
 			class="w-full rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
 		>
 			<Icon icon="mdi:refresh" class="mr-1 inline h-4 w-4" />

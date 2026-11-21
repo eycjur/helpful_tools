@@ -52,7 +52,7 @@ export const tools: Tool[] = [
 	{
 		nameJa: 'エンコード文字列デコーダ',
 		name: 'string-decoder',
-		description: '20種類以上のエンコード形式を自動検出・デコードします',
+		description: '19種類のエンコード形式に対応し、入力に合う形式を自動推定します',
 		icon: 'mdi:file-code-outline',
 		category: '文字・テキスト処理'
 	},
@@ -86,13 +86,6 @@ export const tools: Tool[] = [
 		name: 'markdown-to-notion',
 		description: 'MarkdownをNotion形式に変換します',
 		icon: 'mdi:swap-horizontal',
-		category: 'データ変換'
-	},
-	{
-		nameJa: 'Markdown → Slack',
-		name: 'markdown-to-slack',
-		description: 'MarkdownをSlackに貼り付け可能なリッチテキストに変換してコピーします',
-		icon: 'mdi:slack',
 		category: 'データ変換'
 	},
 	{
@@ -293,7 +286,7 @@ export const tools: Tool[] = [
 	{
 		nameJa: 'Whois・ドメイン情報',
 		name: 'whois-lookup',
-		description: 'ドメイン・IPアドレスのWhois情報とDNSレコードを調査します',
+		description: 'ドメインのDNSレコードとIPアドレスの地理・ネットワーク情報を調査します',
 		icon: 'mdi:dns',
 		category: 'ネットワーク・情報'
 	},

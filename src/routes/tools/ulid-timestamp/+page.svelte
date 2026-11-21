@@ -59,8 +59,11 @@
 	<label for="ulid-input" class="mb-2 block text-sm font-medium text-gray-700">ULID</label>
 	<textarea
 		id="ulid-input"
-		bind:value={input}
-		oninput={decode}
+		value={input}
+		oninput={(event) => {
+			input = event.currentTarget.value;
+			decode();
+		}}
 		placeholder="01ARZ3NDEKTSV4RRFFQ69G5FAV"
 		class="w-full rounded-lg border border-gray-300 p-4 font-mono text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
 		rows="2"

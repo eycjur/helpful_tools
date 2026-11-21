@@ -114,16 +114,8 @@ describe('Whois解析 - パーサー', () => {
 		});
 
 		it('大文字小文字を正しく処理する', () => {
-			// サブドメインは大文字でも正しく判定される
-			expect(isSubdomain('www.example.com')).toBe(true);
 			expect(isSubdomain('WWW.EXAMPLE.COM')).toBe(true);
-
-			// ルートドメインは小文字では正しく判定される
-			expect(isSubdomain('example.com')).toBe(false);
-
-			// 大文字のルートドメインも小文字化されて比較されるため、サブドメインではない
-			// （実装ではextractRootDomainが小文字化するため）
-			expect(isSubdomain('EXAMPLE.COM')).toBe(true); // 注: 入力が大文字なのでdomain !== rootDomainになる
+			expect(isSubdomain('EXAMPLE.COM')).toBe(false);
 		});
 	});
 
@@ -214,6 +206,25 @@ describe('Whois解析 - パーサー', () => {
 			expect(text).toContain('AS組織名: CLOUDFLARENET');
 		});
 
+		it('欠けた座標は表示せず、緯度経度0は値として表示する', () => {
+			const geoInfo = {
+				ip: '203.0.113.5',
+				city: 'City',
+				region: 'Region',
+				country: 'Country',
+				countryCode: 'CC',
+				timezone: 'UTC',
+				org: 'Org',
+				postal: '000'
+			};
+			expect(formatGeoInfoAsText({ ...geoInfo, latitude: null, longitude: null })).not.toContain(
+				'緯度経度'
+			);
+			expect(formatGeoInfoAsText({ ...geoInfo, latitude: 0, longitude: 0 })).toContain(
+				'緯度経度: 0, 0'
+			);
+		});
+
 		it('セキュリティ情報を整形できる', () => {
 			const text = formatSecurityInfoAsText({
 				ip: '1.1.1.1',
@@ -270,6 +281,8 @@ describe('Whois解析 - パーサー', () => {
 							latitude: 37.4,
 							longitude: -122.1,
 							org: 'Google LLC',
+							asn: 'AS15169',
+							hostname: 'dns.google',
 							postal: '94043'
 						})
 					} as Response;
@@ -301,6 +314,11 @@ describe('Whois解析 - パーサー', () => {
 			const result = await performSearch('8.8.8.8');
 			expect(result.isIP).toBe(true);
 			expect(result.ipGeoInfo?.country).toBe('United States');
+			expect(result.ipGeoInfo).toMatchObject({
+				as: 'AS15169',
+				asname: 'Google LLC',
+				reverse: 'dns.google'
+			});
 		});
 
 		it('ドメイン入力でDNS情報を返す', async () => {
@@ -308,6 +326,61 @@ describe('Whois解析 - パーサー', () => {
 			expect(result.isIP).toBe(false);
 			expect(result.dnsRecords.length).toBeGreaterThan(0);
 			expect(result.dnsRecords[0]?.type).toBe('A');
+		});
+
+		it('AAAAのみのドメインもIPv6アドレスから地理情報を取得する', async () => {
+			const address = '2001:db8::1';
+			const fetchMock = vi.mocked(globalThis.fetch);
+			const defaultFetch = fetchMock.getMockImplementation()!;
+			fetchMock.mockImplementation(async (input) => {
+				const url = new URL(String(input));
+				if (!url.pathname.endsWith('/dns-query')) return defaultFetch(input);
+				const answers =
+					url.searchParams.get('type') === 'AAAA'
+						? [{ name: 'example.com.', type: 28, data: address, TTL: 60 }]
+						: [];
+				return Response.json({ Status: 0, Answer: answers });
+			});
+			const result = await performSearch('example.com');
+			expect(result.dnsRecords[0]?.type).toBe('AAAA');
+			expect(result.ipGeoInfo).toBeDefined();
+			expect(fetchMock).toHaveBeenCalledWith('https://ipapi.co/2001%3Adb8%3A%3A1/json/');
+		});
+
+		it('CNAME解決中はCNAMEの値をIPアドレスとして扱わない', async () => {
+			const fetchMock = vi.mocked(globalThis.fetch);
+			const defaultFetch = fetchMock.getMockImplementation()!;
+			fetchMock.mockImplementation(async (input) => {
+				const url = new URL(String(input));
+				if (!url.pathname.endsWith('/dns-query')) return defaultFetch(input);
+				const name = url.searchParams.get('name');
+				const type = url.searchParams.get('type');
+				const targets = new Map([
+					['example.com', 'one.example.net.'],
+					['one.example.net', 'two.example.net.']
+				]);
+				const target = targets.get(name ?? '');
+				const answers = target
+					? [{ name, type: 5, data: target, TTL: 60 }]
+					: type === 'AAAA'
+						? [{ name, type: 28, data: '2001:db8::1', TTL: 60 }]
+						: [];
+				return Response.json({ Status: 0, Answer: answers });
+			});
+			const result = await performSearch('example.com');
+			expect(result.dnsRecords).toContainEqual(
+				expect.objectContaining({ type: 'AAAA', data: '2001:db8::1' })
+			);
+			expect(fetchMock).toHaveBeenCalledWith('https://ipapi.co/2001%3Adb8%3A%3A1/json/');
+			expect(fetchMock).not.toHaveBeenCalledWith('https://ipapi.co/two.example.net./json/');
+		});
+
+		it('NXDOMAINとDNSサーバー障害を区別する', async () => {
+			const fetchMock = vi.mocked(globalThis.fetch);
+			fetchMock.mockImplementation(async () => Response.json({ Status: 3 }));
+			await expect(performSearch('example.com')).resolves.toMatchObject({ dnsRecords: [] });
+			fetchMock.mockImplementation(async () => Response.json({ Status: 2 }));
+			await expect(performSearch('example.com')).rejects.toThrow('DNS情報を取得できませんでした');
 		});
 	});
 });

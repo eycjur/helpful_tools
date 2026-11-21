@@ -1,30 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-	detectDelimiter,
-	parsePlainTable,
-	transposeTable,
-	transposeToTsv,
-	parseHtmlTable
-} from './table-transpose';
-
-describe('detectDelimiter', () => {
-	it('タブが多い場合は tab', () => {
-		expect(detectDelimiter('a\tb\tc')).toBe('tab');
-	});
-
-	it('カンマのみの場合は comma', () => {
-		expect(detectDelimiter('a,b,c')).toBe('comma');
-	});
-});
-
-describe('parsePlainTable', () => {
-	it('TSV をパースする', () => {
-		expect(parsePlainTable('a\tb\nc\td')).toEqual([
-			['a', 'b'],
-			['c', 'd']
-		]);
-	});
-});
+import { transposeTable, transposeToTsv, parseHtmlTable } from './table-transpose';
 
 describe('transposeTable', () => {
 	it('2x3 を 3x2 に転置する', () => {
@@ -59,6 +34,22 @@ describe('transposeTable', () => {
 describe('tableToTsv / transposeToTsv', () => {
 	it('転置結果を TSV にする', () => {
 		expect(transposeToTsv('a\tb\nc\td')).toBe('a\tc\nb\td');
+	});
+
+	it('先頭・末尾の空セルを保持する', () => {
+		expect(transposeToTsv('\ta\nb\t')).toBe('\tb\na\t');
+		expect(transposeToTsv('a\nb\tc')).toBe('a\tb\n\tc');
+	});
+
+	it('引用されたセル内の改行・タブ・引用符を保持する', () => {
+		expect(transposeToTsv('a,"b\n""c"""\nd,"e\tf"')).toBe('a\td\n"b\n""c"""\t"e\tf"');
+	});
+
+	it('1列の空セルやカンマを持つセルを再び転置できる', () => {
+		expect(transposeToTsv('\t')).toBe('""\n""');
+		expect(transposeToTsv('""\n""')).toBe('\t');
+		expect(transposeToTsv('"a,b"\tc')).toBe('"a,b"\nc');
+		expect(transposeToTsv('"a,b"\nc')).toBe('a,b\tc');
 	});
 
 	it('空入力は null', () => {

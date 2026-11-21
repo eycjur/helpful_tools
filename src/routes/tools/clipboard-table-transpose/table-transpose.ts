@@ -1,65 +1,8 @@
-export type TableDelimiter = 'tab' | 'comma';
+import { detectDelimiter, parsePlainTable, type TableDelimiter } from '../_shared/delimited-table';
 
 export interface ParseResult {
 	rows: string[][];
 	delimiter: TableDelimiter;
-}
-
-/**
- * 区切り文字を推定（タブ優先、Excel/スプレッドシートの貼り付け想定）
- */
-export function detectDelimiter(text: string): TableDelimiter {
-	const firstLine = text.trim().split(/\r?\n/)[0] ?? '';
-	const tabCount = (firstLine.match(/\t/g) || []).length;
-	const commaCount = (firstLine.match(/,/g) || []).length;
-	if (tabCount > 0 && tabCount >= commaCount) return 'tab';
-	return 'comma';
-}
-
-/**
- * CSV 1行をパース（ダブルクォート対応）
- */
-function parseCsvLine(line: string): string[] {
-	const row: string[] = [];
-	let current = '';
-	let inQuotes = false;
-
-	for (let i = 0; i < line.length; i++) {
-		const char = line[i];
-		if (char === '"') {
-			if (inQuotes && line[i + 1] === '"') {
-				current += '"';
-				i++;
-			} else {
-				inQuotes = !inQuotes;
-			}
-		} else if (char === ',' && !inQuotes) {
-			row.push(current);
-			current = '';
-		} else {
-			current += char;
-		}
-	}
-	row.push(current);
-	return row.map((cell) => cell.trim());
-}
-
-/**
- * プレーンテキスト（TSV/CSV）を表にパース
- */
-export function parsePlainTable(text: string, delimiter?: TableDelimiter): string[][] {
-	const trimmed = text.trim();
-	if (!trimmed) return [];
-
-	const sep = delimiter ?? detectDelimiter(trimmed);
-	const lines = trimmed.split(/\r?\n/);
-
-	return lines.map((line) => {
-		if (sep === 'tab') {
-			return line.split('\t').map((cell) => cell.trim());
-		}
-		return parseCsvLine(line);
-	});
 }
 
 /**
@@ -86,7 +29,7 @@ export function parseHtmlTable(html: string): string[][] | null {
 export function transposeTable(rows: string[][]): string[][] {
 	if (rows.length === 0) return [];
 
-	const maxCols = Math.max(...rows.map((r) => r.length), 0);
+	const maxCols = rows.reduce((max, row) => Math.max(max, row.length), 0);
 	if (maxCols === 0) return [];
 
 	const normalized = rows.map((row) => {
@@ -106,7 +49,17 @@ export function transposeTable(rows: string[][]): string[][] {
  * 表を TSV 文字列に（Excel 等への貼り付け用）
  */
 export function tableToTsv(rows: string[][]): string {
-	return rows.map((row) => row.join('\t')).join('\n');
+	return rows
+		.map((row) =>
+			row
+				.map((cell) => {
+					const needsQuotes =
+						/["\t\r\n]/.test(cell) || (row.length === 1 && (cell === '' || cell.includes(',')));
+					return needsQuotes ? `"${cell.replaceAll('"', '""')}"` : cell;
+				})
+				.join('\t')
+		)
+		.join('\n');
 }
 
 /**
@@ -120,10 +73,11 @@ export function parseTableFromClipboard(plain: string, html?: string): ParseResu
 		}
 	}
 
-	const rows = parsePlainTable(plain);
+	const delimiter = detectDelimiter(plain);
+	const rows = parsePlainTable(plain, delimiter);
 	if (rows.length === 0) return null;
 
-	return { rows, delimiter: detectDelimiter(plain) };
+	return { rows, delimiter };
 }
 
 /**

@@ -4,6 +4,7 @@
 	import Icon from '@iconify/svelte';
 	import diff_match_patch from 'diff-match-patch';
 	import { escapeHtml } from './html-escape';
+	import { alignDiffLines, createUnifiedDiff, type LineDiffRow } from './line-diff';
 
 	const tool = tools.find((t) => t.name === 'diff-checker');
 
@@ -23,12 +24,8 @@
 	let selectionSide: 'left' | 'right' | null = null;
 	let leftSelectionContainer: HTMLDivElement | null = null;
 	let rightSelectionContainer: HTMLDivElement | null = null;
-	let lineDiffRows: Array<{
-		leftHtml: string;
-		rightHtml: string;
-		leftText: string | null;
-		rightText: string | null;
-	}> = [];
+	type RenderedRow = LineDiffRow & { leftHtml: string; rightHtml: string };
+	let lineDiffRows: RenderedRow[] = [];
 	let lineDiffUnifiedHtml = '';
 
 	const dmp = new diff_match_patch();
@@ -97,7 +94,7 @@
 		const leftStr = preprocessText(leftText).join('\n');
 		const rightStr = preprocessText(rightText).join('\n');
 		hasDiff = leftStr !== rightStr;
-		lineDiffRows = buildLineDiffRows(leftStr, rightStr);
+		lineDiffRows = alignDiffLines(leftStr, rightStr).map(renderDiffRow);
 		stats = computeLineStatsFromRows(lineDiffRows);
 		lineDiffUnifiedHtml = buildUnifiedLineDiffHtml(lineDiffRows);
 	}
@@ -162,102 +159,39 @@
 
 	// 統合diff形式で出力
 	function getUnifiedDiffText(): string {
-		let result = '--- Left Text\n+++ Right Text\n';
-		for (const row of lineDiffRows) {
-			const hasLeft = row.leftText !== null;
-			const hasRight = row.rightText !== null;
-
-			if (hasLeft && hasRight && row.leftText === row.rightText) {
-				result += ` ${row.leftText}\n`;
-				continue;
-			}
-			if (hasLeft) result += `-${row.leftText ?? ''}\n`;
-			if (hasRight) result += `+${row.rightText ?? ''}\n`;
-		}
-		return result;
+		return createUnifiedDiff(
+			preprocessText(leftText).join('\n'),
+			preprocessText(rightText).join('\n')
+		);
 	}
 
-	function buildLineDiffRows(leftStr: string, rightStr: string) {
-		if (!leftStr && !rightStr) return [];
+	function renderDiffRow(row: LineDiffRow): RenderedRow {
+		const { leftText, rightText } = row;
+		if (!showCharacterDiff || leftText === rightText) {
+			return {
+				...row,
+				leftHtml: escapeHtml(leftText ?? ''),
+				rightHtml: escapeHtml(rightText ?? '')
+			};
+		}
 
-		const diffs = dmp.diff_main(leftStr, rightStr, false);
+		const diffs = dmp.diff_main(leftText ?? '', rightText ?? '', false);
 		dmp.diff_cleanupSemantic(diffs);
-
-		const rows: Array<{
-			leftHtml: string;
-			rightHtml: string;
-			leftText: string | null;
-			rightText: string | null;
-		}> = [];
-
-		let currentLeftText = '';
-		let currentRightText = '';
-		let currentLeftHtml = '';
-		let currentRightHtml = '';
-		let leftPresent = false;
-		let rightPresent = false;
-
-		const appendSegment = (op: number, segment: string) => {
-			const escaped = escapeHtml(segment);
-			const formatted = formatDiffSegment(segment, op);
-
-			if (op === DIFF_DELETE) {
-				leftPresent = true;
-				currentLeftText += segment;
-				currentLeftHtml += showCharacterDiff ? wrapDiffSpan(formatted, 'delete') : escaped;
-			} else if (op === DIFF_INSERT) {
-				rightPresent = true;
-				currentRightText += segment;
-				currentRightHtml += showCharacterDiff ? wrapDiffSpan(formatted, 'insert') : escaped;
-			} else {
-				leftPresent = true;
-				rightPresent = true;
-				currentLeftText += segment;
-				currentRightText += segment;
-				currentLeftHtml += escaped;
-				currentRightHtml += escaped;
-			}
-		};
-
-		const pushLine = () => {
-			if (!leftPresent && !rightPresent) return;
-			rows.push({
-				leftHtml: leftPresent ? currentLeftHtml : '',
-				rightHtml: rightPresent ? currentRightHtml : '',
-				leftText: leftPresent ? currentLeftText : null,
-				rightText: rightPresent ? currentRightText : null
-			});
-			currentLeftText = '';
-			currentRightText = '';
-			currentLeftHtml = '';
-			currentRightHtml = '';
-			leftPresent = false;
-			rightPresent = false;
-		};
-
+		let leftHtml = '';
+		let rightHtml = '';
 		for (const [op, value] of diffs) {
-			const parts = value.split('\n');
-			for (let i = 0; i < parts.length; i++) {
-				const segment = parts[i];
-				appendSegment(op, segment);
-				if (i < parts.length - 1) {
-					pushLine();
-				}
+			const segment = formatDiffSegment(value, op);
+			if (op === DIFF_DELETE) leftHtml += wrapDiffSpan(segment, 'delete');
+			else if (op === DIFF_INSERT) rightHtml += wrapDiffSpan(segment, 'insert');
+			else {
+				leftHtml += segment;
+				rightHtml += segment;
 			}
 		}
-
-		pushLine();
-		return rows;
+		return { ...row, leftHtml, rightHtml };
 	}
 
-	function buildUnifiedLineDiffHtml(
-		rows: Array<{
-			leftHtml: string;
-			rightHtml: string;
-			leftText: string | null;
-			rightText: string | null;
-		}>
-	): string {
+	function buildUnifiedLineDiffHtml(rows: RenderedRow[]): string {
 		let html = '';
 		for (const row of rows) {
 			const hasLeft = row.leftText !== null;
